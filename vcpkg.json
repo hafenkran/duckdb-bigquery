@@ -1,0 +1,26 @@
+{
+  "name": "duckdb-bigquery",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "abseil",
+    "protobuf",
+    "grpc",
+    "nlohmann-json",
+    "arrow",
+    {
+      "name": "openssl",
+      "version>=": "3.1.4"
+    }
+  ],
+  "builtin-baseline": "a4275b7eee79fb24ec2e135481ef5fce8b41c339",
+  "overrides": [
+    {
+      "name": "abseil",
+      "version": "20230802.1"
+    },
+    {
+      "name": "arrow",
+      "version": "16.0.0"
+    }
+  ]
+}

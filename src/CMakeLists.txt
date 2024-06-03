@@ -1,0 +1,16 @@
+add_subdirectory(storage)
+
+set(EXTENSION_SOURCES
+    ${EXTENSION_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_arrow_reader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_proto_writer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_attach.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_clear_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_execute.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_client.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_extension.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_storage.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_utils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_sql.cpp
+    PARENT_SCOPE)

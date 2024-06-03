@@ -1,0 +1,8 @@
+.github/
+.vscode/
+build/
+dev/
+docs/
+
+# duckdb related
+duckdb_unittest_tempdir/

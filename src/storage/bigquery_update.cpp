@@ -1,0 +1,71 @@
+
+#include "duckdb/planner/operator/logical_update.hpp"
+
+#include "bigquery_sql.hpp"
+#include "storage/bigquery_catalog.hpp"
+#include "storage/bigquery_transaction.hpp"
+#include "storage/bigquery_update.hpp"
+
+namespace duckdb {
+namespace bigquery {
+
+struct BigqueryUpdateGlobalState : public GlobalSinkState {
+    explicit BigqueryUpdateGlobalState() : updated_count(0) {
+    }
+    idx_t updated_count;
+};
+
+BigqueryUpdate::BigqueryUpdate(LogicalOperator &op, TableCatalogEntry &table, string query)
+    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
+}
+
+unique_ptr<GlobalSinkState> BigqueryUpdate::GetGlobalSinkState(ClientContext &context) const {
+    return make_uniq<BigqueryUpdateGlobalState>();
+}
+
+SinkResultType BigqueryUpdate::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
+    return SinkResultType::FINISHED;
+}
+
+SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
+                                          Event &event,
+                                          ClientContext &context,
+                                          OperatorSinkFinalizeInput &input) const {
+    auto &gstate = input.global_state.Cast<BigqueryUpdateGlobalState>();
+    auto &transaction = BigqueryTransaction::Get(context, table.catalog);
+    auto bq_client = transaction.GetBigqueryClient();
+    auto result = bq_client->ExecuteQuery(query);
+    gstate.updated_count = result.total_rows;
+    return SinkFinalizeType::READY;
+}
+
+SourceResultType BigqueryUpdate::GetData(ExecutionContext &context,
+                                         DataChunk &chunk,
+                                         OperatorSourceInput &input) const {
+    auto &gstate = sink_state->Cast<BigqueryUpdateGlobalState>();
+    chunk.SetCardinality(1);
+    chunk.SetValue(0, 0, Value::BIGINT(gstate.updated_count));
+    return SourceResultType::FINISHED;
+}
+
+string BigqueryUpdate::GetName() const {
+    return "BIGQUERY_UPDATE";
+}
+
+string BigqueryUpdate::ParamsToString() const {
+    return table.name;
+}
+
+unique_ptr<PhysicalOperator> BigqueryCatalog::PlanUpdate(ClientContext &context,
+                                                         LogicalUpdate &op,
+                                                         unique_ptr<PhysicalOperator> plan) {
+    if (op.return_chunk) {
+        throw NotImplementedException("RETURNING clause not supported.");
+    }
+    auto update_op = make_uniq<BigqueryUpdate>(op, op.table, BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op, *plan));
+    update_op->children.push_back(std::move(plan));
+    return std::move(update_op);
+}
+
+} // namespace bigquery
+} // namespace duckdb
