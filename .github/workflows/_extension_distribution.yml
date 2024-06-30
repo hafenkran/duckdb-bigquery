@@ -300,6 +300,8 @@ jobs:
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
             CC: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'gcc' || '' }}
             CXX: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'g++' || '' }}
+            CURL_LIBRARY: ${{ github.workspace }}/vcpkg/x64-windows-static-md/lib/curl.lib
+            CURL_INCLUDE_DIR: ${{ github.workspace }}/x64-windows-static-md/include
 
         steps:
             - name: Keep \n line endings
@@ -344,19 +346,19 @@ jobs:
               with:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
-            - name: Install CURL
-              run: vcpkg install curl
-
-            - name: Set CURL paths
-              run: |
-                  echo "CURL_LIBRARY=D:/a/duckdb-bigquery/duckdb-bigquery/build/vcpkg_installed/x64-windows-static-md/lib/curl.lib" >> $GITHUB_ENV
-                  echo "CURL_INCLUDE_DIR=D:/a/duckdb-bigquery/duckdb-bigquery/build/vcpkg_installed/x64-windows-static-md/include" >> $GITHUB_ENV
+            - name: Setup curl
+              uses: lukka/run-vcpkg@v11.1
+              with:
+                  vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
+                  vcpkgArguments: 'install curl:${{ matrix.vcpkg_triplet }}'
 
             - name: Build extension
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+                  CURL_LIBRARY: ${{ github.workspace }}/vcpkg/x64-windows-static-md/lib/curl.lib
+                  CURL_INCLUDE_DIR: ${{ github.workspace }}/x64-windows-static-md/include
               run: |
-                  make release
+                  make release CURL_LIBRARY=$CURL_LIBRARY CURL_INCLUDE_DIR=$CURL_INCLUDE_DIR
 
             # - name: Test Extension
             #   shell: bash
