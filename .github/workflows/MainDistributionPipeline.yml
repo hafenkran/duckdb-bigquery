@@ -19,7 +19,6 @@ jobs:
             duckdb_version: v1.0.0
             extension_name: bigquery
             exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;osx_arm64;osx_amd64;linux_arm64;linux_amd64_gcc4'
-            # vcpkg_commit: '7032c5759f823fc8699a5c37d5f7072464ccb9a8'
             vcpkg_commit: 'a4275b7eee79fb24ec2e135481ef5fce8b41c339'
 
     duckdb-stable-deploy:
