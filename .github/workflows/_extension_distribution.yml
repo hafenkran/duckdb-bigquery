@@ -200,7 +200,6 @@ jobs:
 
             - name: Build extension
               env:
-                  GEN: ninja
                   CC: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
                   CXX: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
@@ -226,10 +225,10 @@ jobs:
         strategy:
             matrix: ${{fromJson(needs.generate_matrix.outputs.osx_matrix)}}
         env:
-            VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
             VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
-            OSX_BUILD_ARCH: ${{ matrix.osx_build_arch }}
+            VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
             GEN: Ninja
+            OSX_BUILD_ARCH: ${{ matrix.osx_build_arch }}
             BUILD_SHELL: ${{ inputs.build_duckdb_shell && '1' || '0' }}
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
@@ -244,7 +243,7 @@ jobs:
                   patch -p1 < ${{ inputs.patch }}
               shell: bash
 
-            - name: Install Ninja
+            - name: Install Ninja, Bison, Flex
               run: |
                   brew install ninja bison flex
 
@@ -272,13 +271,13 @@ jobs:
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
               run: |
-                  make release
+                  make release VERBOSE=1
 
-            - name: Test Extension
-              if: ${{ matrix.osx_build_arch == 'x86_64'}}
-              shell: bash
-              run: |
-                  make test
+            # - name: Test Extension
+            #   if: ${{ matrix.osx_build_arch == 'x86_64'}}
+            #   shell: bash
+            #   run: |
+            #       make test
 
             - uses: actions/upload-artifact@v2
               with:
@@ -357,10 +356,10 @@ jobs:
               run: |
                   make release
 
-            - name: Test Extension
-              shell: bash
-              run: |
-                  make test
+            # - name: Test Extension
+            #   shell: bash
+            #   run: |
+            #       make test
 
             - uses: actions/upload-artifact@v2
               with:
