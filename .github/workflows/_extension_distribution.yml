@@ -189,6 +189,10 @@ jobs:
                       core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
                       core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+            - name: Configure safe directory
+              run: |
+                  git config --global --add safe.directory /__w/duckdb-bigquery/duckdb-bigquery
+
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
