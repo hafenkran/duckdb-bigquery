@@ -246,7 +246,7 @@ jobs:
 
             - name: Install Ninja
               run: |
-                  brew install ninja
+                  brew install ninja bison flex
 
             - name: Setup Ccache
               uses: hendrikmuhs/ccache-action@main
@@ -313,6 +313,13 @@ jobs:
               with:
                   fetch-depth: 0
                   submodules: 'true'
+
+            - name: Install Chocolatey
+              run: |
+                  Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+
+            - name: Install curl
+              run: choco install curl -y
 
             - if: ${{ inputs.patch != '' }}
               run: |
