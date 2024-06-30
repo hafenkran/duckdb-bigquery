@@ -339,16 +339,18 @@ jobs:
               with:
                   key: ${{ github.job }}-${{ matrix.duckdb_arch }}
 
-            - name: Setup curl
-              uses: lukka/run-vcpkg@v11.1
-              with:
-                  vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
-                  vcpkgArguments: 'install curl:${{ matrix.vcpkg_triplet }}'
-
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
+
+            - name: Install CURL
+              run: vcpkg install curl
+
+            - name: Set CURL paths
+              run: |
+                  echo "CURL_LIBRARY=D:/a/duckdb-bigquery/duckdb-bigquery/build/vcpkg_installed/x64-windows-static-md/lib/curl.lib" >> $GITHUB_ENV
+                  echo "CURL_INCLUDE_DIR=D:/a/duckdb-bigquery/duckdb-bigquery/build/vcpkg_installed/x64-windows-static-md/include" >> $GITHUB_ENV
 
             - name: Build extension
               env:
