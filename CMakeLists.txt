@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.25.1)
 
 # Set extension name here
 set(TARGET_NAME bigquery)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -v")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -v")
 
 # Compile and install google-cloud-cpp depedencies
 execute_process(
@@ -62,12 +64,14 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 target_link_libraries(${EXTENSION_NAME}
 	OpenSSL::SSL
 	OpenSSL::Crypto
+    ${Protobuf_LIBRARIES}
 	google-cloud-cpp::bigquery
     google-cloud-cpp::experimental-bigquery_rest
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
 target_link_libraries(${LOADABLE_EXTENSION_NAME}
 	OpenSSL::SSL
 	OpenSSL::Crypto
+    ${Protobuf_LIBRARIES}
 	google-cloud-cpp::bigquery
 	google-cloud-cpp::experimental-bigquery_rest
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
