@@ -167,7 +167,7 @@ BigqueryClient BigqueryClient::NewClient(const string &connection_str) {
         throw InternalException("Invalid connection string");
     }
 
-    BigqueryClient result(result.project_id, result.dataset_id, result.api_endpoint, result.grpc_endpoint);
+    BigqueryClient result(con.project_id, con.dataset_id, con.api_endpoint, con.grpc_endpoint);
     result.dsn = connection_str;
     return result;
 }
