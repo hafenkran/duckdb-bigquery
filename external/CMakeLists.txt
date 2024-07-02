@@ -7,9 +7,13 @@ include(ExternalProject)
 set(LOCAL_INSTALL_DIR ${CMAKE_BINARY_DIR}/local)
 set_directory_properties(PROPERTIES EP_BASE ${CMAKE_BINARY_DIR}/projects)
 
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
+
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
+
+
 
 ExternalProject_Add(
     google_cloud_cpp_bigquery_rest
@@ -25,6 +29,8 @@ ExternalProject_Add(
                -DBUILD_TESTING=OFF
                -DBUILD_SHARED_LIBS=OFF
                # vcpkg options
+               -DVCPKG_CXX_FLAGS="-mmacosx-version-min=11.0"
+               -DVCPKG_C_FLAGS="-mmacosx-version-min=11.0"
                -DVCPKG_MANIFEST_DIR='${VCPKG_MANIFEST_DIR}'
                -DVCPKG_INSTALLED_DIR='${VCPKG_INSTALLED_DIR}'
                -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
@@ -48,6 +54,8 @@ ExternalProject_Add(
                -DBUILD_TESTING=OFF
                -DBUILD_SHARED_LIBS=OFF
                # vcpkg options
+               -DVCPKG_CXX_FLAGS="-mmacosx-version-min=11.0"
+               -DVCPKG_C_FLAGS="-mmacosx-version-min=11.0"
                -DVCPKG_MANIFEST_DIR='${VCPKG_MANIFEST_DIR}'
                -DVCPKG_INSTALLED_DIR='${VCPKG_INSTALLED_DIR}'
                -DCMAKE_TOOLCHAIN_FILE='${CMAKE_TOOLCHAIN_FILE}'
