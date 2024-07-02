@@ -2,8 +2,7 @@ cmake_minimum_required(VERSION 3.25.1)
 
 # Set extension name here
 set(TARGET_NAME bigquery)
-set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
-set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.0.sdk")
+set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
 
 # Compile and install google-cloud-cpp depedencies
 execute_process(
@@ -18,7 +17,6 @@ execute_process(
         -DCMAKE_TOOLCHAIN_FILE='${CMAKE_TOOLCHAIN_FILE}'
         -DCMAKE_OSX_ARCHITECTURES='${CMAKE_OSX_ARCHITECTURES_PACKED}'
         -DCMAKE_OSX_DEPLOYMENT_TARGET='${CMAKE_OSX_DEPLOYMENT_TARGET}'
-        -DCMAKE_OSX_SYSROOT='${CMAKE_OSX_SYSROOT}'
         -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
         -S ${CMAKE_CURRENT_SOURCE_DIR}/external -B ${CMAKE_BINARY_DIR}/external
     RESULT_VARIABLE DEPENDENCIES_GENERATE_RESULT)
@@ -47,6 +45,7 @@ set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
 project(${TARGET_NAME})
 include_directories(src/include)
+include_directories(${google_cloud_cpp_bigquery_INCLUDE_DIRS})
 add_subdirectory(src)
 
 include(${CMAKE_TOOLCHAIN_FILE})
