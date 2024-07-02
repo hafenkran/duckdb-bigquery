@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.25.1)
 # Set extension name here
 set(TARGET_NAME bigquery)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
+set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.0.sdk")
 
 # Compile and install google-cloud-cpp depedencies
 execute_process(
@@ -15,8 +16,9 @@ execute_process(
         -DVCPKG_INSTALLED_DIR='${CMAKE_BINARY_DIR}/vcpkg_installed'
         # -DVCPKG_INSTALLED_DIR='${VCPKG_INSTALLED_DIR}'
         -DCMAKE_TOOLCHAIN_FILE='${CMAKE_TOOLCHAIN_FILE}'
-        -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES_PACKED}
-        -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
+        -DCMAKE_OSX_ARCHITECTURES='${CMAKE_OSX_ARCHITECTURES_PACKED}'
+        -DCMAKE_OSX_DEPLOYMENT_TARGET='${CMAKE_OSX_DEPLOYMENT_TARGET}'
+        -DCMAKE_OSX_SYSROOT='${CMAKE_OSX_SYSROOT}'
         -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
         -S ${CMAKE_CURRENT_SOURCE_DIR}/external -B ${CMAKE_BINARY_DIR}/external
     RESULT_VARIABLE DEPENDENCIES_GENERATE_RESULT)
