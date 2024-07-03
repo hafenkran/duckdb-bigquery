@@ -61,10 +61,10 @@ build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 # Link OpenSSL in both the static library as the loadable extension
+#     ${Protobuf_LIBRARIES}
 target_link_libraries(${EXTENSION_NAME}
 	OpenSSL::SSL
 	OpenSSL::Crypto
-    ${Protobuf_LIBRARIES}
 	google-cloud-cpp::bigquery
     google-cloud-cpp::experimental-bigquery_rest
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
@@ -72,7 +72,6 @@ target_link_libraries(${EXTENSION_NAME}
 target_link_libraries(${LOADABLE_EXTENSION_NAME}
 	OpenSSL::SSL
 	OpenSSL::Crypto
-    ${Protobuf_LIBRARIES}
 	google-cloud-cpp::bigquery
 	google-cloud-cpp::experimental-bigquery_rest
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
