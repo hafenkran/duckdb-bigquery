@@ -10,11 +10,11 @@ execute_process(
         ${CMAKE_COMMAND} -G ${CMAKE_GENERATOR}
         -DDUCKDB_ENABLE_DEPRECATED_API=1
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -DOSX_BUILD_ARCH=${OSX_BUILD_ARCH}
         -DVCPKG_MANIFEST_DIR='${VCPKG_MANIFEST_DIR}'
         -DVCPKG_INSTALLED_DIR='${CMAKE_BINARY_DIR}/vcpkg_installed'
         # -DVCPKG_INSTALLED_DIR='${VCPKG_INSTALLED_DIR}'
         -DCMAKE_TOOLCHAIN_FILE='${CMAKE_TOOLCHAIN_FILE}'
+        -DOSX_BUILD_ARCH=${OSX_BUILD_ARCH}
         -DCMAKE_OSX_ARCHITECTURES='${DCMAKE_OSX_ARCHITECTURES}'
         -DCMAKE_OSX_DEPLOYMENT_TARGET='${CMAKE_OSX_DEPLOYMENT_TARGET}'
         -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
@@ -39,13 +39,11 @@ endif()
 # Add Dependencies
 set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${CMAKE_BINARY_DIR}/external/local)
 
-
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
 project(${TARGET_NAME})
 include_directories(src/include)
-include_directories(${google_cloud_cpp_bigquery_INCLUDE_DIRS})
 add_subdirectory(src)
 
 include(${CMAKE_TOOLCHAIN_FILE})
@@ -70,6 +68,7 @@ target_link_libraries(${EXTENSION_NAME}
 	google-cloud-cpp::bigquery
     google-cloud-cpp::experimental-bigquery_rest
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
+
 target_link_libraries(${LOADABLE_EXTENSION_NAME}
 	OpenSSL::SSL
 	OpenSSL::Crypto
