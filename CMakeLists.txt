@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25.1)
 
 # Set extension name here
 set(TARGET_NAME bigquery)
-set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
+# set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
 
 # Compile and install google-cloud-cpp depedencies
 execute_process(
