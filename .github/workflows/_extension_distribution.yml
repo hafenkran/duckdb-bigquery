@@ -167,15 +167,24 @@ jobs:
                   cd duckdb
                   git checkout ${{ inputs.duckdb_version }}
 
-            # - name: Setup ManyLinux2014
-            #   if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
-            #   run: |
-            #       ./duckdb/scripts/setup_manylinux2014.sh general aws-cli ccache ssh python_alias openssl
+            - name: Fix CentOS 7 EOL
+              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
+              run: |
+                  # Workaround the fact that CentOS 7 is EOL
+                  sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+                  sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+                  yum-config-manager --disable centos-sclo-rh
+                  yum install epel-release -y
 
-            # - name: Setup Ccache
-            #   uses: hendrikmuhs/ccache-action@v1.2.11 # Note: pinned due to GLIBC incompatibility in later releases
-            #   with:
-            #       key: ${{ github.job }}-${{ matrix.duckdb_arch }}
+            - name: Setup ManyLinux2014
+              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
+              run: |
+                  ./duckdb/scripts/setup_manylinux2014.sh general aws-cli ccache ssh python_alias openssl
+
+            - name: Setup Ccache
+              uses: hendrikmuhs/ccache-action@v1.2.11 # Note: pinned due to GLIBC incompatibility in later releases
+              with:
+                  key: ${{ github.job }}-${{ matrix.duckdb_arch }}
 
             # - name: Setup Ubuntu
             #   if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
@@ -200,6 +209,7 @@ jobs:
 
             - name: Build extension
               env:
+                  GEN: ninja
                   CC: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
                   CXX: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
