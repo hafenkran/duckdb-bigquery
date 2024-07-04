@@ -11,8 +11,6 @@ if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
-find_package(GTest REQUIRED)
-
 ExternalProject_Add(
     google_cloud_cpp_bigquery_rest
     URL ${CMAKE_CURRENT_SOURCE_DIR}/vendor/google-cloud-cpp-2.22.0-fixed.zip

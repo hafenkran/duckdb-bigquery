@@ -213,8 +213,9 @@ jobs:
                   CC: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
                   CXX: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+                  VCPKG_BUILD: 0
               run: |
-                  make release
+                  make release VCPKG_DEFAULT_TRIPLET=arm64-linux
 
             # - name: Test extension
             #   if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
