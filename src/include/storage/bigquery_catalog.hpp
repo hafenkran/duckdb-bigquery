@@ -55,7 +55,7 @@ public:
 
 
     DatabaseSize GetDatabaseSize(ClientContext &context) override;
-    vector<MetadataBlockInfo> GetMetadataInfo(ClientContext &context);
+    vector<MetadataBlockInfo> GetMetadataInfo(ClientContext &context) override;
 
     bool InMemory() override;
     string GetDBPath() override;

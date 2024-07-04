@@ -173,7 +173,7 @@ unique_ptr<PhysicalOperator> BigqueryCatalog::PlanInsert(ClientContext &context,
     }
     plan = AddCastToBigqueryTypes(context, std::move(plan));
     auto insert = make_uniq<BigqueryInsert>(op, op.table, op.column_index_map);
-    insert->children.push_back(move(plan));
+    insert->children.push_back(std::move(plan));
     return std::move(insert);
 }
 

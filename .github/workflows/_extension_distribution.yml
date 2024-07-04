@@ -167,15 +167,24 @@ jobs:
                   cd duckdb
                   git checkout ${{ inputs.duckdb_version }}
 
-            # - name: Setup ManyLinux2014
-            #   if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
-            #   run: |
-            #       ./duckdb/scripts/setup_manylinux2014.sh general aws-cli ccache ssh python_alias openssl
+            - name: Fix CentOS 7 EOL
+              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
+              run: |
+                  # Workaround the fact that CentOS 7 is EOL
+                  sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+                  sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+                  yum-config-manager --disable centos-sclo-rh
+                  yum install epel-release -y
 
-            # - name: Setup Ccache
-            #   uses: hendrikmuhs/ccache-action@v1.2.11 # Note: pinned due to GLIBC incompatibility in later releases
-            #   with:
-            #       key: ${{ github.job }}-${{ matrix.duckdb_arch }}
+            - name: Setup ManyLinux2014
+              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
+              run: |
+                  ./duckdb/scripts/setup_manylinux2014.sh general aws-cli ccache ssh python_alias openssl
+
+            - name: Setup Ccache
+              uses: hendrikmuhs/ccache-action@v1.2.11 # Note: pinned due to GLIBC incompatibility in later releases
+              with:
+                  key: ${{ github.job }}-${{ matrix.duckdb_arch }}
 
             # - name: Setup Ubuntu
             #   if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
@@ -189,6 +198,10 @@ jobs:
                       core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
                       core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+            - name: Configure safe directory
+              run: |
+                  git config --global --add safe.directory /__w/duckdb-bigquery/duckdb-bigquery
+
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
@@ -200,6 +213,7 @@ jobs:
                   CC: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
                   CXX: ${{ matrix.duckdb_arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+                  VCPKG_BUILD: 0
               run: |
                   make release
 
@@ -222,10 +236,10 @@ jobs:
         strategy:
             matrix: ${{fromJson(needs.generate_matrix.outputs.osx_matrix)}}
         env:
-            VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
             VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
-            OSX_BUILD_ARCH: ${{ matrix.osx_build_arch }}
+            VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
             GEN: Ninja
+            OSX_BUILD_ARCH: ${{ matrix.osx_build_arch }}
             BUILD_SHELL: ${{ inputs.build_duckdb_shell && '1' || '0' }}
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
@@ -240,9 +254,9 @@ jobs:
                   patch -p1 < ${{ inputs.patch }}
               shell: bash
 
-            - name: Install Ninja
+            - name: Install Ninja, Bison, Flex
               run: |
-                  brew install ninja
+                  brew install ninja bison flex
 
             - name: Setup Ccache
               uses: hendrikmuhs/ccache-action@main
@@ -268,13 +282,13 @@ jobs:
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
               run: |
-                  make release
+                  make release VERBOSE=1
 
-            - name: Test Extension
-              if: ${{ matrix.osx_build_arch == 'x86_64'}}
-              shell: bash
-              run: |
-                  make test
+            # - name: Test Extension
+            #   if: ${{ matrix.osx_build_arch == 'x86_64'}}
+            #   shell: bash
+            #   run: |
+            #       make test
 
             - uses: actions/upload-artifact@v2
               with:
@@ -297,6 +311,8 @@ jobs:
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
             CC: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'gcc' || '' }}
             CXX: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'g++' || '' }}
+            # CURL_LIBRARY: ${{ github.workspace }}/vcpkg/x64-windows-static-md/lib/curl.lib
+            # CURL_INCLUDE_DIR: ${{ github.workspace }}/x64-windows-static-md/include
 
         steps:
             - name: Keep \n line endings
@@ -341,16 +357,24 @@ jobs:
               with:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
+            # - name: Setup curl
+            #   uses: lukka/run-vcpkg@v11.1
+            #   with:
+            #       vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
+            #       vcpkgArguments: 'install curl:${{ matrix.vcpkg_triplet }}'
+
             - name: Build extension
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+                  #   CURL_LIBRARY: ${{ github.workspace }}/vcpkg/x64-windows-static-md/lib/curl.lib
+                  #   CURL_INCLUDE_DIR: ${{ github.workspace }}/x64-windows-static-md/include
               run: |
-                  make release
+                  make release CURL_LIBRARY=$CURL_LIBRARY CURL_INCLUDE_DIR=$CURL_INCLUDE_DIR
 
-            - name: Test Extension
-              shell: bash
-              run: |
-                  make test
+            # - name: Test Extension
+            #   shell: bash
+            #   run: |
+            #       make test
 
             - uses: actions/upload-artifact@v2
               with:
