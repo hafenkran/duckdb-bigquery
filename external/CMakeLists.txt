@@ -27,10 +27,10 @@ ExternalProject_Add(
                -DBUILD_TESTING=OFF
                -DBUILD_SHARED_LIBS=OFF
                # vcpkg options
-               -DVCPKG_MANIFEST_DIR='${VCPKG_MANIFEST_DIR}'
-               -DVCPKG_INSTALLED_DIR='${VCPKG_INSTALLED_DIR}'
-               -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
-               -DCMAKE_TOOLCHAIN_FILE='${CMAKE_TOOLCHAIN_FILE}'
+               -DVCPKG_MANIFEST_DIR=${VCPKG_MANIFEST_DIR}
+               -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}
+               -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
+               -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
                # Project Options
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF
                -DGOOGLE_CLOUD_CPP_WITH_MOCKS=OFF
@@ -51,10 +51,10 @@ ExternalProject_Add(
                -DBUILD_TESTING=OFF
                -DBUILD_SHARED_LIBS=OFF
                # vcpkg options
-               -DVCPKG_MANIFEST_DIR='${VCPKG_MANIFEST_DIR}'
-               -DVCPKG_INSTALLED_DIR='${VCPKG_INSTALLED_DIR}'
-               -DCMAKE_TOOLCHAIN_FILE='${CMAKE_TOOLCHAIN_FILE}'
-               -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
+               -DVCPKG_MANIFEST_DIR=${VCPKG_MANIFEST_DIR}
+               -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}
+               -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+               -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
                # Project Options
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF
                -DGOOGLE_CLOUD_CPP_WITH_MOCKS=OFF
