@@ -11,6 +11,7 @@ if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
+find_package(GTest REQUIRED)
 
 ExternalProject_Add(
     google_cloud_cpp_bigquery_rest
@@ -32,7 +33,8 @@ ExternalProject_Add(
                -DCMAKE_TOOLCHAIN_FILE='${CMAKE_TOOLCHAIN_FILE}'
                # Project Options
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF
-               -DGOOGLE_CLOUD_CPP_ENABLE_TESTS=OFF
+               -DGOOGLE_CLOUD_CPP_WITH_MOCKS=OFF
+               -DGOOGLE_CLOUD_CPP_ENABLE_CCACHE=ON
                -DGOOGLE_CLOUD_CPP_ENABLE=experimental-bigquery_rest)
 
 ExternalProject_Add(
@@ -55,5 +57,6 @@ ExternalProject_Add(
                -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
                # Project Options
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF
-               -DGOOGLE_CLOUD_CPP_ENABLE_TESTS=OFF
+               -DGOOGLE_CLOUD_CPP_WITH_MOCKS=OFF
+               -DGOOGLE_CLOUD_CPP_ENABLE_CCACHE=ON
                -DGOOGLE_CLOUD_CPP_ENABLE=bigquery)

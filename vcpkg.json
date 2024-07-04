@@ -7,7 +7,6 @@
     "grpc",
     "nlohmann-json",
     "arrow",
-    "gtest",
     {
       "name": "openssl",
       "version>=": "3.1.4"
