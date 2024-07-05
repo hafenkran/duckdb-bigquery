@@ -71,23 +71,20 @@ if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
     exit 0
 fi
 
-echo "gs://$5/$1/$2/$3/$4/$1.duckdb_extension.gz"
-echo "gs://$5/$3/$4/$1.duckdb_extension.gz"
-
 # upload versioned version
 if [[ $7 = 'true' ]]; then
     if [[ $4 == wasm* ]]; then
-        gsutil cp $ext.compressed gs://$5/$1/$2/$3/$4/$1.duckdb_extension.wasm -a public-read -h "Content-Encoding: br" -h "Content-Type: application/wasm"
+        gsutil cp $ext.compressed gs://$5/$1/$2/$3/$4/$1.duckdb_extension.wasm -h "Content-Encoding: br" -h "Content-Type: application/wasm"
     else
-        gsutil cp $ext.compressed gs://$5/$1/$2/$3/$4/$1.duckdb_extension.gz -a public-read
+        gsutil cp $ext.compressed gs://$5/$1/$2/$3/$4/$1.duckdb_extension.gz
     fi
 fi
 
 # upload to latest version
 if [[ $6 = 'true' ]]; then
     if [[ $4 == wasm* ]]; then
-        gsutil cp $ext.compressed gs://$5/$3/$4/$1.duckdb_extension.wasm -a public-read -h "Content-Encoding: br" -h "Content-Type: application/wasm"
+        gsutil cp $ext.compressed gs://$5/$3/$4/$1.duckdb_extension.wasm -h "Content-Encoding: br" -h "Content-Type: application/wasm"
     else
-        gsutil cp $ext.compressed gs://$5/$3/$4/$1.duckdb_extension.gz -a public-read
+        gsutil cp $ext.compressed gs://$5/$3/$4/$1.duckdb_extension.gz
     fi
 fi
