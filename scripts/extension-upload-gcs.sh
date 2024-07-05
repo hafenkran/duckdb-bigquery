@@ -71,6 +71,9 @@ if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
     exit 0
 fi
 
+echo "gs://$5/$1/$2/$3/$4/$1.duckdb_extension.gz"
+echo "gs://$5/$3/$4/$1.duckdb_extension.gz"
+
 # upload versioned version
 if [[ $7 = 'true' ]]; then
     if [[ $4 == wasm* ]]; then
