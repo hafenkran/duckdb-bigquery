@@ -123,16 +123,18 @@ jobs:
                   export EXT_VERSION=${EXT_VERSION:=`git log -1 --format=%h`}
                   ${{ inputs.deploy_script }} ${{ inputs.extension_name }} $EXT_VERSION $DUCKDB_VERSION ${{ matrix.duckdb_arch }} $BUCKET_NAME ${{inputs.deploy_latest || 'true' && 'false'}} ${{inputs.deploy_versioned || 'true' && 'false'}}
 
+            - name: Authenticate to Google Cloud
+              uses: 'google-github-actions/auth@v2'
+              with:
+                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+
             - name: Deploy GCP
               shell: bash
               env:
-                  GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}
                   BUCKET_NAME: ${{ secrets.GCS_DUCKDB_ORG_BUCKET }}
                   DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.GCS_DUCKDB_ORG_EXTENSION_SIGNING_PK }}
               run: |
                   pwd
-                  echo "${GOOGLE_APPLICATION_CREDENTIALS}" > /tmp/gcp-key.json
-                  export GOOGLE_APPLICATION_CREDENTIALS="/tmp/gcp-key.json"
                   python3 -m pip install pip google-cloud-storage
                   git config --global --add safe.directory '*'
                   cd duckdb
