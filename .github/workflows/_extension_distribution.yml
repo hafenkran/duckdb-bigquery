@@ -127,6 +127,13 @@ jobs:
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
         steps:
+            - name: Set up Docker
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y docker.io
+                  sudo systemctl start docker
+                  sudo systemctl enable docker
+
             - name: Start database service
               run: |
                   docker run -d --name database --network host dewall/bigquery-emulator:latest --project test
