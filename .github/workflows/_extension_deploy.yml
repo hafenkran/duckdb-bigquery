@@ -131,6 +131,8 @@ jobs:
                   DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.GCS_DUCKDB_ORG_EXTENSION_SIGNING_PK }}
               run: |
                   pwd
+                  echo "${GOOGLE_APPLICATION_CREDENTIALS}" > /tmp/gcp-key.json
+                  export GOOGLE_APPLICATION_CREDENTIALS="/tmp/gcp-key.json"
                   python3 -m pip install pip google-cloud-storage
                   git config --global --add safe.directory '*'
                   cd duckdb
