@@ -118,6 +118,9 @@ jobs:
         services:
             localhost:
                 image: dewall/bigquery-emulator:latest
+                ports:
+                    - 9050:9050
+                    - 9060:9060
         env:
             VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
             VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
