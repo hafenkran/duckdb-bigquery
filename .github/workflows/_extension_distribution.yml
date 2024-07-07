@@ -115,10 +115,9 @@ jobs:
         if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
         strategy:
             matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
-        # services:
-        #     database:
-        #         image: dewall/bigquery-emulator:latest
-        #         options: --network host
+        services:
+            localhost:
+                image: dewall/bigquery-emulator:latest
         env:
             VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
             VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
@@ -127,17 +126,6 @@ jobs:
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
         steps:
-            - name: Set up Docker
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y docker.io
-                  sudo systemctl start docker
-                  sudo systemctl enable docker
-
-            - name: Start database service
-              run: |
-                  docker run -d --name database --network host dewall/bigquery-emulator:latest --project test
-
             - name: Install required ubuntu packages
               if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
               run: |
