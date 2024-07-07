@@ -115,6 +115,10 @@ jobs:
         if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
         strategy:
             matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
+        services:
+            database:
+                image: dewall/bigquery-emulator:latest
+                options: --network host
         env:
             VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
             VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
@@ -217,10 +221,10 @@ jobs:
               run: |
                   make release
 
-            # - name: Test extension
-            #   if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
-            #   run: |
-            #       make test
+            - name: Test extension
+              if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
+              run: |
+                  make test
 
             - uses: actions/upload-artifact@v2
               with:
