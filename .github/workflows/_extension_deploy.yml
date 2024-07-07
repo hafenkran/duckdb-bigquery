@@ -85,10 +85,18 @@ jobs:
             matrix: ${{fromJson(needs.generate_matrix.outputs.deploy_matrix)}}
 
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
                   submodules: 'true'
+
+            - id: 'auth'
+              uses: 'google-github-actions/auth@v2'
+              with:
+                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+
+            - name: 'Set up Cloud SDK'
+              uses: 'google-github-actions/setup-gcloud@v2'
 
             - name: Checkout DuckDB to version
               run: |
@@ -101,32 +109,27 @@ jobs:
                   path: |
                       /tmp/extension
 
-            - name: Deploy AWS
-              shell: bash
-              env:
-                  AWS_ACCESS_KEY_ID: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_ID }}
-                  AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_KEY }}
-                  AWS_DEFAULT_REGION: ${{ secrets.S3_DUCKDB_ORG_REGION }}
-                  BUCKET_NAME: ${{ secrets.S3_DUCKDB_ORG_BUCKET }}
-                  DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.S3_DUCKDB_ORG_EXTENSION_SIGNING_PK }}
-              run: |
-                  pwd
-                  python3 -m pip install pip awscli
-                  git config --global --add safe.directory '*'
-                  cd duckdb
-                  git fetch --tags
-                  export DUCKDB_VERSION=`git tag --points-at HEAD`
-                  export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
-                  cd ..
-                  git fetch --tags
-                  export EXT_VERSION=`git tag --points-at HEAD`
-                  export EXT_VERSION=${EXT_VERSION:=`git log -1 --format=%h`}
-                  ${{ inputs.deploy_script }} ${{ inputs.extension_name }} $EXT_VERSION $DUCKDB_VERSION ${{ matrix.duckdb_arch }} $BUCKET_NAME ${{inputs.deploy_latest || 'true' && 'false'}} ${{inputs.deploy_versioned || 'true' && 'false'}}
-
-            - name: Authenticate to Google Cloud
-              uses: 'google-github-actions/auth@v2'
-              with:
-                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+            # - name: Deploy AWS
+            #   shell: bash
+            #   env:
+            #       AWS_ACCESS_KEY_ID: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_ID }}
+            #       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_KEY }}
+            #       AWS_DEFAULT_REGION: ${{ secrets.S3_DUCKDB_ORG_REGION }}
+            #       BUCKET_NAME: ${{ secrets.S3_DUCKDB_ORG_BUCKET }}
+            #       DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.S3_DUCKDB_ORG_EXTENSION_SIGNING_PK }}
+            #   run: |
+            #       pwd
+            #       python3 -m pip install pip awscli
+            #       git config --global --add safe.directory '*'
+            #       cd duckdb
+            #       git fetch --tags
+            #       export DUCKDB_VERSION=`git tag --points-at HEAD`
+            #       export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
+            #       cd ..
+            #       git fetch --tags
+            #       export EXT_VERSION=`git tag --points-at HEAD`
+            #       export EXT_VERSION=${EXT_VERSION:=`git log -1 --format=%h`}
+            #       ${{ inputs.deploy_script }} ${{ inputs.extension_name }} $EXT_VERSION $DUCKDB_VERSION ${{ matrix.duckdb_arch }} $BUCKET_NAME ${{inputs.deploy_latest || 'true' && 'false'}} ${{inputs.deploy_versioned || 'true' && 'false'}}
 
             - name: Deploy GCP
               shell: bash
@@ -135,7 +138,6 @@ jobs:
                   DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.GCS_DUCKDB_ORG_EXTENSION_SIGNING_PK }}
               run: |
                   pwd
-                  python3 -m pip install pip google-cloud-storage
                   git config --global --add safe.directory '*'
                   cd duckdb
                   git fetch --tags
