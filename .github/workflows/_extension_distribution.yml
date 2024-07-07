@@ -116,7 +116,7 @@ jobs:
         strategy:
             matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
         services:
-            localhost:
+            bigquery:
                 image: dewall/bigquery-emulator:latest
                 ports:
                     - 9050:9050
@@ -225,6 +225,8 @@ jobs:
 
             - name: Test extension
               if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
+              env:
+                  BQ_ATTACH_DB_URL: bigquery
               run: |
                   make test
 
