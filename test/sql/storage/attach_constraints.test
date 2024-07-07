@@ -4,9 +4,10 @@
 
 require bigquery
 
-statement ok
-ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery)
+require-env BQ_ATTACH_DB_URL
 
+statement ok
+ATTACH 'project=test api_endpoint=http://${BQ_ATTACH_DB_URL}:9050 grpc_endpoint=${BQ_ATTACH_DB_URL}:9060' AS test (TYPE bigquery);
 
 ###################
 # PRIMARY KEY constraint
