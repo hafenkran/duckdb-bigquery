@@ -1,0 +1,35 @@
+# name: test/sql/storage/attach_types_numerics.test
+# description: Test inserting/querying numerics
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery);
+
+
+foreach type TINYINT SMALLINT INTEGER BIGINT HUGEINT UTINYINT USMALLINT UINTEGER UBIGINT FLOAT DOUBLE
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.numerics;
+
+statement ok
+CREATE TABLE test.dataset1.numerics(i ${type});
+
+statement ok
+INSERT INTO test.dataset1.numerics values (0);
+
+statement ok
+INSERT INTO test.dataset1.numerics values (NULL);
+
+statement ok
+INSERT INTO test.dataset1.numerics values (1);
+
+query I
+SELECT * FROM test.dataset1.numerics
+----
+0
+NULL
+1
+
+endloop

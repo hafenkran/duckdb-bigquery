@@ -1,0 +1,26 @@
+# name: test/sql/storage/attach_types_varchar.test
+# description: Test inserting/querying VARCHAR
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.varchars;
+
+statement ok
+CREATE TABLE test.dataset1.varchars (v VARCHAR);
+
+statement ok
+INSERT INTO test.dataset1.varchars VALUES ('');
+
+statement ok
+INSERT INTO test.dataset1.varchars VALUES ('some BIG...query string');
+
+query I
+SELECT * FROM test.dataset1.varchars
+----
+(empty)
+some BIG...query string

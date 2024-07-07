@@ -1,0 +1,48 @@
+# name: test/sql/storage/attach_views.test
+# description: Test attaching, creating, and querying views
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery)
+
+statement ok
+DROP VIEW IF EXISTS test.dataset1.view_test;
+
+statement ok
+CREATE VIEW test.dataset1.view_test AS SELECT 42 as i;
+
+query I
+SELECT i from test.dataset1.view_test;
+----
+42
+
+statement error
+CREATE VIEW test.dataset1.view_test AS SELECT 84 as i;
+----
+already exists
+
+statement ok
+INSERT INTO test.dataset1.view_test VALUES (42);
+
+statement error
+UPDATE test.dataset1.view_test SET i=84;
+----
+
+statement error
+DROP TABLE test.dataset1.view_test;
+----
+
+statement ok
+DROP VIEW test.dataset1.view_test;
+
+statement error
+SELECT * FROM test.dataset1.view_test;
+----
+Table with name view_test does not exist
+
+statement error
+DROP VIEW test.dataset1.view_test
+----
+View with name view_test does not exist

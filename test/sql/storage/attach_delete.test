@@ -1,0 +1,59 @@
+# name: test/sql/storage/attach_delete_from_table.test
+# description: Test DELETE statement on tables
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery)
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.test_delete;
+
+statement ok
+CREATE TABLE test.dataset1.test_delete(i INTEGER, s VARCHAR, n VARCHAR);
+
+statement ok
+INSERT INTO test.dataset1.test_delete VALUES (1, 'hi', 'y'), (2, 'hello', 'y'), (3, 'moin', 'y');
+
+statement ok
+DELETE FROM test.dataset1.test_delete WHERE s='hello';
+
+query III
+SELECT * FROM test.dataset1.test_delete;
+----
+1	hi	y
+3	moin	y
+
+statement ok
+DELETE FROM test.dataset1.test_delete WHERE i>1 AND s='hi';
+
+query III
+SELECT * FROM test.dataset1.test_delete;
+----
+1	hi	y
+3	moin	y
+
+statement ok
+DELETE FROM test.dataset1.test_delete WHERE i<=1 AND s='hi';
+
+query III
+SELECT * FROM test.dataset1.test_delete;
+----
+3	moin	y
+
+statement ok
+INSERT INTO test.dataset1.test_delete VALUES (3, 'moin', 'y');
+
+statement ok
+INSERT INTO test.dataset1.test_delete VALUES (3, 'moin', 'y');
+
+statement ok
+INSERT INTO test.dataset1.test_delete VALUES (3, 'moin', 'y');
+
+statement ok
+DELETE FROM test.dataset1.test_delete WHERE i=3;
+
+query III
+SELECT * FROM test.dataset1.test_delete;
+----

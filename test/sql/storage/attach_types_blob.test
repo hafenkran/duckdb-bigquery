@@ -1,0 +1,34 @@
+# name: test/sql/storage/attach_types_blob.test
+# description: Test inserting/querying blobs
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.table_blob;
+
+statement ok
+CREATE TABLE test.dataset1.table_blob (b BLOB);
+
+statement ok
+INSERT INTO test.dataset1.table_blob VALUES ('\xBE\xEF');
+
+statement ok
+INSERT INTO test.dataset1.table_blob VALUES (NULL);
+
+statement ok
+INSERT INTO test.dataset1.table_blob VALUES ('\xDE\xAD\xBE\xEF');
+
+statement ok
+INSERT INTO test.dataset1.table_blob VALUES ('\xCA\xFE');
+
+query I
+SELECT * FROM test.dataset1.table_blob
+----
+vu8=
+(empty)
+3q2+7w==
+yv4=

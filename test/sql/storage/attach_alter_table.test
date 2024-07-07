@@ -1,0 +1,19 @@
+# name: test/sql/storage/attach_alter_table.test
+# description: Testing Altering Tables
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.alter_table;
+
+statement ok
+CREATE TABLE test.dataset1.alter_table(i INTEGER);
+
+statement error
+ALTER TABLE test.dataset1.alter_table ADD COLUMN j INTEGER;
+----
+BigQuery does not support altering (coming soon).

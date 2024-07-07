@@ -1,0 +1,54 @@
+# name: test/sql/storage/attach_catalog.test
+# description: Testing Catalog
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery);
+
+# Handling schemas
+# statement ok
+# CREATE SCHEMA test.some_new_dataset;
+
+
+#####################
+# Testing Macros
+
+statement error
+CREATE MACRO test.dataset1.plus1(a) AS a+1;
+----
+BigQuery extension does not support creating functions.
+
+statement error
+DROP MACRO test.dataset1.plus1;
+----
+does not exist
+
+
+#####################
+# Testing Sequences
+
+statement error
+CREATE SEQUENCE test.dataset1.seq
+----
+BigQuery extension does not support creating sequences.
+
+statement error
+SELECT nextval('test.dataset1.seq')
+----
+does not exist
+
+
+#####################
+# Testing Types
+
+statement error
+CREATE TYPE test.dataset1.my_type as BLOB;
+----
+BigQuery extension does not support creating types.
+
+statement error
+SELECT 'a'::"test.dataset1.my_type"
+----
+does not exist

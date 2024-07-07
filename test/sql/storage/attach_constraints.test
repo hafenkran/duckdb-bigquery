@@ -1,0 +1,56 @@
+# name: test/sql/storage/attach_constraints.test
+# description: Constraints
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery)
+
+
+###################
+# PRIMARY KEY constraint
+
+statement error
+CREATE TABLE test.dataset1.primary_key_table(i INTEGER PRIMARY KEY);
+----
+UNIQUE constraints are not supported by BigQuery.
+
+
+###################
+# UNIQUE constraint
+
+statement error
+CREATE TABLE test.dataset1.unique_table(i INTEGER UNIQUE);
+----
+UNIQUE constraints are not supported by BigQuery.
+
+
+###################
+# CHECK constraint
+
+statement error
+CREATE TABLE test.dataset1.check_table(i INTEGER CHECK(i < 100));
+----
+CHECK constraints are not supported by BigQuery.
+
+
+###################
+# NOT NULL constraints
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.not_null_table;
+
+statement ok
+CREATE TABLE test.dataset1.not_null_table(i INTEGER NOT NULL);
+
+statement ok
+INSERT INTO test.dataset1.not_null_table VALUES (42);
+
+# TODO - Currently there is no error
+statement ok
+INSERT INTO test.dataset1.not_null_table VALUES (NULL);
+#----
+#NOT NULL constraint
+
+# TODO: PRIMARY KEY; FOREIGN KEY

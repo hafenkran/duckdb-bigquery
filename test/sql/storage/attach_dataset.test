@@ -1,0 +1,31 @@
+# name: test/sql/storage/attach_dataset.test
+# description: Test LIMIT over an attached BigQuery table
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery)
+
+statement ok
+DROP SCHEMA IF EXISTS test.some_test_schema CASCADE
+
+statement ok
+CREATE OR REPLACE SCHEMA some_test_schema
+
+statement ok
+DROP SCHEMA some_test_schema
+
+statement error
+DROP SCHEMA some_test_schema
+----
+does not exist
+
+statement ok
+DROP SCHEMA IF EXISTS some_test_schema
+
+statement ok
+CREATE SCHEMA some_test_schema;
+
+statement ok
+CREATE TABLE test.

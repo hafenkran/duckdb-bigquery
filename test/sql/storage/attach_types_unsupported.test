@@ -1,0 +1,51 @@
+# name: test/sql/storage/attach_types_unsupported.test
+# description: Tests various types that are not supported by BigQuery
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.table_arrays;
+
+statement error
+CREATE TABLE test.dataset1.table_arrays AS
+SELECT
+    nested_int_array
+FROM test_all_types();
+----
+Nested lists or arrays are not supported in BigQuery.
+
+statement error
+CREATE TABLE test.dataset1.table_arrays AS
+SELECT
+    fixed_nested_int_array
+FROM test_all_types();
+----
+Nested lists or arrays are not supported in BigQuery.
+
+statement error
+CREATE TABLE test.dataset1.table_arrays AS
+SELECT
+    fixed_nested_varchar_array
+FROM test_all_types();
+----
+Nested lists or arrays are not supported in BigQuery.
+
+statement error
+CREATE TABLE test.dataset1.table_arrays AS
+SELECT
+    fixed_array_of_int_list
+FROM test_all_types();
+----
+Nested lists or arrays are not supported in BigQuery.
+
+statement error
+CREATE TABLE test.dataset1.table_arrays AS
+SELECT
+    list_of_fixed_int_array
+FROM test_all_types();
+----
+Nested lists or arrays are not supported in BigQuery.

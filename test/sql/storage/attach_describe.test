@@ -1,0 +1,21 @@
+# name: test/sql/storage/attach_describe.test
+# description: Test DESCRIBE
+# group: [storage]
+
+require bigquery
+
+
+statement ok
+PRAGMA enable_verification
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050' AS test (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.describe_table;
+
+statement ok
+CREATE OR REPLACE TABLE test.dataset1.describe_table (i VARCHAR, j VARCHAR);
+
+query IIIIII
+DESCRIBE test.dataset1.describe_table;

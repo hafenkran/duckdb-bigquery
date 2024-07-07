@@ -1,0 +1,28 @@
+# name: test/sql/storage/attach_types_ts.test
+# description: Test inserting various basic types
+# group: [storage]
+
+require bigquery
+
+statement ok
+ATTACH 'project=test api_endpoint=http://127.0.0.0:9050 grpc_endpoint=127.0.0.0:9060' AS test (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS test.dataset1.ts_table;
+
+# test multiple types
+statement ok
+CREATE TABLE test.dataset1.ts_table (date DATE, time TIME);
+
+statement ok
+INSERT INTO test.dataset1.ts_table VALUES
+    (DATE '1940-01-01', TIME '00:00:01'),
+    (DATE '1999-01-01', TIME '23:59:00'),
+    (NULL, NULL)
+
+query II
+SELECT * FROM test.dataset1.ts_table;
+----
+1940-01-01
+1970-01-01
+NULL
