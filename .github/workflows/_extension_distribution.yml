@@ -115,12 +115,12 @@ jobs:
         if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
         strategy:
             matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
-        services:
-            bigquery:
-                image: dewall/bigquery-emulator:latest
-                ports:
-                    - 9050:9050
-                    - 9060:9060
+        # services:
+        #     bigquery:
+        #         image: dewall/bigquery-emulator:latest
+        #         ports:
+        #             - 9050:9050
+        #             - 9060:9060
         env:
             VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
             VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
@@ -223,9 +223,18 @@ jobs:
               run: |
                   make release
 
+            - id: 'auth'
+              uses: 'google-github-actions/auth@v2'
+              with:
+                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+
+            - name: 'Set up Cloud SDK'
+              uses: 'google-github-actions/setup-gcloud@v2'
+
             - name: Test extension
               if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
               env:
+                  BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
                   BQ_ATTACH_DB_URL: bigquery
               run: |
                   make test
