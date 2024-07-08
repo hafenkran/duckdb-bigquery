@@ -339,8 +339,6 @@ jobs:
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
             CC: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'gcc' || '' }}
             CXX: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'g++' || '' }}
-            # CURL_LIBRARY: ${{ github.workspace }}/vcpkg/x64-windows-static-md/lib/curl.lib
-            # CURL_INCLUDE_DIR: ${{ github.workspace }}/x64-windows-static-md/include
 
         steps:
             - name: Keep \n line endings
@@ -390,6 +388,18 @@ jobs:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
               run: |
                   make release CURL_LIBRARY=$CURL_LIBRARY CURL_INCLUDE_DIR=$CURL_INCLUDE_DIR
+
+            - name: Install SSL Certificates
+              run: |
+                  @powershell -NoProfile -ExecutionPolicy unrestricted -Command ^
+                      (new-object System.Net.WebClient).Downloadfile( ^
+                          'https://pki.google.com/roots.pem', 'roots.pem')
+              shell: cmd
+
+            - name: Set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH
+              run: |
+                  set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=%cd%\roots.pem
+              shell: cmd
 
             - id: 'auth'
               uses: 'google-github-actions/auth@v2'
