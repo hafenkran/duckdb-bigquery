@@ -220,6 +220,15 @@ jobs:
               apt-get install -y -qq --fix-missing libc6-dev-i386
             fi
             if [ "${DUCKDB_PLATFORM}" == "linux_arm64" ]; then
+              add-apt-repository ppa:ubuntu-toolchain-r/test
+              apt update
+              apt install gcc-13 g++-13
+              mkdir -p ~/.local/bin/gcc-13
+              ln -s $(which gcc-13) ~/.local/bin/gcc-13/cc
+              ln -s $(which gcc-13) ~/.local/bin/gcc-13/gcc
+              ln -s $(which g++-13) ~/.local/bin/gcc-13/c++
+              ln -s $(which g++-13) ~/.local/bin/gcc-13/g++
+              export PATH="$HOME/.local/bin/gcc-13:$PATH"
               apt-get install -y -qq --fix-missing libc6-dev
             fi
             if [ "${DUCKDB_PLATFORM}" == "linux_amd64" ]; then
