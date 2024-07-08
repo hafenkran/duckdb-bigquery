@@ -156,8 +156,8 @@ jobs:
           make prefix=/usr install
           git --version
 
-      - name: Install CMake
-        uses: lukka/get-cmake@latest
+      # - name: Install CMake
+      #   uses: lukka/get-cmake@latest
 
       - uses: actions/checkout@v3
         with:
