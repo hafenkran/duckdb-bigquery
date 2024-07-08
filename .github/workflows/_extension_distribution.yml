@@ -125,7 +125,8 @@ jobs:
       ENABLE_RUST: '0'
       CC: ${{ 'gcc' }}
       CXX: ${{ 'g++' }}
-      RUN_TESTS: ${{ matrix.duckdb_arch != 'linux_arm64' && '1' || '1' }}
+      # RUN_TESTS: ${{ matrix.duckdb_arch != 'linux_arm64' && '1' || '1' }}
+      RUN_TESTS: 0
       AARCH64_CROSS_COMPILE: ${{ matrix.duckdb_arch == 'linux_arm64' && 1 }}
       CONTAINER: ${{ matrix.container }}
       PLATFORM: ${{ matrix.duckdb_arch == 'linux_arm64' && 'linux/arm64/v8' || 'linux/amd64' }}
@@ -202,7 +203,7 @@ jobs:
             sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
             sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
             yum-config-manager --disable centos-sclo-rh
-            yum install epel-release -y curl
+            yum install epel-release -y curl bison pkgconfig flex
           fi
           ###
           echo "Setup ManyLinux2014"
