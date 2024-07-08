@@ -15,6 +15,7 @@ jobs:
     duckdb-stable-build:
         name: Build extension binaries
         uses: ./.github/workflows/_extension_distribution.yml
+        secrets: inherit
         with:
             duckdb_version: v1.0.0
             extension_name: bigquery
