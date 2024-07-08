@@ -413,6 +413,7 @@ jobs:
               env:
                   BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
                   BQ_ATTACH_DB_URL: bigquery
+                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH }}
               shell: bash
               run: |
                   make test
