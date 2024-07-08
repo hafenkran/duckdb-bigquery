@@ -1,0 +1,30 @@
+# name: test/sql/bigquery/attach_types_blob.test
+# description: Test inserting/querying blobs
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.test_dataset.my_fancy_test_table;
+
+statement ok
+CREATE OR REPLACE TABLE bq.test_dataset.my_fancy_test_table(i INTEGER);
+
+statement ok
+INSERT INTO bq.test_dataset.my_fancy_test_table VALUES (42);
+
+statement ok
+CREATE TABLE IF NOT EXISTS bq.test_dataset.my_fancy_test_table(i INTEGER);
+
+query I
+SELECT * FROM bq.test_dataset.my_fancy_test_table;
+----
+42
+
+statement ok
+DROP TABLE bq.test_dataset.my_fancy_test_table;

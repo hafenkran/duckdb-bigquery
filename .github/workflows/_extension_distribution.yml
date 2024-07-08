@@ -115,6 +115,12 @@ jobs:
         if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
         strategy:
             matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
+        # services:
+        #     bigquery:
+        #         image: dewall/bigquery-emulator:latest
+        #         ports:
+        #             - 9050:9050
+        #             - 9060:9060
         env:
             VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
             VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
@@ -217,10 +223,21 @@ jobs:
               run: |
                   make release
 
-            # - name: Test extension
-            #   if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
-            #   run: |
-            #       make test
+            - id: 'auth'
+              uses: 'google-github-actions/auth@v2'
+              with:
+                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+
+            - name: 'Set up Cloud SDK'
+              uses: 'google-github-actions/setup-gcloud@v2'
+
+            - name: Test extension
+              if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
+              env:
+                  BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+                  BQ_ATTACH_DB_URL: bigquery
+              run: |
+                  make test
 
             - uses: actions/upload-artifact@v2
               with:
@@ -284,11 +301,22 @@ jobs:
               run: |
                   make release VERBOSE=1
 
-            # - name: Test Extension
-            #   if: ${{ matrix.osx_build_arch == 'x86_64'}}
-            #   shell: bash
-            #   run: |
-            #       make test
+            - id: 'auth'
+              uses: 'google-github-actions/auth@v2'
+              with:
+                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+
+            - name: 'Set up Cloud SDK'
+              uses: 'google-github-actions/setup-gcloud@v2'
+
+            - name: Test Extension
+              if: ${{ matrix.osx_build_arch == 'x86_64'}}
+              env:
+                  BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+                  BQ_ATTACH_DB_URL: bigquery
+              shell: bash
+              run: |
+                  make test
 
             - uses: actions/upload-artifact@v2
               with:
@@ -311,8 +339,6 @@ jobs:
             DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
             CC: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'gcc' || '' }}
             CXX: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'g++' || '' }}
-            # CURL_LIBRARY: ${{ github.workspace }}/vcpkg/x64-windows-static-md/lib/curl.lib
-            # CURL_INCLUDE_DIR: ${{ github.workspace }}/x64-windows-static-md/include
 
         steps:
             - name: Keep \n line endings
@@ -357,21 +383,54 @@ jobs:
               with:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
-            # - name: Setup curl
-            #   uses: lukka/run-vcpkg@v11.1
-            #   with:
-            #       vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
-            #       vcpkgArguments: 'install curl:${{ matrix.vcpkg_triplet }}'
+            # - name: Install SSL Certificates
+            #   run: |
+            #       New-Item -ItemType Directory -Path 'C:\\certificates' -Force;
+            #       $url = 'https://pki.google.com/roots.pem';
+            #       $output = 'C:\\certificates\\roots.pem';
+            #       $client = New-Object System.Net.WebClient;
+            #       for ($i = 0; $i -lt 5; $i++) {
+            #           try {
+            #               $client.DownloadFile($url, $output);
+            #               break;
+            #           } catch {
+            #               Write-Host 'Download failed, retrying...';
+            #               Start-Sleep -Seconds 5;
+            #           }
+            #       }
+            #   shell: pwsh
+
+            # - name: Set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH
+            #   run: |
+            #       set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=C:\\certificates\\roots.pem
+            #   shell: cmd
+
+            # - name: Verify SSL Certificates
+            #   run: |
+            #       if not exist C:\\certificates\\roots.pem echo "roots.pem file not found!" && exit 1
+            #       echo "roots.pem file downloaded successfully."
+            #   shell: cmd
 
             - name: Build extension
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
-                  #   CURL_LIBRARY: ${{ github.workspace }}/vcpkg/x64-windows-static-md/lib/curl.lib
-                  #   CURL_INCLUDE_DIR: ${{ github.workspace }}/x64-windows-static-md/include
+                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH }}
               run: |
                   make release CURL_LIBRARY=$CURL_LIBRARY CURL_INCLUDE_DIR=$CURL_INCLUDE_DIR
 
+            # - id: 'auth'
+            #   uses: 'google-github-actions/auth@v2'
+            #   with:
+            #       credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+
+            # - name: 'Set up Cloud SDK'
+            #   uses: 'google-github-actions/setup-gcloud@v2'
+
             # - name: Test Extension
+            #   env:
+            #       BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+            #       BQ_ATTACH_DB_URL: bigquery
+            #       GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH }}
             #   shell: bash
             #   run: |
             #       make test

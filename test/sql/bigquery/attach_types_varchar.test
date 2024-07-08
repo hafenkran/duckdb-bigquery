@@ -1,0 +1,31 @@
+# name: test/sql/bigquery/attach_types_varchar.test
+# description: Test inserting/querying VARCHAR
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.test_dataset.table_varchars;
+
+statement ok
+CREATE TABLE bq.test_dataset.table_varchars (v VARCHAR);
+
+statement ok
+INSERT INTO bq.test_dataset.table_varchars VALUES ('');
+
+statement ok
+INSERT INTO bq.test_dataset.table_varchars VALUES ('some BIG...query string');
+
+query I
+SELECT * FROM bq.test_dataset.table_varchars;
+----
+(empty)
+some BIG...query string
+
+statement ok
+DROP TABLE IF EXISTS bq.test_dataset.table_varchars;

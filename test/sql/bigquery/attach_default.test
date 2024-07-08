@@ -1,0 +1,39 @@
+# name: test/sql/bigquery/attach_defaults.test
+# description: Testing DEFAULT statement
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.test_dataset.defaults_table;
+
+statement ok
+CREATE TABLE bq.test_dataset.defaults_table (i INTEGER DEFAULT 5, s STRING DEFAULT 'some_default');
+
+statement ok
+INSERT INTO bq.test_dataset.defaults_table (i) VALUES (3);
+
+statement ok
+INSERT INTO bq.test_dataset.defaults_table (s) VALUES ('new string');
+
+query II
+SELECT * FROM bq.test_dataset.defaults_table;
+----
+3	some_default
+5	new string
+
+statement ok
+INSERT INTO bq.test_dataset.defaults_table (i, s) VALUES (15, 'deluxe string');
+
+statement error
+INSERT INTO bq.test_dataset.defaults_table (sinep) VALUES (96)
+----
+does not have a column with name "sinep"
+
+statement ok
+DROP TABLE bq.test_dataset.defaults_table;

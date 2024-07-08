@@ -1,0 +1,15 @@
+# name: test/sql/bigquery/attach_filter_pushdown.test
+# description: Test selection with filter pushdown
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+
+statement error
+SELECT * FROM bq.test_dataset.tbl_does_not_exist;
+----
+Table with name tbl_does_not_exist does not exist!

@@ -1,0 +1,34 @@
+# name: test/sql/bigquery/attach_types_simple.test
+# description: Test inserting various basic types
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.test_dataset.types_simple;
+
+# test multiple types
+statement ok
+CREATE TABLE bq.test_dataset.types_simple AS
+SELECT
+    bool,
+    tinyint,
+    smallint,
+    int,
+    bigint
+FROM test_all_types();
+
+query IIIII
+SELECT * FROM bq.test_dataset.types_simple;
+----
+false	-128	-32768	-2147483648	-9223372036854775808
+true	127	32767	2147483647	9223372036854775807
+NULL	NULL	NULL	NULL	NULL
+
+statement ok
+DROP TABLE bq.test_dataset.types_simple
