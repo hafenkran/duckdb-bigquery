@@ -110,7 +110,7 @@ jobs:
   linux:
     name: Linux
     runs-on: ubuntu-latest
-    container: ubuntu:22.04
+    container: ${{ matrix.container }}
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
     strategy:
@@ -162,7 +162,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          submodules: "true"
+          submodules: 'true'
 
       - name: Checkout DuckDB to version
         run: |
