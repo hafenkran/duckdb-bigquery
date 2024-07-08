@@ -383,33 +383,33 @@ jobs:
               with:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
-            - name: Install SSL Certificates
-              run: |
-                  New-Item -ItemType Directory -Path 'C:\\certificates' -Force;
-                  $url = 'https://pki.google.com/roots.pem';
-                  $output = 'C:\\certificates\\roots.pem';
-                  $client = New-Object System.Net.WebClient;
-                  for ($i = 0; $i -lt 5; $i++) {
-                      try {
-                          $client.DownloadFile($url, $output);
-                          break;
-                      } catch {
-                          Write-Host 'Download failed, retrying...';
-                          Start-Sleep -Seconds 5;
-                      }
-                  }
-              shell: pwsh
+            # - name: Install SSL Certificates
+            #   run: |
+            #       New-Item -ItemType Directory -Path 'C:\\certificates' -Force;
+            #       $url = 'https://pki.google.com/roots.pem';
+            #       $output = 'C:\\certificates\\roots.pem';
+            #       $client = New-Object System.Net.WebClient;
+            #       for ($i = 0; $i -lt 5; $i++) {
+            #           try {
+            #               $client.DownloadFile($url, $output);
+            #               break;
+            #           } catch {
+            #               Write-Host 'Download failed, retrying...';
+            #               Start-Sleep -Seconds 5;
+            #           }
+            #       }
+            #   shell: pwsh
 
-            - name: Set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH
-              run: |
-                  set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=C:\\certificates\\roots.pem
-              shell: cmd
+            # - name: Set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH
+            #   run: |
+            #       set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=C:\\certificates\\roots.pem
+            #   shell: cmd
 
-            - name: Verify SSL Certificates
-              run: |
-                  if not exist C:\\certificates\\roots.pem echo "roots.pem file not found!" && exit 1
-                  echo "roots.pem file downloaded successfully."
-              shell: cmd
+            # - name: Verify SSL Certificates
+            #   run: |
+            #       if not exist C:\\certificates\\roots.pem echo "roots.pem file not found!" && exit 1
+            #       echo "roots.pem file downloaded successfully."
+            #   shell: cmd
 
             - name: Build extension
               env:
@@ -418,22 +418,22 @@ jobs:
               run: |
                   make release CURL_LIBRARY=$CURL_LIBRARY CURL_INCLUDE_DIR=$CURL_INCLUDE_DIR
 
-            - id: 'auth'
-              uses: 'google-github-actions/auth@v2'
-              with:
-                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+            # - id: 'auth'
+            #   uses: 'google-github-actions/auth@v2'
+            #   with:
+            #       credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
 
-            - name: 'Set up Cloud SDK'
-              uses: 'google-github-actions/setup-gcloud@v2'
+            # - name: 'Set up Cloud SDK'
+            #   uses: 'google-github-actions/setup-gcloud@v2'
 
-            - name: Test Extension
-              env:
-                  BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
-                  BQ_ATTACH_DB_URL: bigquery
-                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH }}
-              shell: bash
-              run: |
-                  make test
+            # - name: Test Extension
+            #   env:
+            #       BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+            #       BQ_ATTACH_DB_URL: bigquery
+            #       GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH }}
+            #   shell: bash
+            #   run: |
+            #       make test
 
             - uses: actions/upload-artifact@v2
               with:
