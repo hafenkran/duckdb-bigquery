@@ -159,6 +159,7 @@ jobs:
             add-apt-repository ppa:git-core/ppa
             apt-get update -y -qq
             apt-get install -y -qq --fix-missing ninja-build make gcc g++ libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client
+            apt-get install -y -qq --fix-missing bison pkg-config flex
             if [ "${DUCKDB_PLATFORM}" == "linux_amd64" ]; then
               apt-get install -y -qq --fix-missing libc6-dev-i386
             fi
