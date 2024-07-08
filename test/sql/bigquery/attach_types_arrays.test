@@ -1,0 +1,31 @@
+# name: test/sql/bigquery/attach_types_arrays.test
+# description: Test inserting various basic types
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.test_dataset.table_arrays;
+
+statement ok
+CREATE TABLE bq.test_dataset.table_arrays AS
+SELECT
+    int_array,
+    double_array,
+    varchar_array
+FROM test_all_types();
+
+query III
+SELECT * FROM bq.test_dataset.table_arrays;
+----
+[]	[]	[]
+[42, 999, -42]	[42.0, nan, inf, -inf, -42.0]	[🦆🦆🦆🦆🦆🦆, goose, ]
+[]	[]	[]
+
+statement ok
+DROP TABLE bq.test_dataset.table_arrays;
