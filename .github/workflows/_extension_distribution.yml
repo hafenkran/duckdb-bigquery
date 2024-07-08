@@ -223,14 +223,14 @@ jobs:
               apt-get install -y -qq --fix-missing libc6-dev
             fi
             if [ "${DUCKDB_PLATFORM}" == "linux_amd64" ]; then
-              wget https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-linux-x86_64.sh
-              chmod +x cmake-3.21.3-linux-x86_64.sh
-              ./cmake-3.21.3-linux-x86_64.sh --skip-license --prefix=/usr/local
+              wget https://github.com/Kitware/CMake/releases/download/v3.25.1/cmake-3.25.1-linux-x86_64.sh
+              chmod +x cmake-3.25.1-linux-x86_64.sh
+              ./cmake-3.25.1-linux-x86_64.sh --skip-license --prefix=/usr/local
             fi
             if [ "${DUCKDB_PLATFORM}" == "linux_arm64" ]; then
-              wget https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-linux-aarch64.sh
-              chmod +x cmake-3.21.3-linux-aarch64.sh
-              ./cmake-3.21.3-linux-aarch64.sh --skip-license --prefix=/usr/local
+              wget https://github.com/Kitware/CMake/releases/download/v3.25.1/cmake-3.25.1-linux-aarch64.sh
+              chmod +x cmake-3.25.1-linux-aarch64.sh
+              ./cmake-3.25.1-linux-aarch64.sh --skip-license --prefix=/usr/local
             fi
             cmake --version
             # echo "Install Python 3.8"
