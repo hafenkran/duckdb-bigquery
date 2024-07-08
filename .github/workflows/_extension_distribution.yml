@@ -400,7 +400,6 @@ jobs:
               uses: 'google-github-actions/setup-gcloud@v2'
 
             - name: Test Extension
-              if: ${{ matrix.osx_build_arch == 'x86_64'}}
               env:
                   BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
                   BQ_ATTACH_DB_URL: bigquery
