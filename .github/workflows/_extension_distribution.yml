@@ -301,11 +301,22 @@ jobs:
               run: |
                   make release VERBOSE=1
 
-            # - name: Test Extension
-            #   if: ${{ matrix.osx_build_arch == 'x86_64'}}
-            #   shell: bash
-            #   run: |
-            #       make test
+            - id: 'auth'
+              uses: 'google-github-actions/auth@v2'
+              with:
+                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+
+            - name: 'Set up Cloud SDK'
+              uses: 'google-github-actions/setup-gcloud@v2'
+
+            - name: Test Extension
+              if: ${{ matrix.osx_build_arch == 'x86_64'}}
+              env:
+                  BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+                  BQ_ATTACH_DB_URL: bigquery
+              shell: bash
+              run: |
+                  make test
 
             - uses: actions/upload-artifact@v2
               with:
