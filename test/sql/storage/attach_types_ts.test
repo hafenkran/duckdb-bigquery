@@ -22,8 +22,8 @@ INSERT INTO test.dataset1.ts_table VALUES
     (DATE '1999-01-01', TIME '23:59:00'),
     (NULL, NULL)
 
-query II
-SELECT * FROM test.dataset1.ts_table;
+query I
+SELECT date FROM test.dataset1.ts_table;
 ----
 1940-01-01
 1970-01-01

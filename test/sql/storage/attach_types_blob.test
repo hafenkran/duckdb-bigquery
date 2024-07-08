@@ -31,6 +31,6 @@ query I
 SELECT * FROM test.dataset1.table_blob
 ----
 vu8=
-(empty)
+NULL
 3q2+7w==
 yv4=

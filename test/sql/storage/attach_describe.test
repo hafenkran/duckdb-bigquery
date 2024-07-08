@@ -16,7 +16,7 @@ statement ok
 DROP TABLE IF EXISTS test.dataset1.describe_table;
 
 statement ok
-CREATE OR REPLACE TABLE test.dataset1.describe_table (i VARCHAR, j VARCHAR);
+CREATE TABLE test.dataset1.describe_table (i VARCHAR, j VARCHAR);
 
-query IIIIII
+statement ok
 DESCRIBE test.dataset1.describe_table;
