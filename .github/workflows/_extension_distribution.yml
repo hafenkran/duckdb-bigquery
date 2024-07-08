@@ -385,15 +385,20 @@ jobs:
 
             - name: Install SSL Certificates
               run: |
-                  @powershell -NoProfile -ExecutionPolicy unrestricted -Command ^
-                      "mkdir -p C:\\certificates; `
-                      $url = 'https://pki.google.com/roots.pem'; `
-                      $output = 'C:\\certificates\\roots.pem'; `
-                      $client = New-Object System.Net.WebClient; `
-                      for ($i = 0; $i -lt 5; $i++) { `
-                          try { $client.DownloadFile($url, $output); break; } `
-                          catch { Write-Host 'Download failed, retrying...'; Start-Sleep -Seconds 5; } }"
-              shell: cmd
+                  New-Item -ItemType Directory -Path 'C:\\certificates' -Force;
+                  $url = 'https://pki.google.com/roots.pem';
+                  $output = 'C:\\certificates\\roots.pem';
+                  $client = New-Object System.Net.WebClient;
+                  for ($i = 0; $i -lt 5; $i++) {
+                      try {
+                          $client.DownloadFile($url, $output);
+                          break;
+                      } catch {
+                          Write-Host 'Download failed, retrying...';
+                          Start-Sleep -Seconds 5;
+                      }
+                  }
+              shell: pwsh
 
             - name: Set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH
               run: |
