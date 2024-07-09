@@ -17,9 +17,14 @@
       "features": [
         "ssl"
       ]
+    },
+    {
+      "name": "google-cloud-cpp",
+      "features": ["bigquery", "grpc-common", "storage"],
+      "default-features": false
     }
   ],
-  "builtin-baseline": "f7d13cb679898dbe65fd5cf1cab43bd013feb092",
+  "builtin-baseline": "8c6fb0ba78d415493a5383fd277a746afc1a8825",
   "overrides": [
     {
       "name": "abseil",
@@ -28,6 +33,10 @@
     {
       "name": "arrow",
       "version": "16.1.0"
+    },
+    {
+      "name": "google-cloud-cpp",
+      "version": "2.23.0"
     }
   ]
 }

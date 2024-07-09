@@ -6,6 +6,7 @@ project(dependencies-build)
 include(ExternalProject)
 set(LOCAL_INSTALL_DIR ${CMAKE_BINARY_DIR}/local)
 set_directory_properties(PROPERTIES EP_BASE ${CMAKE_BINARY_DIR}/projects)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
 
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)

@@ -294,6 +294,7 @@ jobs:
                   git clone https://github.com/hafenkran/vcpkg.git
                   cd vcpkg
                   # git fetch
+                  git fetch
                   # git checkout f7d13cb679898dbe65fd5cf1cab43bd013feb092
                   #export CC="${CC}"
                   #export CXX="${CXX}"
@@ -529,7 +530,7 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
-                  vcpkgUrl: https://github.com/hafenkran/vcpkg
+                  vcpkgGitURL: https://github.com/hafenkran/vcpkg
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             - name: Install Rust cross compile dependency
@@ -624,6 +625,7 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
+                  vcpkgGitURL: https://github.com/hafenkran/vcpkg.git
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             # - name: Install SSL Certificates
