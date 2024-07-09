@@ -294,7 +294,7 @@ jobs:
                   git clone https://github.com/microsoft/vcpkg.git
                   cd vcpkg
                   git fetch
-                  git checkout a4275b7eee79fb24ec2e135481ef5fce8b41c339
+                  # git checkout f7d13cb679898dbe65fd5cf1cab43bd013feb092
                   #export CC="${CC}"
                   #export CXX="${CXX}"
                   ./bootstrap-vcpkg.sh
