@@ -20,7 +20,7 @@ jobs:
         with:
             duckdb_version: v1.0.0
             extension_name: bigquery
-            exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;osx_amd64;linux_amd64'
+            exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools'
             vcpkg_commit: 'a4275b7eee79fb24ec2e135481ef5fce8b41c339'
 
     duckdb-stable-deploy:
@@ -31,5 +31,5 @@ jobs:
         with:
             duckdb_version: v1.0.0
             extension_name: bigquery
-            exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;osx_amd64;linux_amd64'
+            exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools'
             deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
