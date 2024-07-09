@@ -291,9 +291,9 @@ jobs:
                   ###
                   echo "Setup vcpkg"
                   cd $CURR_DIR
-                  git clone https://github.com/microsoft/vcpkg.git
+                  git clone https://github.com/hafenkran/vcpkg.git
                   cd vcpkg
-                  git fetch
+                  # git fetch
                   # git checkout f7d13cb679898dbe65fd5cf1cab43bd013feb092
                   #export CC="${CC}"
                   #export CXX="${CXX}"
