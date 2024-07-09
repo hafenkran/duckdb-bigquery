@@ -478,7 +478,7 @@ jobs:
 
     macos:
         name: MacOS
-        runs-on: macos-latest
+        runs-on: macos-14
         needs: generate_matrix
         if: ${{ needs.generate_matrix.outputs.osx_matrix != '{}' && needs.generate_matrix.outputs.osx_matrix != '' }}
         strategy:
@@ -529,6 +529,7 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
+                  vcpkgUrl: https://github.com/hafenkran/vcpkg
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             - name: Install Rust cross compile dependency
