@@ -36,6 +36,10 @@
     {
       "name": "re2",
       "version": "2024-04-01"
+    },
+    {
+      "name": "thrift",
+      "version": "0.20.0#1"
     }
   ]
 }

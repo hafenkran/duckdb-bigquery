@@ -295,6 +295,7 @@ jobs:
                   cd vcpkg
                   git fetch
                   git checkout 230d85084ca006926d51c3d332c94298fb3bd56c
+                  git pull
                   #export CC="${CC}"
                   #export CXX="${CXX}"
                   ./bootstrap-vcpkg.sh
