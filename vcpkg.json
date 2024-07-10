@@ -17,14 +17,9 @@
       "features": [
         "ssl"
       ]
-    },
-    {
-      "name": "google-cloud-cpp",
-      "features": ["bigquery", "grpc-common", "storage"],
-      "default-features": false
     }
   ],
-  "builtin-baseline": "8c6fb0ba78d415493a5383fd277a746afc1a8825",
+  "builtin-baseline": "230d85084ca006926d51c3d332c94298fb3bd56c",
   "overrides": [
     {
       "name": "abseil",
@@ -37,6 +32,10 @@
     {
       "name": "google-cloud-cpp",
       "version": "2.23.0"
+    },
+    {
+      "name": "re2",
+      "version": "2024-04-01"
     }
   ]
 }

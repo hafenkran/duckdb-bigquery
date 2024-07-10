@@ -291,11 +291,10 @@ jobs:
                   ###
                   echo "Setup vcpkg"
                   cd $CURR_DIR
-                  git clone https://github.com/hafenkran/vcpkg.git
+                  git clone https://github.com/microsoft/vcpkg.git
                   cd vcpkg
-                  # git fetch
                   git fetch
-                  # git checkout f7d13cb679898dbe65fd5cf1cab43bd013feb092
+                  git checkout 230d85084ca006926d51c3d332c94298fb3bd56c
                   #export CC="${CC}"
                   #export CXX="${CXX}"
                   ./bootstrap-vcpkg.sh
@@ -530,7 +529,7 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
-                  vcpkgGitURL: https://github.com/hafenkran/vcpkg
+                  vcpkgGitURL: https://github.com/microsoft/vcpkg
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             - name: Install Rust cross compile dependency
@@ -625,7 +624,7 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
-                  vcpkgGitURL: https://github.com/hafenkran/vcpkg.git
+                  vcpkgGitURL: https://github.com/microsoft/vcpkg.git
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             # - name: Install SSL Certificates
