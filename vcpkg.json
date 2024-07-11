@@ -19,27 +19,5 @@
       ]
     }
   ],
-  "builtin-baseline": "230d85084ca006926d51c3d332c94298fb3bd56c",
-  "overrides": [
-    {
-      "name": "abseil",
-      "version": "20230802.1"
-    },
-    {
-      "name": "arrow",
-      "version": "16.1.0"
-    },
-    {
-      "name": "google-cloud-cpp",
-      "version": "2.23.0"
-    },
-    {
-      "name": "re2",
-      "version": "2024-04-01"
-    },
-    {
-      "name": "thrift",
-      "version": "0.20.0#1"
-    }
-  ]
+  "builtin-baseline": "dcffcdf24d789539d1aef3e2062677cfde28a643"
 }

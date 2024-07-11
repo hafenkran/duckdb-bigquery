@@ -153,6 +153,11 @@ jobs:
               with:
                   platforms: 'linux/arm64/v8'
 
+            # - name: Setup vcpkg
+            #   uses: lukka/run-vcpkg@v11.1
+            #   with:
+            #       vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
+
             - name: Setup and build extension
               shell: bash
               run: |
@@ -291,11 +296,10 @@ jobs:
                   ###
                   echo "Setup vcpkg"
                   cd $CURR_DIR
-                  git clone https://github.com/microsoft/vcpkg.git
-                  cd vcpkg
+                  git clone https://github.com/microsoft/vcpkg.git vcpkg
+                  cd vcpkg/
                   git fetch
-                  git checkout 230d85084ca006926d51c3d332c94298fb3bd56c
-                  git pull
+                  git checkout 5312e9f976e89b256954f571433e34f783dd2d12
                   #export CC="${CC}"
                   #export CXX="${CXX}"
                   ./bootstrap-vcpkg.sh
@@ -479,7 +483,7 @@ jobs:
 
     macos:
         name: MacOS
-        runs-on: macos-14
+        runs-on: macos-latest
         needs: generate_matrix
         if: ${{ needs.generate_matrix.outputs.osx_matrix != '{}' && needs.generate_matrix.outputs.osx_matrix != '' }}
         strategy:
