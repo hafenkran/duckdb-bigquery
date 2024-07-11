@@ -58,7 +58,7 @@ on:
             override_ref:
                 required: false
                 type: string
-                default: ''
+                default: 'crosscompile'
 
 jobs:
     generate_matrix:
