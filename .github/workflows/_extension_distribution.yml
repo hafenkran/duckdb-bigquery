@@ -229,7 +229,7 @@ jobs:
                   echo "Setup ManyLinux2014"
                   cd $CURR_DIR
                   if [ "${DUCKDB_PLATFORM}" = "linux_amd64_gcc4" ]; then
-                    ./duckdb/scripts/setup_manylinux2014.sh general aws-cli ccache ssh python_alias openssl vcpkg
+                    ./duckdb/scripts/setup_manylinux2014.sh general aws-cli ccache ssh python_alias openssl
                   else
                     apt-get update -y -qq
                     apt-get install -y -qq software-properties-common
@@ -296,10 +296,10 @@ jobs:
                   ###
                   echo "Setup vcpkg"
                   cd $CURR_DIR
-                  git clone https://github.com/microsoft/vcpkg.git vcpkg
+                  git clone https://github.com/hafenkran/vcpkg.git vcpkg
                   cd vcpkg/
                   git fetch
-                  git checkout 5312e9f976e89b256954f571433e34f783dd2d12
+                  git checkout 01cdea1582c10974ff689619c3cdd5f66a3950b1
                   #export CC="${CC}"
                   #export CXX="${CXX}"
                   ./bootstrap-vcpkg.sh
@@ -534,7 +534,7 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
-                  vcpkgGitURL: https://github.com/microsoft/vcpkg
+                  vcpkgGitURL: https://github.com/hafenkran/vcpkg
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             - name: Install Rust cross compile dependency
@@ -629,7 +629,7 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
-                  vcpkgGitURL: https://github.com/microsoft/vcpkg.git
+                  vcpkgGitURL: https://github.com/hafenkran/vcpkg.git
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             # - name: Install SSL Certificates

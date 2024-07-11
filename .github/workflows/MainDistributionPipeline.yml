@@ -22,7 +22,7 @@ jobs:
             extension_name: bigquery
             exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;osx_amd64'
             # vcpkg_commit: 'a4275b7eee79fb24ec2e135481ef5fce8b41c339'
-            vcpkg_commit: '5312e9f976e89b256954f571433e34f783dd2d12'
+            vcpkg_commit: '01cdea1582c10974ff689619c3cdd5f66a3950b1'
 
     duckdb-stable-deploy:
         name: Deploy extension binaries
