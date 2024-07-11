@@ -242,7 +242,7 @@ jobs:
                     if [ "${DUCKDB_PLATFORM}" == "linux_arm64" ]; then
                       add-apt-repository ppa:ubuntu-toolchain-r/test
                       apt update
-                      apt install gcc-13 g++-13
+                      apt-get install -y gcc-13 g++-13
                       mkdir -p ~/.local/bin/gcc-13
                       ln -s $(which gcc-13) ~/.local/bin/gcc-13/cc
                       ln -s $(which gcc-13) ~/.local/bin/gcc-13/gcc
