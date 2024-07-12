@@ -26,6 +26,8 @@ script_dir="$(dirname "$(readlink -f "$0")")"
 # calculate SHA256 hash of extension binary
 cat $ext >$ext.append
 
+( command -v truncate && truncate -s -256 $ext.append ) || ( command -v gtruncate && gtruncate -s -256 $ext.append ) || exit 1
+
 if [[ $4 == wasm* ]]; then
     # 0 for custom section
     # 113 in hex = 275 in decimal, total length of what follows (1 + 16 + 2 + 256)
@@ -48,19 +50,19 @@ if [ "$DUCKDB_EXTENSION_SIGNING_PK" != "" ]; then
     $script_dir/../duckdb/scripts/compute-extension-hash.sh $ext.append >$ext.hash
     openssl pkeyutl -sign -in $ext.hash -inkey private.pem -pkeyopt digest:sha256 -out $ext.sign
     rm -f private.pem
+else
+  # Default to 256 zeros
+  dd if=/dev/zero of=$ext.sign bs=256 count=1
 fi
 
-# Signature is always there, potentially defaulting to 256 zeros
-truncate -s 256 $ext.sign
-
 # append signature to extension binary
-cat $ext.sign >>$ext.append
+cat $ext.sign >> $ext.append
 
 # compress extension binary
 if [[ $4 == wasm_* ]]; then
-    brotli <$ext.append >"$ext.compressed"
+    brotli < $ext.append > "$ext.compressed"
 else
-    gzip <$ext.append >"$ext.compressed"
+    gzip < $ext.append > "$ext.compressed"
 fi
 
 set -e
