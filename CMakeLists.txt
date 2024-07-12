@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.25.1)
+cmake_minimum_required(VERSION 3.21.3)
 
 # Set extension name here
 set(TARGET_NAME bigquery)
-# set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
+set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
 
 # Compile and install google-cloud-cpp depedencies
 message("Installing google-cloud-cpp dependencies")
@@ -13,7 +13,6 @@ execute_process(
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DVCPKG_MANIFEST_DIR=${VCPKG_MANIFEST_DIR}
         -DVCPKG_INSTALLED_DIR=${CMAKE_BINARY_DIR}/vcpkg_installed
-        # -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
         -DOSX_BUILD_ARCH=${OSX_BUILD_ARCH}
         -DCMAKE_OSX_ARCHITECTURES=${DCMAKE_OSX_ARCHITECTURES}
@@ -43,9 +42,11 @@ set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${CMAKE_BINARY_DIR}/external/local)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
+set(INCLUDE_VC_DIR ${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include/)
 
 project(${TARGET_NAME})
 include_directories(src/include)
+include_directories(${INCLUDE_VC_DIR})
 add_subdirectory(src)
 
 include(${CMAKE_TOOLCHAIN_FILE})
@@ -56,26 +57,41 @@ find_package(gRPC CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(Arrow REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(google_cloud_cpp_common REQUIRED)
 find_package(google_cloud_cpp_bigquery REQUIRED)
 find_package(google_cloud_cpp_bigquery_rest REQUIRED)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-# Link OpenSSL in both the static library as the loadable extension
-#     ${Protobuf_LIBRARIES}
+
+target_include_directories(${LOADABLE_EXTENSION_NAME}
+    PRIVATE include ${INCLUDE_VC_DIR})
+
 target_link_libraries(${EXTENSION_NAME}
 	OpenSSL::SSL
 	OpenSSL::Crypto
+    google-cloud-cpp::common
 	google-cloud-cpp::bigquery
     google-cloud-cpp::experimental-bigquery_rest
+    google-cloud-cpp::grpc_utils
+    absl::base
+    absl::memory
+    absl::status
+    absl::variant
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
 
 target_link_libraries(${LOADABLE_EXTENSION_NAME}
 	OpenSSL::SSL
 	OpenSSL::Crypto
+    google-cloud-cpp::common
 	google-cloud-cpp::bigquery
-	google-cloud-cpp::experimental-bigquery_rest
+    google-cloud-cpp::experimental-bigquery_rest
+    google-cloud-cpp::grpc_utils
+    absl::base
+    absl::memory
+    absl::status
+    absl::variant
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
 
 install(

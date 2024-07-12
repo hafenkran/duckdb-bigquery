@@ -19,15 +19,15 @@
       ]
     }
   ],
-  "builtin-baseline": "a4275b7eee79fb24ec2e135481ef5fce8b41c339",
+  "builtin-baseline": "e01906b2ba7e645a76ee021a19de616edc98d29f",
   "overrides": [
     {
       "name": "abseil",
       "version": "20230802.1"
     },
     {
-      "name": "arrow",
-      "version": "16.0.0"
+      "name": "re2",
+      "version": "2024-04-01"
     }
   ]
 }
