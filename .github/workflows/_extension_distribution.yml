@@ -422,13 +422,14 @@ jobs:
                   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
                   echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-            - name: Install CMake 3.25.2
+            - name: Install CMake 3.21
               if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
               shell: bash
               run: |
-                  wget https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.sh
-                  chmod +x cmake-3.25.2-linux-x86_64.sh
-                  ./cmake-3.25.2-linux-x86_64.sh --skip-license --prefix=/usr/local
+                wget https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-linux-x86_64.sh
+                chmod +x cmake-3.21.3-linux-x86_64.sh
+                ./cmake-3.21.3-linux-x86_64.sh --skip-license --prefix=/usr/local
+                cmake --version
 
             ###
             # Checkin out repositories
@@ -660,13 +661,28 @@ jobs:
                   git config --global core.eol lf
 
             - uses: actions/checkout@v3
+              name: Checkout override repository
+              if: ${{inputs.override_repository != ''}}
               with:
-                  fetch-depth: 0
-                  submodules: 'true'
+                repository: ${{ inputs.override_repository }}
+                ref: ${{ inputs.override_ref }}
+                fetch-depth: 0
+                submodules: 'true'
+
+            - uses: actions/checkout@v3
+              name: Checkout current repository
+              if: ${{inputs.override_repository == ''}}
+              with:
+                fetch-depth: 0
+                submodules: 'true'
 
             - uses: actions/setup-python@v5
               with:
-                  python-version: '3.12'
+                  python-version: '3.11'
+
+            - name: Setup Rust
+              if: inputs.enable_rust
+              uses: dtolnay/rust-toolchain@stable
 
             - uses: r-lib/actions/setup-r@v2
               if: matrix.duckdb_arch == 'windows_amd64_rtools'
@@ -674,6 +690,15 @@ jobs:
                   r-version: 'devel'
                   update-rtools: true
                   rtools-version: '42' # linker bug in 43
+
+            - uses: actions/checkout@v3
+              name: Checkout Extension CI tools
+              if: ${{inputs.override_ci_tools_ref != ''}}
+              with:
+                path: 'extension-ci-tools'
+                ref: ${{ inputs.override_ci_tools_ref }}
+                repository: ${{ inputs.override_ci_tools_repository }}
+                fetch-depth: 0
 
             - name: Checkout DuckDB to version
               run: |
@@ -688,7 +713,6 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
-                  # vcpkgGitURL: https://github.com/hafenkran/vcpkg.git
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             # - name: Install SSL Certificates
@@ -743,8 +767,9 @@ jobs:
             #   run: |
             #       make test
 
-            - uses: actions/upload-artifact@v2
+            - uses: actions/upload-artifact@v3
               with:
+                  if-no-files-found: error
                   name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
                   path: |
                       build/release/extension/${{ inputs.extension_name }}/${{ inputs.extension_name }}.duckdb_extension
