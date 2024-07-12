@@ -49,7 +49,7 @@ static void LoadInternal(DatabaseInstance &instance) {
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,
-                              Value(true),
+                              Value(false),
                               SetBigqueryDebugQueryPrint);
 }
 
