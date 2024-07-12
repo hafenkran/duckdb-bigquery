@@ -4,7 +4,7 @@ This repository contains the [DuckDB](https://duckdb.org) BigQuery Extension. Th
 
 Please note that this extension is in its initial release. While it covers most of the essentials, you might run into some limitations, issues, or bugs. So far, this extension has only been tested on Linux systems.
 
-> This extension currently only works for DuckDB v1.0.0
+> This extension only works for DuckDB v1.0.0 and only `linux_amd64`, `linux_amd64_gcc4`, `osx_arm64`, and `windows_amd64` builds are currently supported.
 
 ## Preliminaries
 
@@ -51,7 +51,6 @@ D FORCE INSTALL 'bigquery';
 D LOAD 'bigquery';
 ```
 
-Note that only `linux_amd64`, `osx_arm64`, and `windows_amd64` builds are currently supported.
 After loading the extension, you can connect to your BigQuery project using the `ATTACH` statement. Replace `my_gcp_project` with the name of your actual Google Cloud Project. Here is an example:
 
 ```sql
@@ -165,7 +164,7 @@ CALL bigquery_clear_cache();
 | Settings                              | Description                                                       | Default |
 | ------------------------------------- | ----------------------------------------------------------------- | ------- |
 | bigquery_debug_show_queries           | [DEBUG] - whether to print all queries sent to BigQuery to stdout | `false` |
-| bigquery_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown            | `false` |
+| bigquery_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown            | `true` |
 
 ## Limitations
 

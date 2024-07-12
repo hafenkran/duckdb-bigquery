@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.21.3)
 
 # Set extension name here
 set(TARGET_NAME bigquery)
-set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
 
 # Compile and install google-cloud-cpp depedencies
 message("Installing google-cloud-cpp dependencies")
@@ -64,9 +63,8 @@ find_package(google_cloud_cpp_bigquery_rest REQUIRED)
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-
-target_include_directories(${LOADABLE_EXTENSION_NAME}
-    PRIVATE include ${INCLUDE_VC_DIR})
+# target_include_directories(${LOADABLE_EXTENSION_NAME}
+#     PRIVATE include ${INCLUDE_VC_DIR})
 
 target_link_libraries(${EXTENSION_NAME}
 	OpenSSL::SSL
