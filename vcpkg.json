@@ -10,13 +10,12 @@
     "gtest",
     {
       "name": "openssl",
-      "version>=": "3.1.4"
+      "version>=": "3.3.1"
     },
     {
       "name": "curl",
-      "features": [
-        "ssl"
-      ]
+      "platform": "windows",
+      "features": [ "schannel" ]
     }
   ],
   "builtin-baseline": "e01906b2ba7e645a76ee021a19de616edc98d29f",

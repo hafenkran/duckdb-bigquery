@@ -55,7 +55,9 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(Arrow REQUIRED)
+find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(google_cloud_cpp_rest_internal REQUIRED)
 find_package(google_cloud_cpp_common REQUIRED)
 find_package(google_cloud_cpp_bigquery REQUIRED)
 find_package(google_cloud_cpp_bigquery_rest REQUIRED)
@@ -67,9 +69,11 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 #     PRIVATE include ${INCLUDE_VC_DIR})
 
 target_link_libraries(${EXTENSION_NAME}
-	OpenSSL::SSL
-	OpenSSL::Crypto
+	# OpenSSL::SSL
+	# OpenSSL::Crypto
+    CURL::libcurl
     google-cloud-cpp::common
+    google-cloud-cpp::rest_internal
 	google-cloud-cpp::bigquery
     google-cloud-cpp::experimental-bigquery_rest
     google-cloud-cpp::grpc_utils
@@ -80,9 +84,11 @@ target_link_libraries(${EXTENSION_NAME}
 	"$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>")
 
 target_link_libraries(${LOADABLE_EXTENSION_NAME}
-	OpenSSL::SSL
-	OpenSSL::Crypto
+	# OpenSSL::SSL
+	# OpenSSL::Crypto
+    CURL::libcurl
     google-cloud-cpp::common
+    google-cloud-cpp::rest_internal
 	google-cloud-cpp::bigquery
     google-cloud-cpp::experimental-bigquery_rest
     google-cloud-cpp::grpc_utils
