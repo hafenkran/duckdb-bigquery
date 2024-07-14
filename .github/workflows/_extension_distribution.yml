@@ -489,10 +489,14 @@ jobs:
               with:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
-            - name: Install SSL Certificates
+            - name: Download SSL Certificates for GRPC
               shell: pwsh
               run: |
-                  curl -o "C:\\certificates\\roots.pem" https://pki.google.com/roots.pem
+                  $certDir = 'C:\\certificates'
+                  if (-Not (Test-Path -Path $certDir)) {
+                    New-Item -ItemType Directory -Force -Path $certDir
+                  }
+                  curl -o "$certDir\\roots.pem" https://pki.google.com/roots.pem
             # - name: Install SSL Certificates
             #   run: |
             #       New-Item -ItemType Directory -Path 'C:\\certificates' -Force;
