@@ -32,7 +32,7 @@ set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.js
 
 ### Windows gRPC Configuration
 
-On Windows, gRPC an additional environment variable to configure the trust store for SSL certificates. Download and configure it using ([official documentation](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows)):
+On Windows, gRPC requires an additional environment variable to configure the trust store for SSL certificates. Download and configure it using ([official documentation](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows)):
 
 ```bash
 @powershell -NoProfile -ExecutionPolicy unrestricted -Command ^
