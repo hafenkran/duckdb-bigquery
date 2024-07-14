@@ -426,10 +426,10 @@ jobs:
               if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
               shell: bash
               run: |
-                wget https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-linux-x86_64.sh
-                chmod +x cmake-3.21.3-linux-x86_64.sh
-                ./cmake-3.21.3-linux-x86_64.sh --skip-license --prefix=/usr/local
-                cmake --version
+                  wget https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-linux-x86_64.sh
+                  chmod +x cmake-3.21.3-linux-x86_64.sh
+                  ./cmake-3.21.3-linux-x86_64.sh --skip-license --prefix=/usr/local
+                  cmake --version
 
             ###
             # Checkin out repositories
@@ -462,12 +462,12 @@ jobs:
                   sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
                   sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
                   yum-config-manager --disable centos-sclo-rh
-                  yum install epel-release -y bison pkgconfig flex
+                  yum install epel-release -y bison pkgconfig flex libcurl libcurl-devel
 
             - name: Setup ManyLinux2014
               if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
               run: |
-                  ./duckdb/scripts/setup_manylinux2014.sh general ccache ssh python_alias openssl curl bison pkgconfig flex
+                  ./duckdb/scripts/setup_manylinux2014.sh general ccache ssh python_alias openssl curl
 
             - uses: actions/checkout@v3
               name: Checkout Extension CI tools
@@ -664,17 +664,17 @@ jobs:
               name: Checkout override repository
               if: ${{inputs.override_repository != ''}}
               with:
-                repository: ${{ inputs.override_repository }}
-                ref: ${{ inputs.override_ref }}
-                fetch-depth: 0
-                submodules: 'true'
+                  repository: ${{ inputs.override_repository }}
+                  ref: ${{ inputs.override_ref }}
+                  fetch-depth: 0
+                  submodules: 'true'
 
             - uses: actions/checkout@v3
               name: Checkout current repository
               if: ${{inputs.override_repository == ''}}
               with:
-                fetch-depth: 0
-                submodules: 'true'
+                  fetch-depth: 0
+                  submodules: 'true'
 
             - uses: actions/setup-python@v5
               with:
@@ -695,10 +695,10 @@ jobs:
               name: Checkout Extension CI tools
               if: ${{inputs.override_ci_tools_ref != ''}}
               with:
-                path: 'extension-ci-tools'
-                ref: ${{ inputs.override_ci_tools_ref }}
-                repository: ${{ inputs.override_ci_tools_repository }}
-                fetch-depth: 0
+                  path: 'extension-ci-tools'
+                  ref: ${{ inputs.override_ci_tools_ref }}
+                  repository: ${{ inputs.override_ci_tools_repository }}
+                  fetch-depth: 0
 
             - name: Checkout DuckDB to version
               run: |
