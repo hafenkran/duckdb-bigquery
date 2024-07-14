@@ -6,26 +6,28 @@ require bigquery
 
 require-env BQ_TEST_PROJECT
 
-statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+require-env BQ_TEST_DATASET
 
 statement ok
-DROP TABLE IF EXISTS bq.test_dataset.table_varchars;
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-CREATE TABLE bq.test_dataset.table_varchars (v VARCHAR);
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_varchars;
 
 statement ok
-INSERT INTO bq.test_dataset.table_varchars VALUES ('');
+CREATE TABLE bq.${BQ_TEST_DATASET}.table_varchars (v VARCHAR);
 
 statement ok
-INSERT INTO bq.test_dataset.table_varchars VALUES ('some BIG...query string');
+INSERT INTO bq.${BQ_TEST_DATASET}.table_varchars VALUES ('');
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.table_varchars VALUES ('some BIG...query string');
 
 query I
-SELECT * FROM bq.test_dataset.table_varchars;
+SELECT * FROM bq.${BQ_TEST_DATASET}.table_varchars;
 ----
 (empty)
 some BIG...query string
 
 statement ok
-DROP TABLE IF EXISTS bq.test_dataset.table_varchars;
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_varchars;

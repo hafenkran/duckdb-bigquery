@@ -6,25 +6,27 @@ require bigquery
 
 require-env BQ_TEST_PROJECT
 
-statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+require-env BQ_TEST_DATASET
 
 statement ok
-DROP TABLE IF EXISTS bq.test_dataset.my_fancy_test_table;
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-CREATE OR REPLACE TABLE bq.test_dataset.my_fancy_test_table(i INTEGER);
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.my_fancy_test_table;
 
 statement ok
-INSERT INTO bq.test_dataset.my_fancy_test_table VALUES (42);
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.my_fancy_test_table(i INTEGER);
 
 statement ok
-CREATE TABLE IF NOT EXISTS bq.test_dataset.my_fancy_test_table(i INTEGER);
+INSERT INTO bq.${BQ_TEST_DATASET}.my_fancy_test_table VALUES (42);
+
+statement ok
+CREATE TABLE IF NOT EXISTS bq.${BQ_TEST_DATASET}.my_fancy_test_table(i INTEGER);
 
 query I
-SELECT * FROM bq.test_dataset.my_fancy_test_table;
+SELECT * FROM bq.${BQ_TEST_DATASET}.my_fancy_test_table;
 ----
 42
 
 statement ok
-DROP TABLE bq.test_dataset.my_fancy_test_table;
+DROP TABLE bq.${BQ_TEST_DATASET}.my_fancy_test_table;

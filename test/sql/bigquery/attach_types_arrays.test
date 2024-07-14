@@ -6,14 +6,16 @@ require bigquery
 
 require-env BQ_TEST_PROJECT
 
-statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+require-env BQ_TEST_DATASET
 
 statement ok
-DROP TABLE IF EXISTS bq.test_dataset.table_arrays;
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-CREATE TABLE bq.test_dataset.table_arrays AS
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_arrays;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.table_arrays AS
 SELECT
     int_array,
     double_array,
@@ -21,11 +23,11 @@ SELECT
 FROM test_all_types();
 
 query III
-SELECT * FROM bq.test_dataset.table_arrays;
+SELECT * FROM bq.${BQ_TEST_DATASET}.table_arrays;
 ----
 []	[]	[]
 [42, 999, -42]	[42.0, nan, inf, -inf, -42.0]	[🦆🦆🦆🦆🦆🦆, goose, ]
 []	[]	[]
 
 statement ok
-DROP TABLE bq.test_dataset.table_arrays;
+DROP TABLE bq.${BQ_TEST_DATASET}.table_arrays;
