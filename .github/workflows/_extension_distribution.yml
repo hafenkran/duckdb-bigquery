@@ -306,7 +306,7 @@ jobs:
 
             - name: 'Set up Cloud SDK'
               if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
-              uses: 'google-github-actions/setup-gcloud@v2'
+              uses: 'google-github-actions/setup-gcloud@v1'
 
             - name: Test extension
               if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
