@@ -497,6 +497,7 @@ jobs:
                     New-Item -ItemType Directory -Force -Path $certDir
                   }
                   curl -o "$certDir\\roots.pem" https://pki.google.com/roots.pem
+
             # - name: Install SSL Certificates
             #   run: |
             #       New-Item -ItemType Directory -Path 'C:\\certificates' -Force;
@@ -543,10 +544,13 @@ jobs:
               env:
                   BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
                   BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
-                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: C:\\certificates\\roots.pem
+                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ github.workspace }}/roots.pem
               shell: bash
               run: |
-                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=C:\\certificates\\roots.pem make test
+                  certFile="${{ github.workspace }}/roots.pem"
+                  curl -o $certFile https://pki.google.com/roots.pem
+                  export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=${{ github.workspace }}/roots.pem
+                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=$certFile make test
 
             - uses: actions/upload-artifact@v3
               with:
