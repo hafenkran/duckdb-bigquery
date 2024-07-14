@@ -390,17 +390,14 @@ jobs:
                   make release VERBOSE=1
 
             - id: 'auth'
-              if: ${{ matrix.osx_build_arch == 'x86_64'}}
               uses: 'google-github-actions/auth@v2'
               with:
                   credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
 
             - name: 'Set up Cloud SDK'
-              if: ${{ matrix.osx_build_arch == 'x86_64'}}
               uses: 'google-github-actions/setup-gcloud@v2'
 
             - name: Test Extension
-              if: ${{ matrix.osx_build_arch == 'x86_64'}}
               env:
                   BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
                   BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
