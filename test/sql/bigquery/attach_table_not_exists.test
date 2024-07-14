@@ -7,9 +7,9 @@ require bigquery
 require-env BQ_TEST_PROJECT
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement error
-SELECT * FROM bq.test_dataset.tbl_does_not_exist;
+SELECT * FROM bq.${BQ_TEST_DATASET}.tbl_does_not_exist;
 ----
 Table with name tbl_does_not_exist does not exist!

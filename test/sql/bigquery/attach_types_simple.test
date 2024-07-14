@@ -7,14 +7,14 @@ require bigquery
 require-env BQ_TEST_PROJECT
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=test_dataset' AS bq (TYPE bigquery);
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-DROP TABLE IF EXISTS bq.test_dataset.types_simple;
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.types_simple;
 
 # test multiple types
 statement ok
-CREATE TABLE bq.test_dataset.types_simple AS
+CREATE TABLE bq.${BQ_TEST_DATASET}.types_simple AS
 SELECT
     bool,
     tinyint,
@@ -24,11 +24,11 @@ SELECT
 FROM test_all_types();
 
 query IIIII
-SELECT * FROM bq.test_dataset.types_simple;
+SELECT * FROM bq.${BQ_TEST_DATASET}.types_simple;
 ----
 false	-128	-32768	-2147483648	-9223372036854775808
 true	127	32767	2147483647	9223372036854775807
 NULL	NULL	NULL	NULL	NULL
 
 statement ok
-DROP TABLE bq.test_dataset.types_simple
+DROP TABLE bq.${BQ_TEST_DATASET}.types_simple

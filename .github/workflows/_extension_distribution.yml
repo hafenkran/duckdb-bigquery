@@ -132,232 +132,6 @@ jobs:
                   echo wasm_matrix=$wasm_matrix >> $GITHUB_OUTPUT
                   echo `cat $GITHUB_OUTPUT`
 
-    # linux:
-    #     name: Linux
-    #     runs-on: ubuntu-latest
-    #     needs: generate_matrix
-    #     if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
-    #     strategy:
-    #         matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
-    #     env:
-    #         VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
-    #         VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-    #         BUILD_SHELL: ${{ inputs.build_duckdb_shell && '1' || '0' }}
-    #         DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
-    #         REPO_REF: ${{ inputs.override_ref }}
-    #         REPO_NAME: ${{ inputs.override_repository != '' && inputs.override_repository || github.repository }}
-    #         GITHUB_REPOSITORY: ${{ github.repository }}
-    #         ENABLE_RUST: '0'
-    #         CC: ${{ 'gcc' }}
-    #         CXX: ${{ 'g++' }}
-    #         # RUN_TESTS: ${{ matrix.duckdb_arch != 'linux_arm64' && '1' || '1' }}
-    #         RUN_TESTS: 0
-    #         AARCH64_CROSS_COMPILE: ${{ matrix.duckdb_arch == 'linux_arm64' && 1 }}
-    #         CONTAINER: ${{ matrix.container }}
-    #         PLATFORM: ${{ matrix.duckdb_arch == 'linux_arm64' && 'linux/arm64/v8' || 'linux/amd64' }}
-
-    #     steps:
-    #         - name: Set up QEMU
-    #           if: ${{ matrix.duckdb_arch == 'linux_arm64' }}
-    #           uses: docker/setup-qemu-action@v1
-    #           with:
-    #               platforms: 'linux/arm64/v8'
-
-    #         # - name: Setup vcpkg
-    #         #   uses: lukka/run-vcpkg@v11.1
-    #         #   with:
-    #         #       vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
-
-    #         - name: Setup and build extension
-    #           shell: bash
-    #           run: |
-    #               export CURR_DIR=/home/runner/work/${GITHUB_REPOSITORY#*/}/${GITHUB_REPOSITORY#*/}
-    #               cat > script.sh << ENDOFLINE
-    #               #!/bin/bash
-
-    #               VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
-    #               export VCPKG_BUILD=1
-    #               export DUCKDB_PLATFORM="${DUCKDB_PLATFORM}"
-    #               export BUILD_SHELL="${BUILD_SHELL}"
-    #               export VCPKG_TOOLCHAIN_PATH=$CURR_DIR/vcpkg/scripts/buildsystems/vcpkg.cmake
-    #               set -eo pipefail
-    #               ###
-    #               echo "Install required ubuntu packages"
-    #               cd $CURR_DIR
-    #               if [ "${DUCKDB_PLATFORM}" != "linux_amd64_gcc4" ]; then
-    #                 apt-get update -y -qq
-    #                 apt-get install -y -qq software-properties-common
-    #                 add-apt-repository ppa:git-core/ppa
-    #                 apt-get update -y -qq
-    #                 apt-get install -y -qq --fix-missing ninja-build make gcc g++ libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client
-    #                 apt-get install -y -qq --fix-missing bison pkg-config flex
-    #                 if [ "${DUCKDB_PLATFORM}" == "linux_amd64" ]; then
-    #                   apt-get install -y -qq --fix-missing libc6-dev-i386
-    #                 fi
-    #                 if [ "${DUCKDB_PLATFORM}" == "linux_arm64" ]; then
-    #                   apt-get install -y -qq --fix-missing libc6-dev
-    #                 fi
-    #               fi
-    #               ###
-    #               echo "Install Git 2.18.5"
-    #               cd $CURR_DIR
-    #               if [ "${DUCKDB_PLATFORM}" != "linux_amd64_gcc4" ]; then
-    #                 wget https://github.com/git/git/archive/refs/tags/v2.18.5.tar.gz
-    #                 tar xvf v2.18.5.tar.gz
-    #                 cd git-2.18.5
-    #                 make
-    #                 make prefix=/usr install
-    #                 git --version
-    #               fi
-    #               ###
-    #               echo "Checkout"
-    #               cd $CURR_DIR
-    #               git init
-    #               git config --global --add safe.directory $CURR_DIR
-    #               git remote add origin https://github.com/$REPO_NAME
-    #               git fetch
-    #               git checkout main
-    #               git checkout $REPO_REF
-    #               git submodule init
-    #               git submodule update
-    #               ###
-    #               echo "Checkout DuckDB to version"
-    #               cd $CURR_DIR
-    #               cd duckdb
-    #               git checkout ${{ inputs.duckdb_version }}
-    #               ###
-    #               echo "Fix CentOS 7 EOL"
-    #               cd $CURR_DIR
-    #               if [[ "${DUCKDB_PLATFORM}" = "linux_amd64_gcc4" ]]; then
-    #                 # Workaround the fact that CentOS 7 is EOL
-    #                 sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-    #                 sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-    #                 yum-config-manager --disable centos-sclo-rh
-    #                 yum install epel-release -y curl bison pkgconfig flex
-    #               fi
-    #               ###
-    #               echo "Setup ManyLinux2014"
-    #               cd $CURR_DIR
-    #               if [ "${DUCKDB_PLATFORM}" = "linux_amd64_gcc4" ]; then
-    #                 ./duckdb/scripts/setup_manylinux2014.sh general aws-cli ccache ssh python_alias openssl
-    #               else
-    #                 apt-get update -y -qq
-    #                 apt-get install -y -qq software-properties-common
-    #                 add-apt-repository ppa:git-core/ppa
-    #                 apt-get update -y -qq
-    #                 apt-get install -y -qq --fix-missing ninja-build make gcc g++ libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client pkg-config git
-    #                 if [ "${DUCKDB_PLATFORM}" == "linux_amd64" ]; then
-    #                   apt-get install -y -qq --fix-missing libc6-dev-i386
-    #                 fi
-    #                 if [ "${DUCKDB_PLATFORM}" == "linux_arm64" ]; then
-    #                   add-apt-repository ppa:ubuntu-toolchain-r/test
-    #                   apt update
-    #                   apt-get install -y gcc-13 g++-13
-    #                   mkdir -p ~/.local/bin/gcc-13
-    #                   ln -s $(which gcc-13) ~/.local/bin/gcc-13/cc
-    #                   ln -s $(which gcc-13) ~/.local/bin/gcc-13/gcc
-    #                   ln -s $(which g++-13) ~/.local/bin/gcc-13/c++
-    #                   ln -s $(which g++-13) ~/.local/bin/gcc-13/g++
-    #                   export PATH="$HOME/.local/bin/gcc-13:$PATH"
-    #                   apt-get install -y -qq --fix-missing libc6-dev
-    #                 fi
-    #                 if [ "${DUCKDB_PLATFORM}" == "linux_amd64" ]; then
-    #                   wget https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.sh
-    #                   chmod +x cmake-3.25.2-linux-x86_64.sh
-    #                   ./cmake-3.25.2-linux-x86_64.sh --skip-license --prefix=/usr/local
-    #                 fi
-    #                 if [ "${DUCKDB_PLATFORM}" == "linux_arm64" ]; then
-    #                   wget https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-aarch64.sh
-    #                   chmod +x cmake-3.25.2-linux-aarch64.sh
-    #                   ./cmake-3.25.2-linux-aarch64.sh --skip-license --prefix=/usr/local
-    #                 fi
-    #                 cmake --version
-    #                 # echo "Install Python 3.8"
-    #                 # wget https://www.python.org/ftp/python/3.8.17/Python-3.8.17.tgz
-    #                 # tar xvf Python-3.8.17.tgz
-    #                 # cd Python-3.8.17
-    #                 # mkdir -p pythonbin
-    #                 # ./configure --with-ensurepip=install
-    #                 # make -j
-    #                 # make install
-    #                 # python3.8 --version
-    #                 # python3.8 -m pip install pip
-    #                 # python3.8 -m pip install requests awscli
-    #                 echo "Install"
-    #                 git checkout ${{ inputs.git_ref }}
-    #                 #python3 --version
-    #                 #python3 -m pip install pip
-    #                 #python3 -m pip install requests awscli
-    #                 echo "Version Check"
-    #                 ldd --version ldd
-    #                 #python3 --version
-    #                 git --version
-    #                 git log -1 --format=%h
-    #               fi
-    #               ###
-    #               echo "Checkout, again"
-    #               cd $CURR_DIR
-    #               git checkout $REPO_REF
-    #               ###
-    #               echo "Checkout DuckDB to version"
-    #               cd $CURR_DIR
-    #               cd duckdb
-    #               git checkout ${{ inputs.duckdb_version }}
-    #               ###
-    #               echo "Setup vcpkg"
-    #               cd $CURR_DIR
-    #               git clone https://github.com/hafenkran/vcpkg.git vcpkg
-    #               cd vcpkg/
-    #               git fetch
-    #               git checkout 01cdea1582c10974ff689619c3cdd5f66a3950b1
-    #               #export CC="${CC}"
-    #               #export CXX="${CXX}"
-    #               ./bootstrap-vcpkg.sh
-    #               ###
-    #               echo "Setup Rust for manylinux (dtolnay/rust-toolchain doesn't work due to curl being old here)"
-    #               cd $CURR_DIR
-    #               if [ -n "${ENABLE_RUST}" ]; then
-    #                 curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    #                 #PATH="$HOME/.cargo/bin:$PATH"
-    #                 #. "$HOME/.cargo/env"
-    #               fi
-    #               # - name: Setup Ccache
-    #               #   uses: hendrikmuhs/ccache-action@v1.2.11 # Note: pinned due to GLIBC incompatibility in later releases
-    #               #   continue-on-error: true
-    #               #   with:
-    #               #      key: ${{ github.job }}-${{ matrix.duckdb_arch }}
-    #               ###
-    #               #echo "Configure OpenSSL for Rust"
-    #               #cd $CURR_DIR
-    #               #if [ -n "${ENABLE_RUST}" ]; then
-    #               OPENSSL_ROOT_DIR=$CURR_DIR/build/release/vcpkg_installed/$VCPKG_TARGET_TRIPLET
-    #               OPENSSL_DIR=$CURR_DIR/build/release/vcpkg_installed/$VCPKG_TARGET_TRIPLET
-    #               OPENSSL_INCLUDE_DIR=$CURR_DIR/build/release/vcpkg_installed/$VCPKG_TARGET_TRIPLET/include
-    #               OPENSSL_USE_STATIC_LIBS=true
-    #               #fi
-    #               ###
-    #               echo "Build extension"
-    #               cd $CURR_DIR
-    #               # export VCPKG_TOOLCHAIN_PATH=/home/runner/work/quack/quack/vcpkgs/script/buildsystems/vcpkg.cmake
-    #               #export CC="${CC}"
-    #               #export CXX="${CXX}"
-    #               GEN=ninja make release
-    #               ###
-    #               echo "Test extension"
-    #               cd $CURR_DIR
-    #               if [ -n "${RUN_TESTS}" ]; then
-    #                 make test
-    #               fi
-    #               ENDOFLINE
-    #               chmod +x script.sh
-    #               docker run -i --rm -v /home/runner/work:/home/runner/work --workdir $CURR_DIR --platform $PLATFORM $CONTAINER <<< "echo 'pizza'"
-    #               cat script.sh | docker run -i --rm -v /home/runner/work:/home/runner/work --workdir $CURR_DIR --platform $PLATFORM $CONTAINER
-
-    #         - uses: actions/upload-artifact@v3
-    #           with:
-    #               name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
-    #               path: |
-    #                   build/release/extension/${{ inputs.extension_name }}/${{ inputs.extension_name }}.duckdb_extension
     linux:
         name: Linux
         runs-on: ubuntu-latest
@@ -524,21 +298,23 @@ jobs:
               run: |
                   make release
 
-            # - id: 'auth'
-            #   uses: 'google-github-actions/auth@v2'
-            #   with:
-            #       credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
+            - id: 'auth'
+              if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
+              uses: 'google-github-actions/auth@v2'
+              with:
+                  credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
 
-            # - name: 'Set up Cloud SDK'
-            #   uses: 'google-github-actions/setup-gcloud@v2'
+            - name: 'Set up Cloud SDK'
+              if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
+              uses: 'google-github-actions/setup-gcloud@v2'
 
-            # - name: Test extension
-            #   if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
-            #   env:
-            #       BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
-            #       BQ_ATTACH_DB_URL: bigquery
-            #   run: |
-            #       make test
+            - name: Test extension
+              if: ${{ matrix.duckdb_arch != 'linux_arm64'}}
+              env:
+                  BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+                  BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
+              run: |
+                  make test
 
             - uses: actions/upload-artifact@v2
               with:
@@ -599,7 +375,6 @@ jobs:
             - name: Setup vcpkg
               uses: lukka/run-vcpkg@v11.1
               with:
-                  # vcpkgGitURL: https://github.com/hafenkran/vcpkg
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             - name: Install Rust cross compile dependency
@@ -615,18 +390,20 @@ jobs:
                   make release VERBOSE=1
 
             - id: 'auth'
+              if: ${{ matrix.osx_build_arch == 'x86_64'}}
               uses: 'google-github-actions/auth@v2'
               with:
                   credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
 
             - name: 'Set up Cloud SDK'
+              if: ${{ matrix.osx_build_arch == 'x86_64'}}
               uses: 'google-github-actions/setup-gcloud@v2'
 
             - name: Test Extension
               if: ${{ matrix.osx_build_arch == 'x86_64'}}
               env:
                   BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
-                  BQ_ATTACH_DB_URL: bigquery
+                  BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
               shell: bash
               run: |
                   make test
