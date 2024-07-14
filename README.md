@@ -115,22 +115,22 @@ The following SQL statements provide a brief overview of supported functionaliti
 
 ```sql
 -- Create a BigQuery dataset
-CREATE SCHEMA my_gcp_project.some_dataset;
+D CREATE SCHEMA my_gcp_project.some_dataset;
 
 -- Create a BigQuery table in some dataset
-CREATE TABLE my_gcp_project.some_dataset.tbl(id INTEGER, some_string VARCHAR);
+D CREATE TABLE my_gcp_project.some_dataset.tbl(id INTEGER, some_string VARCHAR);
 
 -- Insert values into the table 
-INSERT INTO my_gcp_project.some_dataset.tbl VALUES (42, "my beatiful string");
+D INSERT INTO my_gcp_project.some_dataset.tbl VALUES (42, "my beatiful string");
 
 -- Retrieves rows from the table
-SELECT some_string FROM my_gcp_project.some_dataset.tbl;
+D SELECT some_string FROM my_gcp_project.some_dataset.tbl;
 
 -- Drop a BigQury table in some dataset
-DROP TABLE IF EXISTS my_gcp_project.some_dataset.tbl;
+D DROP TABLE IF EXISTS my_gcp_project.some_dataset.tbl;
 
 -- Drop a BigQuery dataset
-DROP SCHEMA IF EXISTS my_gcp_project.some_dataset;
+D DROP SCHEMA IF EXISTS my_gcp_project.some_dataset;
 ```
 
 **Note**: Altering tables is not yet supported.
@@ -140,7 +140,7 @@ DROP SCHEMA IF EXISTS my_gcp_project.some_dataset;
 If you would rather query just one table directly instead of attaching all tables, you can achieve this by directly using the `bigquery_scan` functions, such as:
 
 ```sql
-SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
+D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
 ┌───────┬────────────────┐
 │   i   │       s        │
 │ int32 │    varchar     │
@@ -155,8 +155,8 @@ SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
 The `bigquery_execute` function enables you to execute arbitrary queries directly in BigQuery, including specialized functions or options which are unique to BigQuery. These queries can be expressed in native GoogleSQL and are executed without prior parsing or interpretation by DuckDB.
 
 ```sql
-ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
-CALL bigquery_execute('bq', '
+D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
+D CALL bigquery_execute('bq', '
     CREATE SCHEMA deluxe_dataset
     OPTIONS(
         location="us",
@@ -171,7 +171,7 @@ CALL bigquery_execute('bq', '
 To ensure a consistent and efficient interaction with BigQuery, DuckDB employs, similar to other extensions, a caching mechanism. This mechanism stores schema information, such as datasets, table names, their columns, etc. locally to avoid continuously fetching this data from BigQuery. If changes are made to the schema through a different connection, such as new columns being added to a table, the local cache becomes outdated. In this case, the function `bigquery_clear_cache` can be executed to clear the internal caches allowing DuckDB to refetch the most current schema information from BigQuery.
 
 ```sql
-CALL bigquery_clear_cache();
+D CALL bigquery_clear_cache();
 ```
 
 ### Additional Extension Settings
