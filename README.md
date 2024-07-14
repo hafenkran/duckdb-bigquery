@@ -30,6 +30,19 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/my/service-account-credentials.j
 set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.json"
 ```
 
+### Windows gRPC Configuration
+
+On Windows, gRPC an additional environment variable to configure the trust store for SSL certificates. Download and configure it using ([official documentation](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows)):
+
+```bash
+@powershell -NoProfile -ExecutionPolicy unrestricted -Command ^
+    (new-object System.Net.WebClient).Downloadfile( ^
+        'https://pki.google.com/roots.pem', 'roots.pem')
+set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=%cd%\roots.pem
+```
+
+This downloads the `roots.pem` file and sets the `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` environment variable to its location.
+
 ## Quickstart
 
 To use this extension, DuckDB must be started with the [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Depending on the kind of client you are using, you can achieve this by either using the `allow_unsigned_extensions` flag in your clients or, in the case of the CLI client, by starting with the `-unsigned` flag as follows:
@@ -41,6 +54,8 @@ con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
 # Example: CLI
 duckdb -unsigned
 ```
+
+> Note: Windows user require an additional step to configure the gRPC SSL certificates (see [here](#windows-grpc-configuration)).
 
 Once DuckDB is running with unsigned extensions enabled, install and load the previously downloaded DuckDB BigQuery Extension:
 
