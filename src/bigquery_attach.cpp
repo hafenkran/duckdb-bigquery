@@ -24,6 +24,7 @@ static unique_ptr<FunctionData> AttachBind(ClientContext &context,
                                            TableFunctionBindInput &input,
                                            vector<LogicalType> &return_types,
                                            vector<string> &names) {
+											std::cout << "AttachBind" << std::endl;
     auto table_string = input.inputs[0].GetValue<string>();
     auto dataset_ref = BigqueryUtils::ParseTableString(table_string);
     if (dataset_ref.table_id != "") {
@@ -42,10 +43,12 @@ static unique_ptr<FunctionData> AttachBind(ClientContext &context,
 
     return_types.emplace_back(duckdb::LogicalTypeId::BOOLEAN);
     names.emplace_back("Success");
+	std::cout << "AttachBind end" << std::endl;
     return std::move(result);
 }
 
 static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+	std::cout << "AttachFunction" << std::endl;
     auto &data = data_p.bind_data->CastNoConst<AttachFunctionData>();
     if (data.finished) {
         return;
@@ -62,6 +65,7 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
     }
 
     data.finished = true;
+	std::cout << "AttachFunction end" << std::endl;
 }
 
 BigqueryAttachFunction::BigqueryAttachFunction()
