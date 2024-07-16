@@ -547,10 +547,9 @@ jobs:
                   GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ github.workspace }}/roots.pem
               shell: bash
               run: |
-                  certFile="${{ github.workspace }}/roots.pem"
-                  curl -o $certFile https://pki.google.com/roots.pem
+                  curl -o ${{ github.workspace }}/roots.pem -L https://pki.google.com/roots.pem
                   export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=${{ github.workspace }}/roots.pem
-                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=$certFile make test
+                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=${{ github.workspace }}/roots.pem make test
 
             - uses: actions/upload-artifact@v3
               with:
