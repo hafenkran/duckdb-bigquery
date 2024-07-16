@@ -547,9 +547,9 @@ jobs:
                   GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ github.workspace }}/roots.pem
               shell: bash
               run: |
-                  curl -o ${{ github.workspace }}/roots.pem -L https://pki.google.com/roots.pem
-                  export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=${{ github.workspace }}/roots.pem
-                  GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=${{ github.workspace }}/roots.pem make test
+                  curl -o D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem -L https://pki.google.com/roots.pem
+                  export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem
+                  make test GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem
 
             - uses: actions/upload-artifact@v3
               with:
