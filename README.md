@@ -121,7 +121,7 @@ D CREATE SCHEMA my_gcp_project.some_dataset;
 D CREATE TABLE my_gcp_project.some_dataset.tbl(id INTEGER, some_string VARCHAR);
 
 -- Insert values into the table 
-D INSERT INTO my_gcp_project.some_dataset.tbl VALUES (42, "my beatiful string");
+D INSERT INTO my_gcp_project.some_dataset.tbl VALUES (42, "my quacking string");
 
 -- Retrieves rows from the table
 D SELECT some_string FROM my_gcp_project.some_dataset.tbl;
