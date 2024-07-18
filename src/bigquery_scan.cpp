@@ -8,10 +8,6 @@
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
-#include "google/cloud/bigquery/v2/minimal/internal/dataset_client.h"
-#include "google/cloud/bigquery/v2/minimal/internal/dataset_request.h"
-#include "google/cloud/bigquery/v2/minimal/internal/table_client.h"
-#include "google/cloud/bigquery/v2/minimal/internal/table_request.h"
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
