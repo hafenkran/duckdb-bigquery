@@ -51,9 +51,7 @@ std::string BigquerySQL::ExtractFilters(PhysicalOperator &child) {
         return table_filters_exp;
     }
     default:
-        throw NotImplementedException("Unsupported operator type " + PhysicalOperatorToString(child.type) +
-                                      " in DELETE statement - only simple deletes (e.g. DELETE FROM tbl WHERE x=y) are "
-                                      "supported in the MySQL connector");
+        throw NotImplementedException("Unsupported operator type " + PhysicalOperatorToString(child.type));
     }
 }
 
@@ -249,9 +247,15 @@ string BigquerySQL::LogicalDeleteToSQL(const string &project_id, LogicalDelete &
     std::stringstream sql;
     sql << "DELETE FROM ";
     sql << BigqueryUtils::WriteQuotedIdentifier(table_string);
-    auto filters = ExtractFilters(child);
-    if (!filters.empty()) {
-        sql << " WHERE " + filters;
+    try {
+        auto filters = ExtractFilters(child);
+        if (!filters.empty()) {
+            sql << " WHERE " + filters;
+        }
+    } catch (const NotImplementedException &e) {
+        throw NotImplementedException(std::string(e.what()) +
+                                      " in DELETE statement - only simple deletes (e.g. DELETE FROM tbl WHERE x=y) are "
+                                      "supported in the MySQL connector");
     }
     return sql.str();
 }
@@ -304,9 +308,9 @@ string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector
     // They are often managed through separate mechanisms or not directly applicable
     // This is a placeholder for any additional constraints or handling you might need
     // for (auto &extra_constraint : constraints) {
-        // BigQuery might not support adding constraints directly in CREATE TABLE like MySQL
-        // We might need to handle some constraints separately or differently
-        // TODO
+    // BigQuery might not support adding constraints directly in CREATE TABLE like MySQL
+    // We might need to handle some constraints separately or differently
+    // TODO
     // }
 
     str << ")";

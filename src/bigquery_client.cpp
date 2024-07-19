@@ -174,6 +174,8 @@ BigqueryClient BigqueryClient::NewClient(const string &connection_str) {
 
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     ListDatasetsRequest request(project_id);
+	request.set_all(false);
+	request.set_max_results(1000);
 
     auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
     auto datasets = dataset_client->ListDatasets(request);
@@ -201,9 +203,10 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
 }
 
 vector<BigqueryTableRef> BigqueryClient::GetTables(const string dataset_id) {
-    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
-
     ListTablesRequest request(project_id, dataset_id);
+	request.set_max_results(1000);
+
+    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
     auto tables = table_client->ListTables(request);
 
     vector<BigqueryTableRef> table_names;
