@@ -1,25 +1,24 @@
-#include "google/cloud/bigquery/storage/v1/arrow.pb.h"
-#include "google/cloud/common_options.h"
-#include "google/cloud/grpc_options.h"
-
 #include "duckdb.hpp"
 #include "duckdb/common/types/hugeint.hpp"
 #include "duckdb/common/types/time.hpp"
 #include "duckdb/parser/column_list.hpp"
 
-#include "bigquery_arrow_reader.hpp"
-#include "bigquery_utils.hpp"
+#include "google/cloud/bigquery/storage/v1/arrow.pb.h"
+#include "google/cloud/common_options.h"
+#include "google/cloud/grpc_options.h"
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
 #include <arrow/ipc/writer.h>
 #include <arrow/visit_type_inline.h>
-
 #include <chrono>
 #include <ctime>
 #include <iostream>
 #include <stdexcept>
+
+#include "bigquery_arrow_reader.hpp"
+#include "bigquery_utils.hpp"
 
 namespace duckdb {
 namespace bigquery {
@@ -137,9 +136,9 @@ hugeint_t ReadDecimalValue(const uint8_t *pointer, idx_t size, int32_t precision
         bool carry = true;
         for (int i = 0; i < sizeof(hugeint_t); i++) {
             if (carry) {
-                if (res_ptr[i] == 0xFF)
+                if (res_ptr[i] == 0xFF) {
                     res_ptr[i] = 0;
-                else {
+                } else {
                     res_ptr[i]++;
                     carry = false;
                 }
@@ -147,14 +146,14 @@ hugeint_t ReadDecimalValue(const uint8_t *pointer, idx_t size, int32_t precision
         }
         res.upper = ~res.upper;
         res.lower = ~res.lower + 1;
-        if (res.lower == 0)
-            res.upper += 1;                                // Handle carry for low part overflow
+        if (res.lower == 0) {
+            res.upper += 1; // Handle carry for low part overflow
+        }
         res.upper = -res.upper - (res.lower == 0 ? 1 : 0); // Adjust high part if low part overflowed
     }
 
     return res;
 }
-
 
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::ReadSchema(
     const google::cloud::bigquery::storage::v1::ArrowSchema &schema) {
@@ -381,7 +380,6 @@ void BigqueryArrowReader::ReadSimpleColumn(const std::shared_ptr<arrow::Array> &
     }
     }
 }
-
 
 void BigqueryArrowReader::ReadListColumn(const std::shared_ptr<arrow::ListArray> &list_array, Vector &out_vec) {
     auto values = list_array->values();

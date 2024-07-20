@@ -214,26 +214,26 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const TableFieldSchema &fiel
     return type;
 }
 
-std::string MapArrowTypeToBigQuery(const std::shared_ptr<arrow::DataType> &arrowType) {
-    if (arrowType->id() == arrow::Int64Type::type_id) {
+std::string MapArrowTypeToBigQuery(const std::shared_ptr<arrow::DataType> &arrow_type) {
+    if (arrow_type->id() == arrow::Int64Type::type_id) {
         return "INT64";
-    } else if (arrowType->id() == arrow::FloatType::type_id || arrowType->id() == arrow::DoubleType::type_id) {
+    } else if (arrow_type->id() == arrow::FloatType::type_id || arrow_type->id() == arrow::DoubleType::type_id) {
         return "FLOAT64";
-    } else if (arrowType->id() == arrow::BooleanType::type_id) {
+    } else if (arrow_type->id() == arrow::BooleanType::type_id) {
         return "BOOL";
-    } else if (arrowType->id() == arrow::StringType::type_id) {
+    } else if (arrow_type->id() == arrow::StringType::type_id) {
         return "STRING";
-    } else if (arrowType->id() == arrow::BinaryType::type_id) {
+    } else if (arrow_type->id() == arrow::BinaryType::type_id) {
         return "BYTES";
-    } else if (arrowType->id() == arrow::Date32Type::type_id || arrowType->id() == arrow::Date64Type::type_id) {
+    } else if (arrow_type->id() == arrow::Date32Type::type_id || arrow_type->id() == arrow::Date64Type::type_id) {
         return "DATE";
-    } else if (arrowType->id() == arrow::TimestampType::type_id) {
+    } else if (arrow_type->id() == arrow::TimestampType::type_id) {
         return "TIMESTAMP";
-    } else if (arrowType->id() == arrow::Time32Type::type_id || arrowType->id() == arrow::Time64Type::type_id) {
+    } else if (arrow_type->id() == arrow::Time32Type::type_id || arrow_type->id() == arrow::Time64Type::type_id) {
         return "TIME";
-    } else if (arrowType->id() == arrow::StructType::type_id) {
+    } else if (arrow_type->id() == arrow::StructType::type_id) {
         return "STRUCT";
-    } else if (arrowType->id() == arrow::ListType::type_id) {
+    } else if (arrow_type->id() == arrow::ListType::type_id) {
         return "ARRAY";
     } else {
         return "UNSUPPORTED";

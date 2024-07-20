@@ -10,8 +10,7 @@ namespace duckdb {
 namespace bigquery {
 
 struct AttachFunctionData : public TableFunctionData {
-    AttachFunctionData() {
-    }
+    AttachFunctionData() = default;
 
     bool finished = false;
     bool overwrite = false;

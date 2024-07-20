@@ -60,19 +60,18 @@ void BigqueryExtension::Load(DuckDB &db) {
 } // namespace duckdb
 
 extern "C" {
-using namespace duckdb;
 
-DUCKDB_EXTENSION_API void bigquery_init(DatabaseInstance &db) {
-    DuckDB db_wrapper(db);
-    db_wrapper.LoadExtension<BigqueryExtension>();
+DUCKDB_EXTENSION_API void bigquery_init(duckdb::DatabaseInstance &db) {
+    duckdb::DuckDB db_wrapper(db);
+    db_wrapper.LoadExtension<duckdb::BigqueryExtension>();
 }
 
 DUCKDB_EXTENSION_API const char *bigquery_version() {
-    return DuckDB::LibraryVersion();
+    return duckdb::DuckDB::LibraryVersion();
 }
 
-DUCKDB_EXTENSION_API void bigquery_storage_init(DBConfig &config) {
-    config.storage_extensions["bigquery"] = make_uniq<duckdb::bigquery::BigqueryStorageExtension>();
+DUCKDB_EXTENSION_API void bigquery_storage_init(duckdb::DBConfig &config) {
+    config.storage_extensions["bigquery"] = duckdb::make_uniq<duckdb::bigquery::BigqueryStorageExtension>();
 }
 }
 

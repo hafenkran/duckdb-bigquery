@@ -76,18 +76,18 @@ public:
     }
 };
 
-template <typename Func>
-bool retryOperation(Func op, int maxAttempts, int initialDelayMs) {
+template <typename FUNC>
+bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
     int attempts = 0;
-    int delay = initialDelayMs;
+    int delay = initial_delay_mss;
 
-    while (attempts < maxAttempts) {
+    while (attempts < max_attempts) {
         if (op()) {
             return true;
         }
 
         attempts++;
-        if (attempts < maxAttempts) {
+        if (attempts < max_attempts) {
             std::this_thread::sleep_for(std::chrono::milliseconds(delay));
             delay *= 2;
         }
@@ -293,7 +293,7 @@ void BigqueryClient::CreateDataset(const CreateSchemaInfo &info, const BigqueryD
 
     // Check if dataset exists with an exponential backoff retry
     auto op = [this, &info]() -> bool { return DatasetExists(info.schema); };
-    auto success = retryOperation(op, 10, 1000);
+    auto success = RetryOperation(op, 10, 1000);
     if (!success) {
         throw InternalException("Failed to verify that \"%s\" has been successfully created", info.schema);
     }
@@ -305,7 +305,7 @@ void BigqueryClient::CreateTable(const CreateTableInfo &info, const BigqueryTabl
 
     // Check if the table exists with an exponential backoff retry
     auto op = [this, &info]() -> bool { return TableExists(info.schema, info.table); };
-    auto success = retryOperation(op, 10, 1000);
+    auto success = RetryOperation(op, 10, 1000);
     if (!success) {
         throw InternalException("Failed to verify that \"%s\" has been successfully created", info.table);
     }
