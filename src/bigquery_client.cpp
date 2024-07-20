@@ -174,7 +174,6 @@ BigqueryClient BigqueryClient::NewClient(const string &connection_str) {
 
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     ListDatasetsRequest request(project_id);
-	request.set_all(false);
 	request.set_max_results(1000);
 
     auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
