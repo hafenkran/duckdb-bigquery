@@ -24,7 +24,7 @@ static unique_ptr<Catalog> BigqueryAttach(StorageExtensionInfo *storage_info,
                                           AccessMode access_mode) {
     BigqueryOptions options;
     options.access_mode = access_mode;
-    return make_uniq<BigqueryCatalog>(db, info.path, options);
+    return duckdb::make_uniq<BigqueryCatalog>(db, info.path, options);
 }
 
 

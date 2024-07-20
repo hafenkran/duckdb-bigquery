@@ -50,7 +50,7 @@ public:
     std::map<std::string, idx_t> column_name_to_index;
 };
 
-vector<string> GetInsertColumns(const BigqueryInsert &insert, BigqueryTableEntry &entry) {
+vector<string> GetInsertColumns(const duckdb::bigquery::BigqueryInsert &insert, BigqueryTableEntry &entry) {
     vector<string> column_names;
     idx_t column_count = 0;
     auto &columns = entry.GetColumns();

@@ -96,8 +96,8 @@ bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
 }
 
 
-BigqueryClient::BigqueryClient(string project_id, string dataset_id, string api_endpoint, string grpc_endpoint)
-    : project_id(project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
+BigqueryClient::BigqueryClient(const string &project_id, string dataset_id, const string &api_endpoint, const string &grpc_endpoint)
+    : project_id(project_id), dataset_id(std::move(dataset_id)), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
 
     if (project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
@@ -201,7 +201,7 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     return dataset_names;
 }
 
-vector<BigqueryTableRef> BigqueryClient::GetTables(const string dataset_id) {
+vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
     ListTablesRequest request(project_id, dataset_id);
     request.set_max_results(1000);
 
@@ -228,7 +228,7 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string dataset_id) {
     return table_names;
 }
 
-BigqueryDatasetRef BigqueryClient::GetDataset(const string dataset_id) {
+BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
     auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
     GetDatasetRequest request(project_id, dataset_id);
     auto dataset = dataset_client->GetDataset(request);
@@ -244,7 +244,7 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string dataset_id) {
     return info;
 }
 
-BigqueryTableRef BigqueryClient::GetTable(const string dataset_id, const string table_id) {
+BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
     auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
 
     GetTableRequest request(project_id, dataset_id, table_id);
@@ -382,8 +382,8 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
 
 
 std::pair<google::cloud::bigquery_storage_v1::BigQueryReadClient, google::cloud::bigquery::storage::v1::ReadSession>
-BigqueryClient::CreateReadSession(const string dataset_id,
-                                  const string table_id,
+BigqueryClient::CreateReadSession(const string &dataset_id,
+                                  const string &table_id,
                                   const idx_t num_streams,
                                   const vector<string> &selected,
                                   const string &filter_cond) {
@@ -401,7 +401,7 @@ BigqueryClient::CreateReadSession(const string dataset_id,
 
     // https://github.com/rocketechgroup/bigquery-storage-read-api-example/blob/master/main_simple.py
     auto *read_options = read_session.mutable_read_options();
-    if (selected.size() > 0) {
+    if (!selected.empty()) {
         for (const auto &column : selected) {
             read_options->add_selected_fields(column);
         }
@@ -421,7 +421,7 @@ BigqueryClient::CreateReadSession(const string dataset_id,
 std::pair<shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient>,
           shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>>
 BigqueryClient::CreateWriteStream(const string dataset_id, const string table_id) {
-    const string parent = BigqueryUtils::FormatParentString(project_id);
+    // const string parent = BigqueryUtils::FormatParentString(project_id);
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 
     // Set retry and backoff policies.
@@ -453,8 +453,8 @@ BigqueryClient::CreateWriteStream(const string dataset_id, const string table_id
     return std::make_pair(client, res_write_stream);
 }
 
-shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string dataset_id,
-                                                                  const string table_id,
+shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &dataset_id,
+                                                                  const string &table_id,
                                                                   const idx_t num_streams,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
@@ -528,7 +528,7 @@ PostQueryResults BigqueryClient::ExecuteQuery(const string &query, const string 
 
 
 google::cloud::StatusOr<Job> BigqueryClient::GetJob(JobClient &job_client,
-                                                    const string job_id,
+                                                    const string &job_id,
                                                     const string &location) {
     if (project_id.empty()) {
         throw BinderException("project_id config parameter is empty.");

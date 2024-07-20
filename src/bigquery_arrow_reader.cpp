@@ -655,9 +655,8 @@ void BigqueryArrowReader::ReadStructColumn(const std::shared_ptr<arrow::StructAr
             default:
                 throw InternalException("Unsupported Arrow type: " + field_type->name());
             }
-
-            out_vec.SetValue(row, Value::STRUCT(std::move(struct_values)));
         }
+		out_vec.SetValue(row, Value::STRUCT(std::move(struct_values)));
     }
 }
 
