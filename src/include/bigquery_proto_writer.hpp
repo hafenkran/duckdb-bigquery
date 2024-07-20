@@ -10,12 +10,12 @@ namespace bigquery {
 
 class BigqueryProtoWriter {
 public:
-    explicit BigqueryProtoWriter(BigqueryTableEntry *entry, google::cloud::Options options);
+    explicit BigqueryProtoWriter(BigqueryTableEntry *entry, const google::cloud::Options &options);
     ~BigqueryProtoWriter();
 
     void InitMessageDescriptor(BigqueryTableEntry *entry);
 
-    void WriteChunk(DataChunk &chunk, std::map<std::string, idx_t> column_idxs = {});
+    void WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs);
     void WriteMessageField(google::protobuf::Message *msg,
                            const google::protobuf::Reflection *reflection,
                            const google::protobuf::FieldDescriptor *field,

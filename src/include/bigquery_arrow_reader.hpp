@@ -18,16 +18,16 @@ namespace bigquery {
 
 struct BigqueryArrowReader {
 public:
-    BigqueryArrowReader(string project_id,
-                        string dataset_id,
-                        string table_id,
+    BigqueryArrowReader(const string &project_id,
+                        const string &dataset_id,
+                        const string &table_id,
                         idx_t num_streams,
-                        google::cloud::Options options,
+                        const google::cloud::Options &options,
                         const vector<string> &column_ids = std::vector<string>(),
                         const string &filter_cond = "");
 
     std::shared_ptr<arrow::Schema> GetSchema();
-	int64_t GetEstimatedRowCount();
+    int64_t GetEstimatedRowCount();
 
     void MapTableInfo(ColumnList &res_columns, vector<unique_ptr<Constraint>> &res_constraints);
 

@@ -92,7 +92,7 @@ public:
 
     static bool IsValueQuotable(const Value &value);
     static string WriteQuotedIdentifier(const string &identifier);
-    static string ReplaceQuotes(string &identifier, char to_replace='\'');
+    static string ReplaceQuotes(string &identifier, char to_replace = '\'');
 
     static LogicalType CastToBigqueryType(const LogicalType &type);
     static LogicalType FieldSchemaToLogicalType(const TableFieldSchema &field);

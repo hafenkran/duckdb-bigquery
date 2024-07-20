@@ -42,10 +42,10 @@ ConnectionDetails BigqueryUtils::ParseConnectionString(const string &connection_
     stream.str(connection_string);
     stream.clear();
     while (std::getline(stream, segment, ' ')) {
-        size_t equalPos = segment.find('=');
-        if (equalPos != std::string::npos) {
-            std::string key = segment.substr(0, equalPos);
-            std::string value = segment.substr(equalPos + 1);
+        size_t equal_pos = segment.find('=');
+        if (equal_pos != std::string::npos) {
+            std::string key = segment.substr(0, equal_pos);
+            std::string value = segment.substr(equal_pos + 1);
 
             // Assign values based on the key
             if (key == "api_endpoint") {
@@ -91,12 +91,15 @@ BigqueryTableRef BigqueryUtils::ParseTableString(const string &table_string) {
     std::smatch matches;
     for (const auto &pattern : patterns) {
         if (std::regex_match(table_string, matches, pattern)) {
-            if (matches.size() >= 2)
+            if (matches.size() >= 2) {
                 result.project_id = matches[1].str();
-            if (matches.size() >= 3)
+            }
+            if (matches.size() >= 3) {
                 result.dataset_id = matches[2].str();
-            if (matches.size() >= 4)
+			}
+            if (matches.size() >= 4) {
                 result.table_id = matches[3].str();
+			}
             return result;
         }
     }
@@ -288,7 +291,7 @@ LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::D
         return LogicalType::DECIMAL(precision, scale);
     }
     case arrow::Type::LIST: {
-		auto list_type = std::static_pointer_cast<arrow::ListType>(arrow_type);
+        auto list_type = std::static_pointer_cast<arrow::ListType>(arrow_type);
         auto element_type = list_type->value_type();
         return LogicalType::LIST(ArrowTypeToLogicalType(element_type));
     }
@@ -544,13 +547,13 @@ std::string BigqueryUtils::IntervalToBigqueryIntervalString(const interval_t &in
     int months = interval.months % 12;
     int days = interval.days;
     int hours = interval.micros / 3600000000;
-    int remainingMicros = interval.micros % 3600000000;
-    int minutes = remainingMicros / 60000000;
-    int seconds = (remainingMicros % 60000000) / 1000000;
+    int remaining_micros = interval.micros % 3600000000;
+    int minutes = remaining_micros / 60000000;
+    int seconds = (remaining_micros % 60000000) / 1000000;
 
     return std::to_string(years) + "-" + std::to_string(months) + " " + std::to_string(days) + " " +
            std::to_string(hours) + ":" + std::to_string(minutes) + ":" + std::to_string(seconds) + "." +
-           std::to_string(remainingMicros % 1000000);
+           std::to_string(remaining_micros % 1000000);
 }
 
 

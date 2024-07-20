@@ -43,8 +43,8 @@ public:
     static BigqueryClient NewClient(const string &connection_string);
 
 public:
-    bool DatasetExists(const string dataset_id);
-    bool TableExists(const string dataset_id, const string table_id);
+    bool DatasetExists(const string &dataset_id);
+    bool TableExists(const string &dataset_id, const string &table_id);
 
     vector<BigqueryDatasetRef> GetDatasets();
     vector<BigqueryTableRef> GetTables(const string dataset_id);
@@ -59,8 +59,8 @@ public:
     void DropTable(const DropInfo &info);
     void DropView(const DropInfo &info);
 
-    void GetTableInfo(const string dataset_id,
-                      const string table_id,
+    void GetTableInfo(const string &dataset_id,
+                      const string &table_id,
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
 
@@ -105,7 +105,7 @@ public:
 
 private:
     string GenerateJobId(const string &prefix = "");
-    google::cloud::StatusOr<Job> GetJob(JobClient &job_client, const string job_id, const string location = "");
+    google::cloud::StatusOr<Job> GetJob(JobClient &job_client, const string job_id, const string &location = "");
 
     google::cloud::StatusOr<PostQueryResults> PostQueryJob(JobClient &job_client,
                                                            const string &query,

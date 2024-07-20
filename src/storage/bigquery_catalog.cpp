@@ -12,7 +12,7 @@ namespace duckdb {
 namespace bigquery {
 
 BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p)
-    : Catalog(db_p), options(std::move(options_p)), schemas(*this) {
+    : Catalog(db_p), options(options_p), schemas(*this) {
     con_details = BigqueryUtils::ParseConnectionString(connection_str);
     if (!con_details.is_valid()) {
         throw BinderException("Invalid connection string: %s", connection_str);

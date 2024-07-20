@@ -23,11 +23,11 @@
 namespace duckdb {
 namespace bigquery {
 
-BigqueryArrowReader::BigqueryArrowReader(string project_id,
-                                         string dataset_id,
-                                         string table_id,
+BigqueryArrowReader::BigqueryArrowReader(const string &project_id,
+                                         const string &dataset_id,
+                                         const string &table_id,
                                          idx_t num_streams,
-                                         google::cloud::Options options,
+                                         const google::cloud::Options &options,
                                          const vector<string> &selected_columns,
                                          const string &filter_condition)
     : project_id(project_id), dataset_id(dataset_id), table_id(table_id), num_streams(num_streams), options(options),
@@ -50,7 +50,7 @@ BigqueryArrowReader::BigqueryArrowReader(string project_id,
     session.set_data_format(google::cloud::bigquery::storage::v1::DataFormat::ARROW);
 
     auto *read_options = session.mutable_read_options();
-    if (selected_columns.size() > 0) {
+    if (!selected_columns.empty()) {
         for (const auto &column : selected_columns) {
             read_options->add_selected_fields(column);
         }
@@ -194,7 +194,8 @@ std::shared_ptr<arrow::RecordBatch> BigqueryArrowReader::ReadBatch(
         }
     } else {
         // Read the Arrow Record Batch from the serialized data
-        arrow::io::BufferReader buffer_reader(batch.serialized_record_batch());
+        auto arrow_buffer = arrow::Buffer::FromString(batch.serialized_record_batch());
+        arrow::io::BufferReader buffer_reader(arrow_buffer);
 
         auto options = arrow::ipc::IpcReadOptions::Defaults();
         arrow::Result<std::shared_ptr<arrow::RecordBatch>> arrow_record_batch_res =

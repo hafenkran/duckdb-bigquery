@@ -156,7 +156,7 @@ unique_ptr<PhysicalOperator> AddCastToBigqueryTypes(ClientContext &context, uniq
             select_list.push_back(std::move(expr));
         }
         auto proj = make_uniq<PhysicalProjection>(types, std::move(select_list), plan->estimated_cardinality);
-        proj->children.push_back(move(plan));
+        proj->children.push_back(std::move(plan));
         plan = std::move(proj);
     }
     return plan;

@@ -23,7 +23,8 @@ namespace bigquery {
 
 
 struct BigqueryGlobalFunctionState : public GlobalTableFunctionState {
-    BigqueryGlobalFunctionState(shared_ptr<BigqueryArrowReader> arrow_reader) : arrow_reader(arrow_reader) {
+    explicit BigqueryGlobalFunctionState(shared_ptr<BigqueryArrowReader> arrow_reader)
+        : arrow_reader(std::move(arrow_reader)) {
     }
 
     mutable mutex lock;
@@ -154,8 +155,6 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
 static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContext &context,
                                                                     TableFunctionInitInput &input) {
     auto &bind_data = (BigqueryBindData &)*input.bind_data;
-    const string parent = bind_data.ParentString();
-    const string table_name = bind_data.TableString();
 
     // selected fields
     vector<string> selected_fields;
@@ -198,14 +197,14 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
 
 std::vector<column_t> CalculateRanks(const std::vector<column_t> &nums) {
     size_t n = nums.size();
-    std::vector<std::pair<column_t, column_t>> valueIndexPairs(n);
+    std::vector<std::pair<column_t, column_t>> value_index_pairs(n);
     for (size_t i = 0; i < n; ++i) {
-        valueIndexPairs[i] = {nums[i], i};
+        value_index_pairs[i] = {nums[i], i};
     }
-    std::sort(valueIndexPairs.begin(), valueIndexPairs.end());
+    std::sort(value_index_pairs.begin(), value_index_pairs.end());
     std::vector<column_t> ranks(n);
     for (column_t i = 0; i < n; ++i) {
-        ranks[valueIndexPairs[i].second] = i;
+        ranks[value_index_pairs[i].second] = i;
     }
     return ranks;
 }
