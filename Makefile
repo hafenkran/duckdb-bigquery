@@ -20,3 +20,8 @@ lint:
 		-header-filter="src/include/*.\(h|hpp)" \
 		-j 4 \
 		-p=build/debug/
+
+.PHONY: cmake-format
+cmake-format:
+	cmake-format -c $(MAKEFILE_DIR)/.cmake-format.yaml \
+		-i $(MAKEFILE_DIR)/CMakeLists.txt $(MAKEFILE_DIR)/external/CMakeLists.txt
