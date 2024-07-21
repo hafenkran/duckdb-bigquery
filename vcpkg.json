@@ -29,13 +29,7 @@
   "overrides": [
     {
       "name": "abseil",
-      "platform": "!(arm64-linux)",
       "version": "20230802.1"
-    },
-    {
-      "name": "abseil",
-      "platform": "arm64-linux",
-      "version": "20230125.3"
     },
     {
       "name": "re2",
