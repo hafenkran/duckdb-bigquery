@@ -28,7 +28,7 @@ namespace bigquery {
 class BigqueryClient {
 public:
     explicit BigqueryClient(const string &project_id,
-                            string dataset_id = "",
+                            const string &dataset_id = "",
                             const string &api_endpoint = "",
                             const string &grpc_endpoint = "");
     explicit BigqueryClient(ConnectionDetails &conn);
@@ -80,7 +80,7 @@ public:
 
     std::pair<shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient>,
               shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>>
-    CreateWriteStream(const string dataset_id, const string table_id);
+    CreateWriteStream(const string &dataset_id, const string &table_id);
 
 
     shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,

@@ -243,7 +243,7 @@ std::string MapArrowTypeToBigQuery(const std::shared_ptr<arrow::DataType> &arrow
     }
 }
 
-LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> arrow_type) {
+LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type) {
     switch (arrow_type->id()) {
     case arrow::Type::BOOL:
         return LogicalType::BOOLEAN;

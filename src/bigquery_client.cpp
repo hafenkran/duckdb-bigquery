@@ -96,8 +96,8 @@ bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
 }
 
 
-BigqueryClient::BigqueryClient(const string &project_id, string dataset_id, const string &api_endpoint, const string &grpc_endpoint)
-    : project_id(project_id), dataset_id(std::move(dataset_id)), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
+BigqueryClient::BigqueryClient(const string &project_id, const string &dataset_id, const string &api_endpoint, const string &grpc_endpoint)
+    : project_id(project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
 
     if (project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
@@ -420,7 +420,7 @@ BigqueryClient::CreateReadSession(const string &dataset_id,
 
 std::pair<shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient>,
           shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>>
-BigqueryClient::CreateWriteStream(const string dataset_id, const string table_id) {
+BigqueryClient::CreateWriteStream(const string &dataset_id, const string &table_id) {
     // const string parent = BigqueryUtils::FormatParentString(project_id);
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 

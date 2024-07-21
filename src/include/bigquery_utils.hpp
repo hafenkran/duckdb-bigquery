@@ -96,7 +96,7 @@ public:
 
     static LogicalType CastToBigqueryType(const LogicalType &type);
     static LogicalType FieldSchemaToLogicalType(const TableFieldSchema &field);
-    static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> arrow_type);
+    static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
 
