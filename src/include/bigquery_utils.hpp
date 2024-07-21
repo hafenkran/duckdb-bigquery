@@ -92,11 +92,11 @@ public:
 
     static bool IsValueQuotable(const Value &value);
     static string WriteQuotedIdentifier(const string &identifier);
-    static string ReplaceQuotes(string &identifier, char to_replace='\'');
+    static string ReplaceQuotes(string &identifier, char to_replace = '\'');
 
     static LogicalType CastToBigqueryType(const LogicalType &type);
     static LogicalType FieldSchemaToLogicalType(const TableFieldSchema &field);
-    static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> arrow_type);
+    static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
 

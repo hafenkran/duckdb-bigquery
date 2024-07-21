@@ -18,7 +18,7 @@ struct BigquerySQL {
 public:
     static string ExtractFilters(PhysicalOperator &child);
     static string TransformFilter(const string &column_name, TableFilter &filter);
-    static string CreateExpression(const string &column_name, vector<unique_ptr<TableFilter>> &filters, string op);
+    static string CreateExpression(const string &column_name, vector<unique_ptr<TableFilter>> &filters, const string &op);
 
     static string CreateSchemaInfoToSQL(const string &project_id, const CreateSchemaInfo &info);
     static string CreateTableInfoToSQL(const string &project_id, const CreateTableInfo &info);

@@ -23,7 +23,7 @@ public:
     BigqueryTransaction(BigqueryCatalog &bigquery_catalog, TransactionManager &manager, ClientContext &context);
     ~BigqueryTransaction() override;
 
-    shared_ptr<BigqueryClient> GetBigqueryClient();
+    shared_ptr<duckdb::bigquery::BigqueryClient> GetBigqueryClient();
     static BigqueryTransaction &Get(ClientContext &context, Catalog &catalog);
 
     AccessMode GetAccessMode() {
@@ -32,7 +32,7 @@ public:
 
 private:
     BigqueryCatalog &bigquery_catalog;
-    shared_ptr<BigqueryClient> client;
+    shared_ptr<duckdb::bigquery::BigqueryClient> client;
     case_insensitive_map_t<unique_ptr<CatalogEntry>> catalog_entries;
     AccessMode access_mode;
 };

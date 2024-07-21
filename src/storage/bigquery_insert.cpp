@@ -50,7 +50,7 @@ public:
     std::map<std::string, idx_t> column_name_to_index;
 };
 
-vector<string> GetInsertColumns(const BigqueryInsert &insert, BigqueryTableEntry &entry) {
+vector<string> GetInsertColumns(const duckdb::bigquery::BigqueryInsert &insert, BigqueryTableEntry &entry) {
     vector<string> column_names;
     idx_t column_count = 0;
     auto &columns = entry.GetColumns();
@@ -156,7 +156,7 @@ unique_ptr<PhysicalOperator> AddCastToBigqueryTypes(ClientContext &context, uniq
             select_list.push_back(std::move(expr));
         }
         auto proj = make_uniq<PhysicalProjection>(types, std::move(select_list), plan->estimated_cardinality);
-        proj->children.push_back(move(plan));
+        proj->children.push_back(std::move(plan));
         plan = std::move(proj);
     }
     return plan;

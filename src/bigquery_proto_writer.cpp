@@ -25,7 +25,7 @@
 namespace duckdb {
 namespace bigquery {
 
-void validateDateRange(const duckdb::date_t &value) {
+void ValidateDateRange(const duckdb::date_t &value) {
     // Range: 0001-01-01 to 9999-12-31
     auto constexpr kDateRangeMin = -719162;
     auto constexpr kDateRangeMax = 2932896;
@@ -35,7 +35,7 @@ void validateDateRange(const duckdb::date_t &value) {
     }
 }
 
-void validateTimeRange(const duckdb::dtime_t &value) {
+void ValidateTimeRange(const duckdb::dtime_t &value) {
     auto constexpr kTimeRangeMin = 0;
     auto constexpr kTimeRangeMax = 86399999999999;
     if (value.micros < kTimeRangeMin || value.micros > kTimeRangeMax) {
@@ -43,7 +43,7 @@ void validateTimeRange(const duckdb::dtime_t &value) {
     }
 }
 
-void validateTimestampRange(const duckdb::timestamp_t &value) {
+void ValidateTimestampRange(const duckdb::timestamp_t &value) {
     // Range: 0001-01-01 00:00:00 to 9999-12-31 23:59:59.999999 UTC
     auto constexpr kMinTimestampMicros = -62135596800000000;
     auto constexpr kMaxTimestampMicros = 253402300799999999;
@@ -54,7 +54,7 @@ void validateTimestampRange(const duckdb::timestamp_t &value) {
     }
 }
 
-void validateIntervalRange(const duckdb::interval_t &value) { // TODO
+void ValidateIntervalRange(const duckdb::interval_t &value) { // TODO
     // Range: -10000-0 -3660000 -87840000:0:0 to 10000-0 3660000 87840000:0:0
     auto constexpr kIntervalRangeMin = -315576000000000;
     auto constexpr kIntervalRangeMax = 315576000000000;
@@ -63,7 +63,7 @@ void validateIntervalRange(const duckdb::interval_t &value) { // TODO
     }
 }
 
-BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, google::cloud::Options options) {
+BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google::cloud::Options &options) {
 	auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
     auto project_id = bq_catalog.GetProjectID();
     auto dataset_id = entry->schema.name;
@@ -211,7 +211,7 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
 }
 
 
-void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, std::map<std::string, idx_t> column_idxs) {
+void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs) {
     auto msg_factory = google::protobuf::DynamicMessageFactory();
     msg_prototype = msg_factory.GetPrototype(msg_descriptor);
     if (msg_prototype == nullptr) {
@@ -393,7 +393,7 @@ void BigqueryProtoWriter::WriteRepeatedField(google::protobuf::Message *msg,
         for (const auto &item : children) {
             if (!item.IsNull()) {
                 auto value = item.GetValueUnsafe<duckdb::date_t>();
-                validateDateRange(item.GetValueUnsafe<duckdb::date_t>());
+                ValidateDateRange(item.GetValueUnsafe<duckdb::date_t>());
                 reflection->AddInt32(msg, field, value.days);
             }
         }
@@ -599,8 +599,8 @@ void BigqueryProtoWriter::WriteField(google::protobuf::Message *msg,
         break;
     }
     case LogicalTypeId::BLOB: {
-        auto value = val;
-        reflection->SetString(msg, field, value.GetValueUnsafe<string>());
+        // auto value = val;
+        reflection->SetString(msg, field, val.GetValueUnsafe<string>());
         break;
     }
     case LogicalTypeId::BOOLEAN: {
@@ -610,7 +610,7 @@ void BigqueryProtoWriter::WriteField(google::protobuf::Message *msg,
     }
     case LogicalTypeId::DATE: {
         auto value = val.GetValueUnsafe<duckdb::date_t>();
-        validateDateRange(value);
+        ValidateDateRange(value);
         reflection->SetInt32(msg, field, Date::EpochDays(value));
         break;
     }
@@ -653,13 +653,13 @@ void BigqueryProtoWriter::WriteField(google::protobuf::Message *msg,
     }
     case LogicalTypeId::TIME: {
         auto value = val.GetValueUnsafe<duckdb::dtime_t>();
-        validateTimeRange(value);
+        ValidateTimeRange(value);
         reflection->SetString(msg, field, Time::ToString(value));
         break;
     }
     case LogicalTypeId::TIMESTAMP: {
         auto value = val.GetValueUnsafe<duckdb::timestamp_t>();
-        validateTimestampRange(value);
+        ValidateTimestampRange(value);
         reflection->SetInt64(msg, field, Timestamp::GetEpochMicroSeconds(val.GetValueUnsafe<duckdb::timestamp_t>()));
         break;
     }

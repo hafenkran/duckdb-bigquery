@@ -10,8 +10,7 @@ namespace duckdb {
 namespace bigquery {
 
 struct AttachFunctionData : public TableFunctionData {
-    AttachFunctionData() {
-    }
+    AttachFunctionData() = default;
 
     bool finished = false;
     bool overwrite = false;
@@ -26,7 +25,7 @@ static unique_ptr<FunctionData> AttachBind(ClientContext &context,
                                            vector<string> &names) {
     auto table_string = input.inputs[0].GetValue<string>();
     auto dataset_ref = BigqueryUtils::ParseTableString(table_string);
-    if (dataset_ref.table_id != "") {
+    if (dataset_ref.table_id.empty()) {
         throw ParserException("Invalid attach statement: %s", table_string);
     }
 

@@ -1,5 +1,5 @@
-#include "bigquery_arrow_reader.hpp"
 #include "bigquery_client.hpp"
+#include "bigquery_arrow_reader.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
@@ -57,7 +57,7 @@ public:
     }
 
     google::cloud::Idempotency CreateWriteStream(
-        google::cloud::bigquery::storage::v1::CreateWriteStreamRequest const &request) {
+        google::cloud::bigquery::storage::v1::CreateWriteStreamRequest const &request) override {
         return google::cloud::Idempotency::kIdempotent;
     }
 
@@ -66,28 +66,28 @@ public:
     }
 
     google::cloud::Idempotency GetWriteStream(
-        google::cloud::bigquery::storage::v1::GetWriteStreamRequest const &request) {
+        google::cloud::bigquery::storage::v1::GetWriteStreamRequest const &request) override {
         return google::cloud::Idempotency::kIdempotent;
     }
 
     google::cloud::Idempotency BatchCommitWriteStreams(
-        google::cloud::bigquery::storage::v1::BatchCommitWriteStreamsRequest const &request) {
+        google::cloud::bigquery::storage::v1::BatchCommitWriteStreamsRequest const &request) override {
         return google::cloud::Idempotency::kIdempotent;
     }
 };
 
-template <typename Func>
-bool retryOperation(Func op, int maxAttempts, int initialDelayMs) {
+template <typename FUNC>
+bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
     int attempts = 0;
-    int delay = initialDelayMs;
+    int delay = initial_delay_mss;
 
-    while (attempts < maxAttempts) {
+    while (attempts < max_attempts) {
         if (op()) {
             return true;
         }
 
         attempts++;
-        if (attempts < maxAttempts) {
+        if (attempts < max_attempts) {
             std::this_thread::sleep_for(std::chrono::milliseconds(delay));
             delay *= 2;
         }
@@ -96,7 +96,7 @@ bool retryOperation(Func op, int maxAttempts, int initialDelayMs) {
 }
 
 
-BigqueryClient::BigqueryClient(string project_id, string dataset_id, string api_endpoint, string grpc_endpoint)
+BigqueryClient::BigqueryClient(const string &project_id, const string &dataset_id, const string &api_endpoint, const string &grpc_endpoint)
     : project_id(project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
 
     if (project_id.empty()) {
@@ -174,6 +174,7 @@ BigqueryClient BigqueryClient::NewClient(const string &connection_str) {
 
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     ListDatasetsRequest request(project_id);
+    request.set_max_results(1000);
 
     auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
     auto datasets = dataset_client->ListDatasets(request);
@@ -200,10 +201,11 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     return dataset_names;
 }
 
-vector<BigqueryTableRef> BigqueryClient::GetTables(const string dataset_id) {
-    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
-
+vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
     ListTablesRequest request(project_id, dataset_id);
+    request.set_max_results(1000);
+
+    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
     auto tables = table_client->ListTables(request);
 
     vector<BigqueryTableRef> table_names;
@@ -226,7 +228,7 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string dataset_id) {
     return table_names;
 }
 
-BigqueryDatasetRef BigqueryClient::GetDataset(const string dataset_id) {
+BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
     auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
     GetDatasetRequest request(project_id, dataset_id);
     auto dataset = dataset_client->GetDataset(request);
@@ -242,7 +244,7 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string dataset_id) {
     return info;
 }
 
-BigqueryTableRef BigqueryClient::GetTable(const string dataset_id, const string table_id) {
+BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
     auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
 
     GetTableRequest request(project_id, dataset_id, table_id);
@@ -259,7 +261,7 @@ BigqueryTableRef BigqueryClient::GetTable(const string dataset_id, const string 
     return info;
 }
 
-bool BigqueryClient::DatasetExists(const string dataset_id) {
+bool BigqueryClient::DatasetExists(const string &dataset_id) {
     auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
 
     GetDatasetRequest request(project_id, dataset_id);
@@ -272,7 +274,7 @@ bool BigqueryClient::DatasetExists(const string dataset_id) {
     return true;
 }
 
-bool BigqueryClient::TableExists(const string dataset_id, const string table_id) {
+bool BigqueryClient::TableExists(const string &dataset_id, const string &table_id) {
     auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
 
     GetTableRequest request(project_id, dataset_id, table_id);
@@ -291,7 +293,7 @@ void BigqueryClient::CreateDataset(const CreateSchemaInfo &info, const BigqueryD
 
     // Check if dataset exists with an exponential backoff retry
     auto op = [this, &info]() -> bool { return DatasetExists(info.schema); };
-    auto success = retryOperation(op, 10, 1000);
+    auto success = RetryOperation(op, 10, 1000);
     if (!success) {
         throw InternalException("Failed to verify that \"%s\" has been successfully created", info.schema);
     }
@@ -303,7 +305,7 @@ void BigqueryClient::CreateTable(const CreateTableInfo &info, const BigqueryTabl
 
     // Check if the table exists with an exponential backoff retry
     auto op = [this, &info]() -> bool { return TableExists(info.schema, info.table); };
-    auto success = retryOperation(op, 10, 1000);
+    auto success = RetryOperation(op, 10, 1000);
     if (!success) {
         throw InternalException("Failed to verify that \"%s\" has been successfully created", info.table);
     }
@@ -329,8 +331,8 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
     ExecuteQuery(drop_query);
 }
 
-void BigqueryClient::GetTableInfo(const string dataset_id,
-                                  const string table_id,
+void BigqueryClient::GetTableInfo(const string &dataset_id,
+                                  const string &table_id,
                                   ColumnList &res_columns,
                                   vector<unique_ptr<Constraint>> &res_constraints) {
 
@@ -353,7 +355,7 @@ void BigqueryClient::GetTableInfo(const string dataset_id,
         // Create the ColumnDefinition
         auto column_type = BigqueryUtils::FieldSchemaToLogicalType(field);
 
-        ColumnDefinition column(std::move(field.name), std::move(column_type));
+        ColumnDefinition column(field.name, std::move(column_type));
         // column.SetComment(std::move(field.description));
 
         auto default_value = field.default_value_expression;
@@ -380,8 +382,8 @@ void BigqueryClient::GetTableInfo(const string dataset_id,
 
 
 std::pair<google::cloud::bigquery_storage_v1::BigQueryReadClient, google::cloud::bigquery::storage::v1::ReadSession>
-BigqueryClient::CreateReadSession(const string dataset_id,
-                                  const string table_id,
+BigqueryClient::CreateReadSession(const string &dataset_id,
+                                  const string &table_id,
                                   const idx_t num_streams,
                                   const vector<string> &selected,
                                   const string &filter_cond) {
@@ -399,12 +401,12 @@ BigqueryClient::CreateReadSession(const string dataset_id,
 
     // https://github.com/rocketechgroup/bigquery-storage-read-api-example/blob/master/main_simple.py
     auto *read_options = read_session.mutable_read_options();
-    if (selected.size() > 0) {
+    if (!selected.empty()) {
         for (const auto &column : selected) {
             read_options->add_selected_fields(column);
         }
     }
-    if (filter_cond != "") {
+    if (!filter_cond.empty()) {
         read_options->set_row_restriction(filter_cond);
     }
 
@@ -418,8 +420,8 @@ BigqueryClient::CreateReadSession(const string dataset_id,
 
 std::pair<shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient>,
           shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>>
-BigqueryClient::CreateWriteStream(const string dataset_id, const string table_id) {
-    const string parent = BigqueryUtils::FormatParentString(project_id);
+BigqueryClient::CreateWriteStream(const string &dataset_id, const string &table_id) {
+    // const string parent = BigqueryUtils::FormatParentString(project_id);
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 
     // Set retry and backoff policies.
@@ -446,29 +448,30 @@ BigqueryClient::CreateWriteStream(const string dataset_id, const string table_id
         throw InternalException("some error occured: " + real_write_stream.status().message());
     }
 
-    auto res_write_stream = make_shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>(real_write_stream.value());
+    auto res_write_stream =
+        make_shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>(real_write_stream.value());
     return std::make_pair(client, res_write_stream);
 }
 
-shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string dataset_id,
-                                                                  const string table_id,
+shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &dataset_id,
+                                                                  const string &table_id,
                                                                   const idx_t num_streams,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
     return make_shared_ptr<BigqueryArrowReader>(project_id,
-                                            dataset_id,
-                                            table_id,
-                                            num_streams,
-                                            grpc_options,
-                                            column_ids,
-                                            filter_cond);
+                                                dataset_id,
+                                                table_id,
+                                                num_streams,
+                                                grpc_options,
+                                                column_ids,
+                                                filter_cond);
 }
 
 shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableEntry *entry) {
     if (entry == nullptr) {
         throw InternalException("Error while initializing proto writer: entry is null");
     }
-	auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
+    auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
     if (bq_catalog.GetProjectID() != project_id) {
         throw InternalException("Error while initializing proto writer: project_id mismatch");
     }
@@ -524,7 +527,9 @@ PostQueryResults BigqueryClient::ExecuteQuery(const string &query, const string 
 }
 
 
-google::cloud::StatusOr<Job> BigqueryClient::GetJob(JobClient &job_client, const string job_id, const string location) {
+google::cloud::StatusOr<Job> BigqueryClient::GetJob(JobClient &job_client,
+                                                    const string &job_id,
+                                                    const string &location) {
     if (project_id.empty()) {
         throw BinderException("project_id config parameter is empty.");
     } else if (job_id.empty()) {

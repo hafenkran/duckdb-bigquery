@@ -12,7 +12,8 @@ namespace bigquery {
 
 struct BigQueryExecuteBindData : public TableFunctionData {
 public:
-    explicit BigQueryExecuteBindData(BigqueryCatalog &bq_catalog, string query) : bq_catalog(bq_catalog), query(query) {
+    explicit BigQueryExecuteBindData(BigqueryCatalog &bq_catalog, string query)
+        : bq_catalog(bq_catalog), query(std::move(query)) {
     }
 
 public:

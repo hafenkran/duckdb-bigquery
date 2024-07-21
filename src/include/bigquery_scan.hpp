@@ -19,7 +19,7 @@ struct BigqueryBindData : public TableFunctionData {
 
     vector<string> names;
     vector<LogicalType> types;
-	idx_t estimated_row_count = 1;
+    idx_t estimated_row_count = 1;
 
     string ParentString() const {
         return BigqueryUtils::FormatParentString(project_id);

@@ -1,34 +1,33 @@
-#include "google/cloud/bigquery/storage/v1/arrow.pb.h"
-#include "google/cloud/common_options.h"
-#include "google/cloud/grpc_options.h"
-
 #include "duckdb.hpp"
 #include "duckdb/common/types/hugeint.hpp"
 #include "duckdb/common/types/time.hpp"
 #include "duckdb/parser/column_list.hpp"
 
-#include "bigquery_arrow_reader.hpp"
-#include "bigquery_utils.hpp"
+#include "google/cloud/bigquery/storage/v1/arrow.pb.h"
+#include "google/cloud/common_options.h"
+#include "google/cloud/grpc_options.h"
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
 #include <arrow/ipc/writer.h>
 #include <arrow/visit_type_inline.h>
-
 #include <chrono>
 #include <ctime>
 #include <iostream>
 #include <stdexcept>
 
+#include "bigquery_arrow_reader.hpp"
+#include "bigquery_utils.hpp"
+
 namespace duckdb {
 namespace bigquery {
 
-BigqueryArrowReader::BigqueryArrowReader(string project_id,
-                                         string dataset_id,
-                                         string table_id,
+BigqueryArrowReader::BigqueryArrowReader(const string &project_id,
+                                         const string &dataset_id,
+                                         const string &table_id,
                                          idx_t num_streams,
-                                         google::cloud::Options options,
+                                         const google::cloud::Options &options,
                                          const vector<string> &selected_columns,
                                          const string &filter_condition)
     : project_id(project_id), dataset_id(dataset_id), table_id(table_id), num_streams(num_streams), options(options),
@@ -51,7 +50,7 @@ BigqueryArrowReader::BigqueryArrowReader(string project_id,
     session.set_data_format(google::cloud::bigquery::storage::v1::DataFormat::ARROW);
 
     auto *read_options = session.mutable_read_options();
-    if (selected_columns.size() > 0) {
+    if (!selected_columns.empty()) {
         for (const auto &column : selected_columns) {
             read_options->add_selected_fields(column);
         }
@@ -137,9 +136,9 @@ hugeint_t ReadDecimalValue(const uint8_t *pointer, idx_t size, int32_t precision
         bool carry = true;
         for (int i = 0; i < sizeof(hugeint_t); i++) {
             if (carry) {
-                if (res_ptr[i] == 0xFF)
+                if (res_ptr[i] == 0xFF) {
                     res_ptr[i] = 0;
-                else {
+                } else {
                     res_ptr[i]++;
                     carry = false;
                 }
@@ -147,14 +146,14 @@ hugeint_t ReadDecimalValue(const uint8_t *pointer, idx_t size, int32_t precision
         }
         res.upper = ~res.upper;
         res.lower = ~res.lower + 1;
-        if (res.lower == 0)
-            res.upper += 1;                                // Handle carry for low part overflow
+        if (res.lower == 0) {
+            res.upper += 1; // Handle carry for low part overflow
+        }
         res.upper = -res.upper - (res.lower == 0 ? 1 : 0); // Adjust high part if low part overflowed
     }
 
     return res;
 }
-
 
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::ReadSchema(
     const google::cloud::bigquery::storage::v1::ArrowSchema &schema) {
@@ -195,7 +194,8 @@ std::shared_ptr<arrow::RecordBatch> BigqueryArrowReader::ReadBatch(
         }
     } else {
         // Read the Arrow Record Batch from the serialized data
-        arrow::io::BufferReader buffer_reader(batch.serialized_record_batch());
+        auto arrow_buffer = arrow::Buffer::FromString(batch.serialized_record_batch());
+        arrow::io::BufferReader buffer_reader(arrow_buffer);
 
         auto options = arrow::ipc::IpcReadOptions::Defaults();
         arrow::Result<std::shared_ptr<arrow::RecordBatch>> arrow_record_batch_res =
@@ -381,7 +381,6 @@ void BigqueryArrowReader::ReadSimpleColumn(const std::shared_ptr<arrow::Array> &
     }
     }
 }
-
 
 void BigqueryArrowReader::ReadListColumn(const std::shared_ptr<arrow::ListArray> &list_array, Vector &out_vec) {
     auto values = list_array->values();
@@ -656,9 +655,8 @@ void BigqueryArrowReader::ReadStructColumn(const std::shared_ptr<arrow::StructAr
             default:
                 throw InternalException("Unsupported Arrow type: " + field_type->name());
             }
-
-            out_vec.SetValue(row, Value::STRUCT(std::move(struct_values)));
         }
+		out_vec.SetValue(row, Value::STRUCT(std::move(struct_values)));
     }
 }
 

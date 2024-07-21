@@ -27,10 +27,10 @@ namespace bigquery {
 
 class BigqueryClient {
 public:
-    explicit BigqueryClient(string project_id,
-                            string dataset_id = "",
-                            string api_endpoint = "",
-                            string grpc_endpoint = "");
+    explicit BigqueryClient(const string &project_id,
+                            const string &dataset_id = "",
+                            const string &api_endpoint = "",
+                            const string &grpc_endpoint = "");
     explicit BigqueryClient(ConnectionDetails &conn);
     ~BigqueryClient();
 
@@ -43,13 +43,13 @@ public:
     static BigqueryClient NewClient(const string &connection_string);
 
 public:
-    bool DatasetExists(const string dataset_id);
-    bool TableExists(const string dataset_id, const string table_id);
+    bool DatasetExists(const string &dataset_id);
+    bool TableExists(const string &dataset_id, const string &table_id);
 
     vector<BigqueryDatasetRef> GetDatasets();
-    vector<BigqueryTableRef> GetTables(const string dataset_id);
-    BigqueryDatasetRef GetDataset(const string dataset_id);
-    BigqueryTableRef GetTable(const string dataset_id, const string table_id);
+    vector<BigqueryTableRef> GetTables(const string &dataset_id);
+    BigqueryDatasetRef GetDataset(const string &dataset_id);
+    BigqueryTableRef GetTable(const string &dataset_id, const string &table_id);
 
     void CreateDataset(const CreateSchemaInfo &info, const BigqueryDatasetRef &dataset_ref);
     void CreateTable(const CreateTableInfo &info, const BigqueryTableRef &table_ref);
@@ -59,32 +59,32 @@ public:
     void DropTable(const DropInfo &info);
     void DropView(const DropInfo &info);
 
-    void GetTableInfo(const string dataset_id,
-                      const string table_id,
+    void GetTableInfo(const string &dataset_id,
+                      const string &table_id,
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
 
     PostQueryResults ExecuteQuery(const string &query, const string &location = "");
 
-    void CreateReadSession(const string project_id, const string dataset_id, const string table_id);
+    void CreateReadSession(const string &project_id, const string &dataset_id, const string &table_id);
     // void ReadArrowResutls(google::cloud::bigquery::storage::v1::ArrowSchema const &schema,
     //                       google::cloud::bigquery::storage::v1::ArrowRecordBatch const &batch);
 
     std::pair<google::cloud::bigquery_storage_v1::BigQueryReadClient, //
               google::cloud::bigquery::storage::v1::ReadSession>
-    CreateReadSession(const string dataset_id,
-                      const string table_id,
+    CreateReadSession(const string &dataset_id,
+                      const string &table_id,
                       const idx_t num_streams,
                       const vector<string> &column_ids = std::vector<string>(),
                       const string &filter_cond = "");
 
     std::pair<shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient>,
               shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>>
-    CreateWriteStream(const string dataset_id, const string table_id);
+    CreateWriteStream(const string &dataset_id, const string &table_id);
 
 
-    shared_ptr<BigqueryArrowReader> CreateArrowReader(const string dataset_id,
-                                                      const string table_id,
+    shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,
+                                                      const string &table_id,
                                                       const idx_t num_streams,
                                                       const vector<string> &column_ids = std::vector<string>(),
                                                       const string &filter_cond = "");
@@ -105,7 +105,7 @@ public:
 
 private:
     string GenerateJobId(const string &prefix = "");
-    google::cloud::StatusOr<Job> GetJob(JobClient &job_client, const string job_id, const string location = "");
+    google::cloud::StatusOr<Job> GetJob(JobClient &job_client, const string &job_id, const string &location = "");
 
     google::cloud::StatusOr<PostQueryResults> PostQueryJob(JobClient &job_client,
                                                            const string &query,

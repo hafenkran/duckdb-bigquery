@@ -51,13 +51,11 @@ std::string BigquerySQL::ExtractFilters(PhysicalOperator &child) {
         return table_filters_exp;
     }
     default:
-        throw NotImplementedException("Unsupported operator type " + PhysicalOperatorToString(child.type) +
-                                      " in DELETE statement - only simple deletes (e.g. DELETE FROM tbl WHERE x=y) are "
-                                      "supported in the MySQL connector");
+        throw NotImplementedException("Unsupported operator type " + PhysicalOperatorToString(child.type));
     }
 }
 
-string BigquerySQL::CreateExpression(const string &column_name, vector<unique_ptr<TableFilter>> &filters, string op) {
+string BigquerySQL::CreateExpression(const string &column_name, vector<unique_ptr<TableFilter>> &filters, const string &op) {
     vector<string> filter_entries;
     for (auto &filter : filters) {
         filter_entries.push_back(TransformFilter(column_name, *filter));
@@ -69,7 +67,7 @@ string BigquerySQL::TransformFilter(const string &column_name, TableFilter &filt
     // string quoted_column_name = "`" + column_name + "`";
     switch (filter.filter_type) {
     case TableFilterType::CONSTANT_COMPARISON: {
-        auto &constant_filter = (ConstantFilter &)filter;
+        auto &constant_filter = dynamic_cast<ConstantFilter &>(filter);
 
         string constant_string;
         if (BigqueryUtils::IsValueQuotable(constant_filter.constant)) {
@@ -101,12 +99,12 @@ string BigquerySQL::TransformFilter(const string &column_name, TableFilter &filt
         return "`" + column_name + "` IS NOT NULL";
     case TableFilterType::CONJUNCTION_AND:
     case TableFilterType::CONJUNCTION_OR: {
-        auto &conjunction_filter = (ConjunctionAndFilter &)filter;
+        auto &conjunction_filter = dynamic_cast<ConjunctionAndFilter &>(filter);
         string op = filter.filter_type == TableFilterType::CONJUNCTION_AND ? "AND" : "OR";
         return CreateExpression(column_name, conjunction_filter.child_filters, op);
     }
     case TableFilterType::STRUCT_EXTRACT: {
-        auto &struct_filter = (StructFilter &)filter;
+        auto &struct_filter = dynamic_cast<StructFilter &>(filter);
         auto child_name = KeywordHelper::WriteQuoted(struct_filter.child_name, '`');
         auto new_column_name = "`" + column_name + "`." + child_name;
         return TransformFilter(new_column_name, *struct_filter.child_filter);
@@ -249,9 +247,15 @@ string BigquerySQL::LogicalDeleteToSQL(const string &project_id, LogicalDelete &
     std::stringstream sql;
     sql << "DELETE FROM ";
     sql << BigqueryUtils::WriteQuotedIdentifier(table_string);
-    auto filters = ExtractFilters(child);
-    if (!filters.empty()) {
-        sql << " WHERE " + filters;
+    try {
+        auto filters = ExtractFilters(child);
+        if (!filters.empty()) {
+            sql << " WHERE " + filters;
+        }
+    } catch (const NotImplementedException &e) {
+        throw NotImplementedException(std::string(e.what()) +
+                                      " in DELETE statement - only simple deletes (e.g. DELETE FROM tbl WHERE x=y) are "
+                                      "supported in the MySQL connector");
     }
     return sql.str();
 }
@@ -304,9 +308,9 @@ string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector
     // They are often managed through separate mechanisms or not directly applicable
     // This is a placeholder for any additional constraints or handling you might need
     // for (auto &extra_constraint : constraints) {
-        // BigQuery might not support adding constraints directly in CREATE TABLE like MySQL
-        // We might need to handle some constraints separately or differently
-        // TODO
+    // BigQuery might not support adding constraints directly in CREATE TABLE like MySQL
+    // We might need to handle some constraints separately or differently
+    // TODO
     // }
 
     str << ")";
