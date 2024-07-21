@@ -385,7 +385,7 @@ jobs:
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
               run: |
-                  make release VERBOSE=1
+                  make release
 
             - id: 'auth'
               uses: 'google-github-actions/auth@v2'
