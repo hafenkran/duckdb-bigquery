@@ -479,6 +479,7 @@ jobs:
 
             - name: Setup Ccache
               uses: hendrikmuhs/ccache-action@main
+              continue-on-error: true
               with:
                   key: ${{ github.job }}-${{ matrix.duckdb_arch }}
 
@@ -490,6 +491,7 @@ jobs:
             - name: Build extension
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+                  DUCKDB_PLATFORM_RTOOLS: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 1 || 0 }}
               run: |
                   make release CURL_LIBRARY=$CURL_LIBRARY CURL_INCLUDE_DIR=$CURL_INCLUDE_DIR
 
