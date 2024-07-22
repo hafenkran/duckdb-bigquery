@@ -476,10 +476,11 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
         throw InternalException("Error while initializing proto writer: project_id mismatch");
     }
 
-    while (!TableExists(entry->schema.name, entry->name)) {
-        std::cout << "Table does not exist yet" << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        std::cout << "Retrying..." << std::endl;
+	// Check if dataset exists with an exponential backoff retry
+    auto op = [this, &entry]() -> bool { return TableExists(entry->schema.name, entry->name); };
+    auto success = RetryOperation(op, 10, 1000);
+    if (!success) {
+        throw InternalException("Failed to verify that \"%s.%s\" exists.", entry->schema.name, entry->name);
     }
 
     auto options = grpc_options
