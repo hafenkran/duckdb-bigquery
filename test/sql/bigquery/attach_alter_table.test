@@ -1,0 +1,24 @@
+# name: test/sql/bigquery/attach_alter_table.test
+# description: Test altering tables
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table;
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table(i INTEGER);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.alter_table VALUES (42);
+
+statement ok
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table RENAME COLUMN i TO st;
