@@ -167,22 +167,13 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
 			stmt << BigqueryUtils::WriteQuotedIdentifier(remove_column_info.removed_column);
 			break;
 		}
-		case AlterTableType::DROP_NOT_NULL: {
+		case AlterTableType::ALTER_COLUMN_TYPE: {
 			// Syntax
-			// ALTER TABLE table_name ALTER COLUMN column_name DROP NOT NULL
-			auto drop_not_null_info = info.Cast<DropNotNullInfo>();
+			// ALTER TABLE table_name ALTER COLUMN column_name SET DATA TYPE type
+			auto alter_column_type_info = dynamic_cast<const ChangeColumnTypeInfo*>(&info);
 			stmt << "ALTER COLUMN ";
-			stmt << BigqueryUtils::WriteQuotedIdentifier(drop_not_null_info.column_name);
-			stmt << " DROP NOT NULL";
-			break;
-		}
-		case AlterTableType::SET_NOT_NULL: {
-			// Syntax
-			// ALTER TABLE table_name ALTER COLUMN column_name SET NOT NULL
-			auto set_not_null_info = info.Cast<SetNotNullInfo>();
-			stmt << "ALTER COLUMN ";
-			stmt << BigqueryUtils::WriteQuotedIdentifier(set_not_null_info.column_name);
-			stmt << " SET NOT NULL";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(alter_column_type_info->column_name);
+			stmt << " SET DATA TYPE " << BigqueryUtils::LogicalTypeToBigquerySQL(alter_column_type_info->target_type);
 			break;
 		}
 		case AlterTableType::SET_DEFAULT: {
@@ -192,6 +183,15 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
 			stmt << "ALTER COLUMN ";
 			stmt << BigqueryUtils::WriteQuotedIdentifier(set_default_info->column_name);
 			stmt << " SET DEFAULT " << set_default_info->expression->ToString();
+			break;
+		}
+		case AlterTableType::DROP_NOT_NULL: {
+			// Syntax
+			// ALTER TABLE table_name ALTER COLUMN column_name DROP NOT NULL
+			auto drop_not_null_info = info.Cast<DropNotNullInfo>();
+			stmt << "ALTER COLUMN ";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(drop_not_null_info.column_name);
+			stmt << " DROP NOT NULL";
 			break;
 		}
 		default:
