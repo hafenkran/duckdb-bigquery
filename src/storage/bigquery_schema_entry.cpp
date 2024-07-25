@@ -103,9 +103,10 @@ optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateType(CatalogTransaction tr
 
 void BigquerySchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) {
     if (info.type != AlterType::ALTER_TABLE) {
-        throw BinderException("Only altering tables is supported by now");
+        throw BinderException("Only altering tables is supported.");
     }
-    throw BinderException("BigQuery extension does not support altering.");
+	auto &alter = info.Cast<AlterTableInfo>();
+	tables.AlterTable(transaction.GetContext(), alter);
 }
 
 void BigquerySchemaEntry::Scan(ClientContext &context,
