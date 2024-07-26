@@ -114,6 +114,93 @@ string BigquerySQL::TransformFilter(const string &column_name, TableFilter &filt
     }
 }
 
+string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info){
+	if (info.schema.empty()) {
+		throw BinderException("Schema not specified for AlterTableInfo");
+	}
+	std::stringstream stmt;
+	stmt << "ALTER TABLE ";
+	stmt << BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.name) << " ";
+
+	switch (info.alter_table_type) {
+		case AlterTableType::RENAME_COLUMN: {
+			// Syntax
+			// ALTER TABLE [IF EXISTS] table_name
+			// RENAME COLUMN [IF EXISTS] column_to_column[, ...]
+			//
+			// 		column_to_column :=
+			//     		column_name TO new_column_name
+			auto rename_info = info.Cast<RenameColumnInfo>();
+			stmt << "RENAME COLUMN ";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.old_name) << " TO ";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_name);
+			break;
+		}
+		case AlterTableType::RENAME_TABLE: {
+			// Syntax
+			// ALTER TABLE [IF EXISTS] table_name RENAME TO new_table_name
+			auto rename_info = info.Cast<RenameTableInfo>();
+			stmt << "RENAME TO ";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_table_name);
+			break;
+		}
+		case AlterTableType::ADD_COLUMN: {
+			// Syntax
+			// ALTER TABLE table_name ADD COLUMN [IF NOT EXISTS] column [, ...]
+			auto add_column_info = dynamic_cast<const AddColumnInfo*>(&info);
+			// auto add_column_info = info.Cast<AddColumnInfo>();
+			stmt << "ADD COLUMN ";
+			if (add_column_info->if_column_not_exists) {
+				stmt << "IF NOT EXISTS ";
+			}
+			stmt << BigqueryColumnToSQL(add_column_info->new_column);
+			break;
+		}
+		case AlterTableType::REMOVE_COLUMN: {
+			// Syntax
+			// ALTER TABLE table_name DROP COLUMN [IF EXISTS] column_name [, ...]
+			auto remove_column_info = info.Cast<RemoveColumnInfo>();
+			stmt << "DROP COLUMN ";
+			if (remove_column_info.if_column_exists) {
+				stmt << "IF EXISTS ";
+			}
+			stmt << BigqueryUtils::WriteQuotedIdentifier(remove_column_info.removed_column);
+			break;
+		}
+		case AlterTableType::ALTER_COLUMN_TYPE: {
+			// Syntax
+			// ALTER TABLE table_name ALTER COLUMN column_name SET DATA TYPE type
+			auto alter_column_type_info = dynamic_cast<const ChangeColumnTypeInfo*>(&info);
+			stmt << "ALTER COLUMN ";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(alter_column_type_info->column_name);
+			stmt << " SET DATA TYPE " << BigqueryUtils::LogicalTypeToBigquerySQL(alter_column_type_info->target_type);
+			break;
+		}
+		case AlterTableType::SET_DEFAULT: {
+			// Syntax
+			// ALTER TABLE table_name ALTER COLUMN column_name SET DEFAULT expression
+			auto set_default_info = dynamic_cast<const SetDefaultInfo*>(&info);
+			stmt << "ALTER COLUMN ";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(set_default_info->column_name);
+			stmt << " SET DEFAULT " << set_default_info->expression->ToString();
+			break;
+		}
+		case AlterTableType::DROP_NOT_NULL: {
+			// Syntax
+			// ALTER TABLE table_name ALTER COLUMN column_name DROP NOT NULL
+			auto drop_not_null_info = info.Cast<DropNotNullInfo>();
+			stmt << "ALTER COLUMN ";
+			stmt << BigqueryUtils::WriteQuotedIdentifier(drop_not_null_info.column_name);
+			stmt << " DROP NOT NULL";
+			break;
+		}
+		default:
+			throw NotImplementedException("Unsupported Alter Table type: This type of ALTER TABLE is not supported.");
+	}
+
+	return stmt.str();
+}
+
 string BigquerySQL::CreateSchemaInfoToSQL(const string &project_id, const CreateSchemaInfo &info) {
     std::stringstream query;
     query << "CREATE SCHEMA ";
@@ -258,6 +345,16 @@ string BigquerySQL::LogicalDeleteToSQL(const string &project_id, LogicalDelete &
                                       "supported in the MySQL connector");
     }
     return sql.str();
+}
+
+string BigquerySQL::BigqueryColumnToSQL(const ColumnDefinition &column) {
+	std::stringstream sql;
+	sql << "`" << column.Name() << "` ";
+	sql << BigqueryUtils::LogicalTypeToBigquerySQL(column.Type());
+	if (column.HasDefaultValue()) {
+		sql << " DEFAULT (" << column.DefaultValue().ToString() << ")";
+	}
+	return sql.str();
 }
 
 string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints) {

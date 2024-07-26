@@ -114,26 +114,44 @@ D SHOW ALL TABLES;
 The following SQL statements provide a brief overview of supported functionalities and include examples for interacting with BigQuery:
 
 ```sql
+ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
+
 -- Create a BigQuery dataset
-D CREATE SCHEMA my_gcp_project.some_dataset;
+CREATE SCHEMA bq.some_dataset;
 
 -- Create a BigQuery table in some dataset
-D CREATE TABLE my_gcp_project.some_dataset.tbl(id INTEGER, some_string VARCHAR);
+CREATE TABLE bq.some_dataset.tbl(id INTEGER, some_string VARCHAR);
 
 -- Insert values into the table 
-D INSERT INTO my_gcp_project.some_dataset.tbl VALUES (42, "my quacking string");
+INSERT INTO bq.some_dataset.tbl VALUES (42, "my quacking string");
 
 -- Retrieves rows from the table
-D SELECT some_string FROM my_gcp_project.some_dataset.tbl;
+SELECT some_string FROM bq.some_dataset.tbl;
 
 -- Drop a BigQury table in some dataset
-D DROP TABLE IF EXISTS my_gcp_project.some_dataset.tbl;
+DROP TABLE IF EXISTS bq.some_dataset.tbl;
 
 -- Drop a BigQuery dataset
-D DROP SCHEMA IF EXISTS my_gcp_project.some_dataset;
-```
+DROP SCHEMA IF EXISTS bq.some_dataset;
 
-**Note**: Altering tables is not yet supported.
+-- Altering tables - rename table
+ALTER TABLE bq.some_dataset.tbl RENAME TO tbl_renamed;
+
+-- Altering tables - rename column
+ALTER TABLE bq.some_dataset.tbl RENAME COLUMN i TO i2;
+
+-- Altering tables - add column
+ALTER TABLE bq.some_dataset.tbl ADD COLUMN j INTEGER;
+
+-- Altering tables - drop column
+ALTER TABLE bq.some_dataset.tbl DROP COLUMN i;
+
+-- Altering tables - change column type
+ALTER TABLE bq.some_dataset.tbl ALTER COLUMN i TYPE DOUBLE;
+
+-- Altering tables - drop not null condition
+ALTER TABLE bq.some_dataset.tbl ALTER COLUMN i DROP NOT NULL;
+```
 
 ### `bigquery_scan` Function
 

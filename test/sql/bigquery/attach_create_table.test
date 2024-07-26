@@ -1,4 +1,4 @@
-# name: test/sql/bigquery/attach_types_blob.test
+# name: test/sql/bigquery/attach_create_table.test
 # description: Test inserting/querying blobs
 # group: [bigquery]
 

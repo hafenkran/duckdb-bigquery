@@ -57,6 +57,16 @@ unique_ptr<BigqueryTableInfo> BigqueryTableSet::GetTableInfo(ClientContext &cont
     return info;
 }
 
+void BigqueryTableSet::AlterTable(ClientContext &context, AlterTableInfo &info) {
+	auto &transaction = BigqueryTransaction::Get(context, catalog);
+	auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
+	auto bqclient = transaction.GetBigqueryClient();
+	auto entry = GetEntry(context, info.name);
+
+	auto query = BigquerySQL::AlterTableInfoToSQL(bq_catalog.GetProjectID(), info);
+	bqclient->ExecuteQuery(query);
+}
+
 void BigqueryTableSet::LoadEntries(ClientContext &context) {
     auto &transaction = BigqueryTransaction::Get(context, catalog);
     auto bqclient = transaction.GetBigqueryClient();
