@@ -154,15 +154,13 @@ jobs:
               run: |
                   apt-get update -y -qq
                   apt-get install -y -qq software-properties-common
-                  add-apt-repository ppa:git-core/ppa
-                  apt-get update -y -qq
-                  apt-get install -y -qq ninja-build make gcc-multilib g++-multilib libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libc6-dev-i386 lib32readline6-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client
+                  apt-get install -y -qq --fix-missing ninja-build make gcc-multilib g++-multilib libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libc6-dev-i386 lib32readline6-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client pkg-config
 
-            - name: Install required ubuntu packages (extended)
+            - name: Install required ubuntu packages (custom)
               if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
               run: |
                   apt-get update -y -qq
-                  apt-get install -y -qq bison pkg-config flex
+                  apt-get install -y -qq bison flex
 
             - name: Install cross compiler for linux_arm64
               shell: bash
@@ -229,19 +227,24 @@ jobs:
                   cd duckdb
                   git checkout ${{ inputs.duckdb_version }}
 
-            - name: Fix CentOS 7 EOL
-              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
-              run: |
-                  # Workaround the fact that CentOS 7 is EOL
-                  sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-                  sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-                  yum-config-manager --disable centos-sclo-rh
-                  yum install epel-release -y bison pkgconfig flex libcurl libcurl-devel
+            # - name: Fix CentOS 7 EOL
+            #   if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
+            #   run: |
+            #       # Workaround the fact that CentOS 7 is EOL
+            #       sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+            #       sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+            #       yum-config-manager --disable centos-sclo-rh
+            #       yum install epel-release -y bison pkgconfig flex libcurl libcurl-devel
 
             - name: Setup ManyLinux2014
               if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
               run: |
                   ./duckdb/scripts/setup_manylinux2014.sh general ccache ssh python_alias openssl curl
+
+            - name: Install required CentOS packages (custom)
+              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
+              run: |
+                  yum install -y epel-release -y bison pkgconfig flex libcurl libcurl-devel
 
             - uses: actions/checkout@v3
               name: Checkout Extension CI tools
@@ -273,22 +276,13 @@ jobs:
                   echo "OPENSSL_DIR=`pwd`/build/release/vcpkg_installed/${{ matrix.vcpkg_triplet }}" >> $GITHUB_ENV
                   echo "OPENSSL_USE_STATIC_LIBS=true" >> $GITHUB_ENV
 
-            # - name: Setup Ubuntu
-            #   if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
-            #   uses: ./duckdb/.github/actions/ubuntu_18_setup
-            #   with:
-            #       aarch64_cross_compile: ${{ matrix.duckdb_arch == 'linux_arm64' && 1 }}
-
-            # - uses: actions/github-script@v7
-            #   with:
-            #       script: |
-            #           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            #           core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
             - name: Configure safe directory
               run: |
                   git config --global --add safe.directory /__w/duckdb-bigquery/duckdb-bigquery
 
+            ###
+            # Building & testing
+            ###
             - name: Build extension
               env:
                   GEN: ninja
@@ -354,9 +348,13 @@ jobs:
                   fetch-depth: 0
                   submodules: 'true'
 
-            - name: Install Ninja, Bison, Flex
+            - name: Install Ninja
               run: |
-                  brew install ninja bison flex
+                  brew install ninja
+
+            - name: Install additional packages (custom)
+              run: |
+                  brew install bison flex
 
             - name: Setup Ccache
               uses: hendrikmuhs/ccache-action@main
@@ -488,43 +486,6 @@ jobs:
               uses: lukka/run-vcpkg@v11.1
               with:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
-
-            - name: Download SSL Certificates for GRPC
-              shell: pwsh
-              run: |
-                  $certDir = 'C:\\certificates'
-                  if (-Not (Test-Path -Path $certDir)) {
-                    New-Item -ItemType Directory -Force -Path $certDir
-                  }
-                  curl -o "$certDir\\roots.pem" https://pki.google.com/roots.pem
-
-            # - name: Install SSL Certificates
-            #   run: |
-            #       New-Item -ItemType Directory -Path 'C:\\certificates' -Force;
-            #       $url = 'https://pki.google.com/roots.pem';
-            #       $output = 'C:\\certificates\\roots.pem';
-            #       $client = New-Object System.Net.WebClient;
-            #       for ($i = 0; $i -lt 5; $i++) {
-            #           try {
-            #               $client.DownloadFile($url, $output);
-            #               break;
-            #           } catch {
-            #               Write-Host 'Download failed, retrying...';
-            #               Start-Sleep -Seconds 5;
-            #           }
-            #       }
-            #   shell: pwsh
-
-            # - name: Set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH
-            #   run: |
-            #       set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=C:\\certificates\\roots.pem
-            #   shell: cmd
-
-            # - name: Verify SSL Certificates
-            #   run: |
-            #       if not exist C:\\certificates\\roots.pem echo "roots.pem file not found!" && exit 1
-            #       echo "roots.pem file downloaded successfully."
-            #   shell: cmd
 
             - name: Build extension
               env:
