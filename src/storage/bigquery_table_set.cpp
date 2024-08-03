@@ -61,7 +61,6 @@ void BigqueryTableSet::AlterTable(ClientContext &context, AlterTableInfo &info) 
 	auto &transaction = BigqueryTransaction::Get(context, catalog);
 	auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
 	auto bqclient = transaction.GetBigqueryClient();
-	auto entry = GetEntry(context, info.name);
 
 	auto query = BigquerySQL::AlterTableInfoToSQL(bq_catalog.GetProjectID(), info);
 	bqclient->ExecuteQuery(query);

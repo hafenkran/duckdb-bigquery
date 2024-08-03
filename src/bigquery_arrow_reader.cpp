@@ -120,41 +120,6 @@ google::cloud::v2_23::StreamRange<google::cloud::bigquery::storage::v1::ReadRows
     return read_client->ReadRows(stream_name, row_offset);
 }
 
-hugeint_t ReadDecimalValue(const uint8_t *pointer, idx_t size, int32_t precision, int32_t scale) {
-    hugeint_t res = {0, 0};
-
-    bool positive = (*pointer & 0x80) == 0;
-    auto res_ptr = reinterpret_cast<uint8_t *>(&res);
-
-    for (idx_t i = 0; i < std::min<size_t>(size, sizeof(hugeint_t)); i++) {
-        auto byte = *(pointer + size - 1 - i);
-        res_ptr[i] = positive ? byte : ~byte;
-    }
-
-    if (!positive) {
-        // Increment to complete two's complement conversion for negative numbers
-        bool carry = true;
-        for (int i = 0; i < sizeof(hugeint_t); i++) {
-            if (carry) {
-                if (res_ptr[i] == 0xFF) {
-                    res_ptr[i] = 0;
-                } else {
-                    res_ptr[i]++;
-                    carry = false;
-                }
-            }
-        }
-        res.upper = ~res.upper;
-        res.lower = ~res.lower + 1;
-        if (res.lower == 0) {
-            res.upper += 1; // Handle carry for low part overflow
-        }
-        res.upper = -res.upper - (res.lower == 0 ? 1 : 0); // Adjust high part if low part overflowed
-    }
-
-    return res;
-}
-
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::ReadSchema(
     const google::cloud::bigquery::storage::v1::ArrowSchema &schema) {
     auto buffer_ptr = arrow::Buffer::FromString(schema.serialized_schema());

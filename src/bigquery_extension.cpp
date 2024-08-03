@@ -18,12 +18,13 @@
 #include "bigquery_scan.hpp"
 #include "bigquery_storage.hpp"
 #include "bigquery_execute.hpp"
+#include "bigquery_config.hpp"
 
 namespace duckdb {
 
-static void SetBigqueryDebugQueryPrint(ClientContext &context, SetScope scope, Value &parameter) {
-    bigquery::BigqueryClient::DebugSetPrintQueries(BooleanValue::Get(parameter));
-}
+// static void SetBigqueryDebugQueryPrint(ClientContext &context, SetScope scope, Value &parameter) {
+//     bigquery::BigqueryClient::DebugSetPrintQueries(BooleanValue::Get(parameter));
+// }
 
 static void LoadInternal(DatabaseInstance &instance) {
 
@@ -45,12 +46,13 @@ static void LoadInternal(DatabaseInstance &instance) {
     config.AddExtensionOption("bq_experimental_filter_pushdown",
                               "Whether to use filter pushdown (currently experimental)",
                               LogicalType::BOOLEAN,
-                              Value(true));
+							  Value(bigquery::BigqueryConfig::ExperimentalFilterPushdown()),
+                              bigquery::BigqueryConfig::SetExperimentalFilterPushdown);
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,
-                              Value(false),
-                              SetBigqueryDebugQueryPrint);
+                              Value(bigquery::BigqueryConfig::DebugQueryPrint()),
+                              bigquery::BigqueryConfig::SetDebugQueryPrint);
 }
 
 void BigqueryExtension::Load(DuckDB &db) {
