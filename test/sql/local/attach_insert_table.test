@@ -1,0 +1,44 @@
+# name: test/sql/local/attach_insert_table.test
+# description: Test INSERT statement on tables
+# group: [local]
+
+require bigquery
+
+require-env BQ_API_ENDPOINT
+
+require-env BQ_GRPC_ENDPOINT
+
+statement ok
+ATTACH 'project=test api_endpoint=${BQ_API_ENDPOINT} grpc_endpoint=${BQ_GRPC_ENDPOINT}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.dataset1.test_insert;
+
+statement ok
+CREATE TABLE bq.dataset1.test_insert(a INTEGER, b VARCHAR NOT NULL, c FLOAT);
+
+query I
+INSERT INTO bq.dataset1.test_insert VALUES (1, 'a', 0.1), (2, 'b', 0.2), (3, 'c', 0.3);
+----
+3
+
+statement ok
+INSERT INTO bq.dataset1.test_insert VALUES (NULL, NULL, NULL);
+
+statement error
+INSERT INTO bq.dataset1.test_insert VALUES (3, 'c', 0.3, 'overflow');
+----
+table test_insert has 3 columns but 4 values were supplied
+
+statement error
+INSERT INTO bq.dataset1.test_insert VALUES (3, 'c');
+----
+table test_insert has 3 columns but 2 values were supplied
+
+statement error
+INSERT INTO bq.dataset1.test_insert VALUES ('not INT32', 'c', 0.3);
+----
+Could not convert string 'not INT32' to INT32
+
+statement ok
+INSERT INTO bq.dataset1.test_insert VALUES (5, NULL, 0.3);

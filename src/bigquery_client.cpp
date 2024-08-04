@@ -1,4 +1,5 @@
 #include "bigquery_client.hpp"
+#include "bigquery_config.hpp"
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_sql.hpp"
@@ -44,9 +45,6 @@ using namespace google::cloud::bigquery_v2_minimal_internal;
 
 namespace duckdb {
 namespace bigquery {
-
-static bool debug_bigquery_print_queries = true;
-static string bigquery_default_location = "US";
 
 class CustomIdempotencyPolicy : public google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicy {
 public:
@@ -552,7 +550,7 @@ google::cloud::StatusOr<PostQueryResults> BigqueryClient::PostQueryJob(JobClient
     if (project_id.empty()) {
         throw BinderException("project_id config parameter is empty.");
     }
-    if (debug_bigquery_print_queries) {
+    if (BigqueryConfig::DebugQueryPrint()) {
         std::cout << "query: " << query << std::endl;
     }
 
@@ -575,23 +573,6 @@ google::cloud::StatusOr<PostQueryResults> BigqueryClient::PostQueryJob(JobClient
     request = request.set_query_request(query_request);
 
     return job_client.Query(request);
-}
-
-
-void BigqueryClient::DebugSetPrintQueries(bool print) {
-    debug_bigquery_print_queries = print;
-}
-
-bool BigqueryClient::DebugPrintQueries() {
-    return debug_bigquery_print_queries;
-}
-
-void BigqueryClient::SetDefaultBigqueryLocation(const string &location) {
-    bigquery_default_location = location;
-}
-
-string BigqueryClient::DefaultBigqueryLocation() {
-    return bigquery_default_location;
 }
 
 string BigqueryClient::GenerateJobId(const string &prefix) {

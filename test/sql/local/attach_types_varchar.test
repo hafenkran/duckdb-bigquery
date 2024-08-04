@@ -1,0 +1,30 @@
+# name: test/sql/local/attach_types_varchar.test
+# description: Test inserting/querying VARCHAR
+# group: [local]
+
+require bigquery
+
+require-env BQ_API_ENDPOINT
+
+require-env BQ_GRPC_ENDPOINT
+
+statement ok
+ATTACH 'project=test api_endpoint=${BQ_API_ENDPOINT} grpc_endpoint=${BQ_GRPC_ENDPOINT}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.dataset1.varchars;
+
+statement ok
+CREATE TABLE bq.dataset1.varchars (v VARCHAR);
+
+statement ok
+INSERT INTO bq.dataset1.varchars VALUES ('');
+
+statement ok
+INSERT INTO bq.dataset1.varchars VALUES ('some BIG...query string');
+
+query I
+SELECT * FROM bq.dataset1.varchars
+----
+(empty)
+some BIG...query string

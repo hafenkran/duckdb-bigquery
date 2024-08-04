@@ -1,0 +1,17 @@
+# name: test/sql/local/attach_database_size.test
+# description: Test fetching the database size
+# group: [local]
+
+require bigquery
+
+require-env BQ_API_ENDPOINT
+
+require-env BQ_GRPC_ENDPOINT
+
+statement ok
+ATTACH 'project=test api_endpoint=${BQ_API_ENDPOINT} grpc_endpoint=${BQ_GRPC_ENDPOINT}' AS bq (TYPE bigquery);
+
+statement error
+PRAGMA database_size
+----
+BigQuery does not support getting database size
