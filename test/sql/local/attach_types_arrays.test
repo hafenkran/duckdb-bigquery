@@ -1,0 +1,22 @@
+# name: test/sql/local/attach_create_views.test
+# description: Testing BigQuery Views
+# group: [local]
+
+require bigquery
+
+require-env BQ_API_ENDPOINT
+
+require-env BQ_GRPC_ENDPOINT
+
+statement ok
+ATTACH 'project=test api_endpoint=${BQ_API_ENDPOINT} grpc_endpoint=${BQ_GRPC_ENDPOINT}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.dataset1.table_arrays;
+
+statement ok
+CREATE TABLE bq.dataset1.table_arrays AS
+SELECT
+    int_array,
+    varchar_array,
+FROM test_all_types();

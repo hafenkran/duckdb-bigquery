@@ -1,0 +1,42 @@
+# name: test/sql/local/attach_clear_cache.test
+# description: Clear BigQuery caches
+# group: [local]
+
+require bigquery
+
+require-env BQ_API_ENDPOINT
+
+require-env BQ_GRPC_ENDPOINT
+
+statement ok
+ATTACH 'project=test api_endpoint=${BQ_API_ENDPOINT} grpc_endpoint=${BQ_GRPC_ENDPOINT}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.dataset1.cache_test;
+
+statement ok
+CREATE TABLE bq.dataset1.cache_test(i INTEGER);
+
+statement ok
+CALL bigquery_clear_cache();
+
+query I
+INSERT INTO bq.dataset1.cache_test VALUES (42);
+----
+1
+
+statement ok
+CALL bigquery_clear_cache();
+
+query I
+SELECT * FROM bq.dataset1.cache_test;
+----
+42
+
+statement ok
+CALL bigquery_clear_cache();
+
+statement error
+INSERT INTO bq.dataset1.tst VALUES (84)
+----
+Catalog Error: Table with name tst does not exist!
