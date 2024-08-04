@@ -14,6 +14,13 @@
     },
     {
       "name": "curl",
+      "platform": "!windows",
+      "features": [
+        "ssl"
+      ]
+    },
+    {
+      "name": "curl",
       "platform": "windows",
       "features": [ "schannel" ]
     }
