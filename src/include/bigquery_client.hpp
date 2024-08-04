@@ -96,13 +96,6 @@ public:
         return project_id;
     }
 
-    // DuckDB Settings
-    static bool DebugPrintQueries();
-    static void DebugSetPrintQueries(bool print);
-
-    static string DefaultBigqueryLocation();
-    static void SetDefaultBigqueryLocation(const string &location);
-
 private:
     string GenerateJobId(const string &prefix = "");
     google::cloud::StatusOr<Job> GetJob(JobClient &job_client, const string &job_id, const string &location = "");
