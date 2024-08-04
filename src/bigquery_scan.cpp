@@ -83,9 +83,9 @@ struct BigqueryLocalFunctionState : public LocalTableFunctionState {
 
 private:
     bool rows_read = false;
-    google::cloud::v2_23::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> read_rows;
-    google::cloud::v2_23::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator read_rows_it;
-    google::cloud::v2_23::StatusOr<google::cloud::bigquery::storage::v1::ReadRowsResponse> rows;
+    google::cloud::v2_27::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> read_rows;
+    google::cloud::v2_27::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator read_rows_it;
+    google::cloud::v2_27::StatusOr<google::cloud::bigquery::storage::v1::ReadRowsResponse> rows;
     std::shared_ptr<arrow::RecordBatch> current_batch;
 
     bool ReadNextBatch() {

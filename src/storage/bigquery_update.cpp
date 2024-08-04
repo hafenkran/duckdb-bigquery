@@ -35,7 +35,10 @@ SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
     auto &transaction = BigqueryTransaction::Get(context, table.catalog);
     auto bq_client = transaction.GetBigqueryClient();
     auto result = bq_client->ExecuteQuery(query);
-    gstate.updated_count = result.total_rows;
+
+	auto total_rows = result.total_rows();
+	uint64_t extracted_value = total_rows.value();
+    gstate.updated_count = extracted_value;
     return SinkFinalizeType::READY;
 }
 

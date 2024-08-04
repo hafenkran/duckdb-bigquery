@@ -19,12 +19,11 @@
 #include "google/cloud/bigquery/storage/v1/bigquery_write_options.h"
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
-#include "google/cloud/bigquery/v2/minimal/internal/dataset_client.h"
-#include "google/cloud/bigquery/v2/minimal/internal/dataset_request.h"
-#include "google/cloud/bigquery/v2/minimal/internal/job_client.h"
-#include "google/cloud/bigquery/v2/minimal/internal/job_request.h"
-#include "google/cloud/bigquery/v2/minimal/internal/table_client.h"
-#include "google/cloud/bigquery/v2/minimal/internal/table_request.h"
+
+#include "google/cloud/bigquerycontrol/v2/dataset_client.h"
+#include "google/cloud/bigquerycontrol/v2/job_client.h"
+#include "google/cloud/bigquerycontrol/v2/table_client.h"
+
 #include "google/cloud/common_options.h"
 #include "google/cloud/grpc_options.h"
 #include "google/cloud/idempotency.h"
@@ -37,10 +36,6 @@
 
 #include <chrono>
 #include <thread>
-
-// #include "storage/bigquery_table_entry.cpp"
-
-using namespace google::cloud::bigquery_v2_minimal_internal;
 
 namespace duckdb {
 namespace bigquery {
@@ -96,7 +91,10 @@ bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
 }
 
 
-BigqueryClient::BigqueryClient(const string &project_id, const string &dataset_id, const string &api_endpoint, const string &grpc_endpoint)
+BigqueryClient::BigqueryClient(const string &project_id,
+                               const string &dataset_id,
+                               const string &api_endpoint,
+                               const string &grpc_endpoint)
     : project_id(project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
 
     if (project_id.empty()) {
@@ -173,43 +171,47 @@ BigqueryClient BigqueryClient::NewClient(const string &connection_str) {
 }
 
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
-    ListDatasetsRequest request(project_id);
-    request.set_max_results(1000);
+    auto request = google::cloud::bigquery::v2::ListDatasetsRequest();
+    request.set_project_id(project_id);
 
-    auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
+    auto dataset_client = make_shared_ptr<google::cloud::bigquerycontrol_v2::DatasetServiceClient>(
+        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(api_options));
     auto datasets = dataset_client->ListDatasets(request);
 
-    vector<BigqueryDatasetRef> dataset_names;
-    for (google::cloud::StatusOr<ListFormatDataset> const &dataset : datasets) {
+    vector<BigqueryDatasetRef> result;
+    for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatDataset> const &dataset : datasets) {
         if (!dataset.ok()) {
             // Special case for empty projects. The "empty" result object seems to be unparseable by the lib.
             if (dataset.status().message() ==
                 "Permanent error, with a last message of Not a valid Json DatasetList object") {
-                return dataset_names;
+                return result;
             }
             return vector<BigqueryDatasetRef>();
         }
 
-        ListFormatDataset dataset_val = dataset.value();
-        BigqueryDatasetRef info;
-        info.project_id = dataset_val.dataset_reference.project_id;
-        info.dataset_id = dataset_val.dataset_reference.dataset_id;
-        info.location = dataset_val.location;
-        dataset_names.push_back(info);
-    }
+        google::cloud::bigquery::v2::ListFormatDataset dataset_val = dataset.value();
+        auto dataset_ref = dataset_val.dataset_reference();
 
-    return dataset_names;
+        BigqueryDatasetRef info;
+        info.project_id = dataset_ref.project_id();
+        info.dataset_id = dataset_ref.dataset_id();
+        info.location = dataset_val.location();
+        result.push_back(info);
+    }
+    return result;
 }
 
 vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
-    ListTablesRequest request(project_id, dataset_id);
-    request.set_max_results(1000);
+    auto request = google::cloud::bigquery::v2::ListTablesRequest();
+    request.set_project_id(project_id);
+    request.set_dataset_id(dataset_id);
 
-    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
+    auto table_client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(api_options));
     auto tables = table_client->ListTables(request);
 
     vector<BigqueryTableRef> table_names;
-    for (google::cloud::StatusOr<ListFormatTable> const &table : tables) {
+    for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatTable> const &table : tables) {
         if (!table.ok()) {
             // Special case for empty datasets. The "empty" result object seems to be unparseable by the lib.
             if (table.status().message() ==
@@ -218,70 +220,94 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
             }
             throw InternalException(table.status().message());
         }
-        ListFormatTable table_val = table.value();
+
+        google::cloud::bigquery::v2::ListFormatTable table_val = table.value();
+        auto table_ref = table_val.table_reference();
+
         BigqueryTableRef info;
-        info.project_id = table_val.table_reference.project_id;
-        info.dataset_id = table_val.table_reference.dataset_id;
-        info.table_id = table_val.table_reference.table_id;
+        info.project_id = table_ref.project_id();
+        info.dataset_id = table_ref.dataset_id();
+        info.table_id = table_ref.table_id();
         table_names.push_back(info);
     }
     return table_names;
 }
 
 BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
-    auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
-    GetDatasetRequest request(project_id, dataset_id);
-    auto dataset = dataset_client->GetDataset(request);
-    if (!dataset) {
-        throw InternalException(dataset.status().message());
+    auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::DatasetServiceClient>(
+        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(api_options));
+
+    auto request = google::cloud::bigquery::v2::GetDatasetRequest();
+    request.set_project_id(project_id);
+    request.set_dataset_id(dataset_id);
+
+    auto response = client->GetDataset(request);
+    if (!response.ok()) {
+        throw InternalException(response.status().message());
     }
 
-    Dataset dataset_val = dataset.value();
+    auto dataset = response.value();
+    auto dataset_ref = dataset.dataset_reference();
+
     BigqueryDatasetRef info;
-    info.project_id = project_id;
-    info.dataset_id = dataset_id;
-    info.location = dataset_val.location;
+    info.project_id = dataset_ref.project_id();
+    info.dataset_id = dataset_ref.dataset_id();
+    info.location = dataset.location();
     return info;
 }
 
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
-    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
+    auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(api_options));
 
-    GetTableRequest request(project_id, dataset_id, table_id);
-    auto table = table_client->GetTable(request);
-    if (!table) {
-        throw InternalException(table.status().message());
+    auto request = google::cloud::bigquery::v2::GetTableRequest();
+    request.set_project_id(project_id);
+    request.set_dataset_id(dataset_id);
+    request.set_table_id(table_id);
+
+    auto response = client->GetTable(request);
+    if (!response.ok()) {
+        throw InternalException(response.status().message());
     }
 
-    Table table_val = table.value();
+    auto tablae = response.value();
+    auto table_ref = tablae.table_reference();
+
     BigqueryTableRef info;
-    info.project_id = project_id;
-    info.dataset_id = dataset_id;
-    info.table_id = table_id;
+    info.project_id = table_ref.project_id();
+    info.dataset_id = table_ref.dataset_id();
+    info.table_id = table_ref.table_id();
     return info;
 }
 
 bool BigqueryClient::DatasetExists(const string &dataset_id) {
-    auto dataset_client = make_shared_ptr<DatasetClient>(MakeDatasetConnection(api_options));
+    auto client = google::cloud::bigquerycontrol_v2::DatasetServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(google::cloud::Options{}));
 
-    GetDatasetRequest request(project_id, dataset_id);
-    auto dataset = dataset_client->GetDataset(request);
+    auto request = google::cloud::bigquery::v2::GetDatasetRequest();
+    request.set_project_id(project_id);
+    request.set_dataset_id(dataset_id);
 
-    if (!dataset) {
-        std::cerr << "Error: " << dataset.status().message() << "\n";
+    auto response = client.GetDataset(request);
+    if (!response.ok()) {
+        std::cerr << "Error: " << response.status().message() << "\n";
         return false;
     }
     return true;
 }
 
 bool BigqueryClient::TableExists(const string &dataset_id, const string &table_id) {
-    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
+    auto client = google::cloud::bigquerycontrol_v2::TableServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(google::cloud::Options{}));
 
-    GetTableRequest request(project_id, dataset_id, table_id);
-    auto table = table_client->GetTable(request);
+    auto request = google::cloud::bigquery::v2::GetTableRequest();
+    request.set_project_id(project_id);
+    request.set_dataset_id(dataset_id);
+    request.set_table_id(table_id);
 
-    if (!table) {
-        std::cerr << "Error: " << table.status().message() << "\n";
+    auto response = client.GetTable(request);
+    if (!response.ok()) {
+        std::cerr << "Error: " << response.status().message() << "\n";
         return false;
     }
     return true;
@@ -336,29 +362,33 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
                                   ColumnList &res_columns,
                                   vector<unique_ptr<Constraint>> &res_constraints) {
 
-    auto table_client = make_shared_ptr<TableClient>(MakeTableConnection(api_options));
-    GetTableRequest request(project_id, dataset_id, table_id);
-    auto table = table_client->GetTable(request);
+    auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(api_options));
 
-    if (!table) {
-        std::cerr << "Error: " << table.status().message() << "\n";
-        auto metadata = table.status().error_info().metadata();
-        for (auto const &m : metadata) {
-            std::cerr << "metadata: " << m.first << " " << m.second << "\n";
+    auto request = google::cloud::bigquery::v2::GetTableRequest();
+    request.set_project_id(project_id);
+    request.set_dataset_id(dataset_id);
+    request.set_table_id(table_id);
+
+    auto response = client->GetTable(request);
+    if (!response.ok()) {
+        if (response.status().code() == google::cloud::StatusCode::kNotFound) {
+            auto table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
+            throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
         }
-        auto table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
-        throw InternalException("GetTableInfo - table \"%s\" not found", table_ref);
+        throw InternalException(response.status().message());
     }
 
-    Table table_val = table.value();
-    for (const TableFieldSchema &field : table_val.schema.fields) {
+    auto table = response.value();
+    for (const google::cloud::bigquery::v2::TableFieldSchema &field : table.schema().fields()) {
         // Create the ColumnDefinition
         auto column_type = BigqueryUtils::FieldSchemaToLogicalType(field);
 
-        ColumnDefinition column(field.name, std::move(column_type));
+        ColumnDefinition column(field.name(), std::move(column_type));
         // column.SetComment(std::move(field.description));
 
-        auto default_value = field.default_value_expression;
+        auto default_value_expr = field.default_value_expression();
+        auto default_value = default_value_expr.value();
         if (!default_value.empty() && default_value != "\"\"") {
             auto expressions = Parser::ParseExpressionList(default_value);
             if (expressions.empty()) {
@@ -371,9 +401,9 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
 
         // The field mode. Possible values include NULLABLE, REQUIRED and REPEATED.
         // The default value is NULLABLE.
-        auto mode = field.mode;
+        auto mode = field.mode();
         if (mode == "REQUIRED") {
-            auto field_name = field.name;
+            auto field_name = field.name();
             auto field_index = res_columns.GetColumnIndex(field_name);
             res_constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
@@ -476,7 +506,7 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
         throw InternalException("Error while initializing proto writer: project_id mismatch");
     }
 
-	// Check if dataset exists with an exponential backoff retry
+    // Check if dataset exists with an exponential backoff retry
     auto op = [this, &entry]() -> bool { return TableExists(entry->schema.name, entry->name); };
     auto success = RetryOperation(op, 10, 1000);
     if (!success) {
@@ -499,9 +529,11 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 }
 
 
-PostQueryResults BigqueryClient::ExecuteQuery(const string &query, const string &location) {
-    auto job_client = JobClient(MakeBigQueryJobConnection(api_options));
-    auto response = PostQueryJob(job_client, query, location);
+google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query, const string &location) {
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(api_options));
+
+    auto response = PostQueryJob(client, query, location);
     if (!response) {
         throw BinderException("Query execution failed: " + response.status().message());
     }
@@ -510,10 +542,10 @@ PostQueryResults BigqueryClient::ExecuteQuery(const string &query, const string 
         int delay = 1;
         int max_retries = 3;
         for (int i = 0; i < max_retries; i++) {
-            auto job_status = GetJob(job_client, response->job_reference.job_id, response->job_reference.location);
-            if (job_status.ok() && job_status->status.state == "DONE") {
-                if (!job_status->status.error_result.reason.empty()) {
-                    throw BinderException(job_status->status.error_result.message);
+            auto job_status = GetJob(client, response->job_reference().job_id(), response->job_reference().location().value());
+            if (job_status.ok() && job_status->status().state() == "DONE") {
+                if (!job_status->status().error_result().reason().empty()) {
+                    throw BinderException(job_status->status().error_result().message());
                 }
                 return *response;
             }
@@ -528,27 +560,40 @@ PostQueryResults BigqueryClient::ExecuteQuery(const string &query, const string 
 }
 
 
-google::cloud::StatusOr<Job> BigqueryClient::GetJob(JobClient &job_client,
-                                                    const string &job_id,
-                                                    const string &location) {
+google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob(
+    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+    const string &job_id,
+    const string &location) {
     if (project_id.empty()) {
         throw BinderException("project_id config parameter is empty.");
     } else if (job_id.empty()) {
         throw BinderException("job_id config parameter is empty.");
     }
-    GetJobRequest request;
+
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(google::cloud::Options{}));
+
+    auto request = google::cloud::bigquery::v2::GetJobRequest();
     request.set_project_id(project_id);
     request.set_job_id(job_id);
     if (!location.empty()) {
         request.set_location(location);
     }
-    return job_client.GetJob(request);
+
+    auto response = client.GetJob(request);
+    if (!response.ok()) {
+        throw BinderException(response.status().message());
+    }
+
+    auto job = response.value();
+    return job;
 }
 
+google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClient::PostQueryJob(
+    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+    const string &query,
+    const string &location) {
 
-google::cloud::StatusOr<PostQueryResults> BigqueryClient::PostQueryJob(JobClient &job_client,
-                                                                       const string &query,
-                                                                       const string &location) {
     if (project_id.empty()) {
         throw BinderException("project_id config parameter is empty.");
     }
@@ -556,23 +601,25 @@ google::cloud::StatusOr<PostQueryResults> BigqueryClient::PostQueryJob(JobClient
         std::cout << "query: " << query << std::endl;
     }
 
-    DatasetReference dataset_ref;
-    dataset_ref.project_id = project_id;
-    dataset_ref.dataset_id = "UNKNOWN";
+    google::cloud::bigquery::v2::DatasetReference dataset_ref;
+    dataset_ref.set_project_id(project_id);
+    dataset_ref.set_dataset_id("UNKNOWN");
 
-    auto query_request = QueryRequest(query);
-    query_request.set_dry_run(false);
-    query_request.set_use_legacy_sql(false);
-    query_request.set_request_id(GenerateJobId());
-    query_request.set_preserve_nulls(true);
-    query_request.set_default_dataset(dataset_ref);
+    auto query_request = google::cloud::bigquery::v2::QueryRequest();
+    *query_request.mutable_query() = query;
+	*query_request.mutable_request_id() = GenerateJobId();
+    *query_request.mutable_default_dataset() = dataset_ref;
+	query_request.set_dry_run(false);
+    query_request.mutable_use_legacy_sql()->set_value(false);
+
+    // query_request.mutable_set_preserve_nulls()->set_value(true);
     if (!location.empty()) {
-        query_request.set_location(location);
+        *query_request.mutable_location() = location;
     }
 
-    PostQueryRequest request;
-    request = request.set_project_id(project_id);
-    request = request.set_query_request(query_request);
+    auto request = google::cloud::bigquery::v2::PostQueryRequest();
+    request.set_project_id(project_id);
+    *request.mutable_query_request() = query_request;
 
     return job_client.Query(request);
 }
