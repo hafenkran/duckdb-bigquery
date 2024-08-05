@@ -33,7 +33,7 @@ public:
 
     shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> NextStream();
 
-    google::cloud::v2_23::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
+    google::cloud::v2_27::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
         const string &stream_name,
         int row_offset);
     void ReadColumn(const std::shared_ptr<arrow::Array> &column, Vector &out_vec);

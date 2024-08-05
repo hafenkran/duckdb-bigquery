@@ -18,8 +18,7 @@
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
 
-#include "google/cloud/bigquery/v2/minimal/internal/job_client.h"
-#include "google/cloud/bigquery/v2/minimal/internal/job_request.h"
+#include "google/cloud/bigquerycontrol/v2/job_client.h"
 
 
 namespace duckdb {
@@ -64,7 +63,7 @@ public:
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
 
-    PostQueryResults ExecuteQuery(const string &query, const string &location = "");
+    google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
 
     void CreateReadSession(const string &project_id, const string &dataset_id, const string &table_id);
     // void ReadArrowResutls(google::cloud::bigquery::storage::v1::ArrowSchema const &schema,
@@ -98,11 +97,16 @@ public:
 
 private:
     string GenerateJobId(const string &prefix = "");
-    google::cloud::StatusOr<Job> GetJob(JobClient &job_client, const string &job_id, const string &location = "");
 
-    google::cloud::StatusOr<PostQueryResults> PostQueryJob(JobClient &job_client,
-                                                           const string &query,
-                                                           const string &location = "");
+    google::cloud::StatusOr<google::cloud::bigquery::v2::Job> GetJob(
+        google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+        const string &job_id,
+        const string &location);
+
+    google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> PostQueryJob(
+        google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+        const string &query,
+        const string &location = "");
 
     string dsn;
     string project_id;

@@ -139,9 +139,9 @@ std::string BigqueryUtils::FormatTableStringSimple(const BigqueryTableRef &table
     return FormatTableStringSimple(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
 }
 
-LogicalType BigqueryUtils::FieldSchemaToLogicalType(const TableFieldSchema &field) {
-    const auto bigquery_type = field.type;
-    const auto repeated = field.mode == "REPEATED";
+LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field) {
+    const auto bigquery_type = field.type();
+    const auto repeated = field.mode() == "REPEATED";
 
     LogicalType type;
     if (bigquery_type == "STRING") {
@@ -171,8 +171,8 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const TableFieldSchema &fiel
     } else if (bigquery_type == "INTERVAL") {
         type = LogicalType::INTERVAL;
     } else if (bigquery_type == "NUMERIC") {
-        auto precision = (field.precision == 0) ? 29 : field.precision;
-        auto scale = (field.scale == 0) ? 9 : field.scale;
+        auto precision = (field.precision() == 0) ? 29 : field.precision();
+        auto scale = (field.scale() == 0) ? 9 : field.scale();
 
         if (precision < 1 || precision > 29) {
             throw std::invalid_argument("Precision must be between 1 and 29 for NUMERIC fields.");
@@ -186,8 +186,8 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const TableFieldSchema &fiel
         }
         type = LogicalType::DECIMAL(precision, scale);
     } else if (bigquery_type == "BIGNUMERIC") {
-        auto precision = (field.precision == 0) ? 38 : field.precision;
-        auto scale = (field.scale == 0) ? 9 : field.scale;
+        auto precision = (field.precision() == 0) ? 38 : field.precision();
+        auto scale = (field.scale() == 0) ? 9 : field.scale();
 
         if (precision < 1 || precision > 38) {
             throw std::invalid_argument("Precision must be between 1 and 38 for BIGNUMERIC fields.");
@@ -204,8 +204,8 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const TableFieldSchema &fiel
         type = LogicalType::VARCHAR;
     } else if (bigquery_type == "STRUCT" || bigquery_type == "RECORD") {
         child_list_t<LogicalType> new_types;
-        for (auto &child : field.fields) {
-            new_types.push_back(make_pair(child->name, FieldSchemaToLogicalType(*child)));
+        for (auto &child : field.fields()) {
+            new_types.push_back(make_pair(child.name(), FieldSchemaToLogicalType(child)));
         }
         type = LogicalType::STRUCT(std::move(new_types));
     } else {

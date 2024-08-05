@@ -13,7 +13,7 @@ endif()
 
 ExternalProject_Add(
     google_cloud_cpp_bigquery_rest
-    URL ${CMAKE_CURRENT_SOURCE_DIR}/vendor/google-cloud-cpp-2.22.0-fixed.zip
+    URL ${CMAKE_CURRENT_SOURCE_DIR}/vendor/google-cloud-cpp-2.27.0.zip
     # CONFIGURE_HANDLED_BY_BUILD TRUE
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=${LOCAL_INSTALL_DIR}
                -DCMAKE_PREFIX_PATH=${LOCAL_INSTALL_DIR}
@@ -33,4 +33,4 @@ ExternalProject_Add(
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF
                -DGOOGLE_CLOUD_CPP_WITH_MOCKS=OFF
                -DGOOGLE_CLOUD_CPP_ENABLE_CCACHE=ON
-               -DGOOGLE_CLOUD_CPP_ENABLE=experimental-bigquery_rest,bigquery)
+               -DGOOGLE_CLOUD_CPP_ENABLE=bigquerycontrol,bigquery)

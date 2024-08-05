@@ -60,10 +60,9 @@ find_package(Protobuf CONFIG REQUIRED)
 find_package(Arrow REQUIRED)
 find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(google_cloud_cpp_rest_internal REQUIRED)
 find_package(google_cloud_cpp_common REQUIRED)
 find_package(google_cloud_cpp_bigquery REQUIRED)
-find_package(google_cloud_cpp_bigquery_rest REQUIRED)
+find_package(google_cloud_cpp_bigquerycontrol REQUIRED)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
@@ -79,7 +78,7 @@ target_link_libraries(
     google-cloud-cpp::common
     google-cloud-cpp::rest_internal
     google-cloud-cpp::bigquery
-    google-cloud-cpp::experimental-bigquery_rest
+    google-cloud-cpp::experimental-bigquerycontrol
     google-cloud-cpp::grpc_utils
     absl::base
     absl::memory
@@ -95,8 +94,7 @@ target_link_libraries(
     CURL::libcurl
     google-cloud-cpp::common
     google-cloud-cpp::rest_internal
-    google-cloud-cpp::bigquery
-    google-cloud-cpp::experimental-bigquery_rest
+    google-cloud-cpp::experimental-bigquerycontrol
     google-cloud-cpp::grpc_utils
     absl::base
     absl::memory

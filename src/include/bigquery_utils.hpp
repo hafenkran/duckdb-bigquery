@@ -2,7 +2,9 @@
 
 #include "duckdb.hpp"
 
-#include "google/cloud/bigquery/v2/minimal/internal/table_schema.h"
+// #include "google/cloud/bigquery/v2/minimal/internal/table_schema.h"
+
+#include "google/cloud/bigquerycontrol/v2/table_client.h"
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 
@@ -12,8 +14,6 @@
 
 namespace duckdb {
 namespace bigquery {
-
-using namespace google::cloud::bigquery_v2_minimal_internal;
 
 struct BigqueryUtils;
 
@@ -95,7 +95,7 @@ public:
     static string ReplaceQuotes(string &identifier, char to_replace = '\'');
 
     static LogicalType CastToBigqueryType(const LogicalType &type);
-    static LogicalType FieldSchemaToLogicalType(const TableFieldSchema &field);
+    static LogicalType FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
     static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
