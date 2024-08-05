@@ -2,7 +2,10 @@
   "name": "duckdb-bigquery",
   "version-string": "1.0.0",
   "dependencies": [
-    "abseil",
+    {
+      "name": "abseil",
+      "features": [ "cxx17" ]
+    },
     "protobuf",
     "grpc",
     "nlohmann-json",
@@ -25,15 +28,7 @@
       "features": [ "schannel" ]
     }
   ],
-  "builtin-baseline": "e01906b2ba7e645a76ee021a19de616edc98d29f",
+  "builtin-baseline": "9cf4b6f12e69a6bb926bb1da60da264aa7d960c7",
   "overrides": [
-    {
-      "name": "abseil",
-      "version": "20230802.1"
-    },
-    {
-      "name": "re2",
-      "version": "2024-04-01"
-    }
   ]
 }
