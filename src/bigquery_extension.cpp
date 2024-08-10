@@ -53,7 +53,7 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigqueryConfig::DebugQueryPrint()),
                               bigquery::BigqueryConfig::SetDebugQueryPrint);
-    config.AddExtensionOption("curl_ca_bundle_path",
+    config.AddExtensionOption("bq_curl_ca_bundle_path",
                               "Path to the CA bundle for curl",
                               LogicalType::VARCHAR,
                               Value(bigquery::BigqueryConfig::CurlCaBundlePath()),
