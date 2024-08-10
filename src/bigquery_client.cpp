@@ -1,6 +1,6 @@
 #include "bigquery_client.hpp"
-#include "bigquery_config.hpp"
 #include "bigquery_arrow_reader.hpp"
+#include "bigquery_config.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
@@ -26,8 +26,10 @@
 #include "google/cloud/bigquerycontrol/v2/table_client.h"
 
 #include "google/cloud/common_options.h"
+#include "google/cloud/credentials.h"
 #include "google/cloud/grpc_options.h"
 #include "google/cloud/idempotency.h"
+#include "google/cloud/internal/curl_options.h"
 
 #include "arrow/api.h"
 #include "arrow/io/api.h"
@@ -78,7 +80,6 @@ bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
         if (op()) {
             return true;
         }
-
         attempts++;
         if (attempts < max_attempts) {
             std::this_thread::sleep_for(std::chrono::milliseconds(delay));
@@ -94,33 +95,16 @@ BigqueryClient::BigqueryClient(const string &project_id,
                                const string &api_endpoint,
                                const string &grpc_endpoint)
     : project_id(project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
-
     if (project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
     }
-
-    api_options = google::cloud::Options{};
-    if (!api_endpoint.empty()) {
-        api_options = api_options.set<google::cloud::EndpointOption>(api_endpoint);
-        if (api_endpoint.find("localhost") != string::npos || api_endpoint.find("127.0.0.0") != string::npos) {
-            is_dev_env = true;
-        }
-    }
-
-    grpc_options = google::cloud::Options{};
-    if (!grpc_endpoint.empty()) {
-        grpc_options = grpc_options.set<google::cloud::EndpointOption>(grpc_endpoint);
-        if (grpc_endpoint.find("localhost") != string::npos || grpc_endpoint.find("127.0.0.0") != string::npos) {
-            grpc_options = grpc_options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
-        }
+    if (api_endpoint.find("localhost") != string::npos || api_endpoint.find("127.0.0.0") != string::npos) {
+        is_dev_env = true;
     }
 }
 
 BigqueryClient::BigqueryClient(ConnectionDetails &conn)
     : BigqueryClient(conn.project_id, conn.dataset_id, conn.api_endpoint, conn.grpc_endpoint) {
-}
-
-BigqueryClient::~BigqueryClient() {
 }
 
 BigqueryClient::BigqueryClient(const BigqueryClient &other) {
@@ -168,12 +152,35 @@ BigqueryClient BigqueryClient::NewClient(const string &connection_str) {
     return result;
 }
 
+google::cloud::Options BigqueryClient::OptionsAPI() {
+    auto options = google::cloud::Options{};
+    if (!api_endpoint.empty()) {
+        options.set<google::cloud::EndpointOption>(api_endpoint);
+    }
+    auto ca_path = BigqueryConfig::CurlCaBundlePath();
+    if (!ca_path.empty()) {
+        options.set<google::cloud::v2_27::CARootsFilePathOption>(ca_path);
+    }
+    return options;
+}
+
+google::cloud::Options BigqueryClient::OptionsGRPC() {
+    auto options = google::cloud::Options{};
+    if (!grpc_endpoint.empty()) {
+        options.set<google::cloud::EndpointOption>(grpc_endpoint);
+        if (grpc_endpoint.find("localhost") != string::npos || grpc_endpoint.find("127.0.0.0") != string::npos) {
+            options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
+        }
+    }
+    return options;
+}
+
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     auto request = google::cloud::bigquery::v2::ListDatasetsRequest();
     request.set_project_id(project_id);
 
     auto dataset_client = make_shared_ptr<google::cloud::bigquerycontrol_v2::DatasetServiceClient>(
-        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(api_options));
+        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(OptionsAPI()));
     auto datasets = dataset_client->ListDatasets(request);
 
     vector<BigqueryDatasetRef> result;
@@ -205,7 +212,7 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
     request.set_dataset_id(dataset_id);
 
     auto table_client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
-        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(api_options));
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
     auto tables = table_client->ListTables(request);
 
     vector<BigqueryTableRef> table_names;
@@ -233,7 +240,7 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
 
 BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::DatasetServiceClient>(
-        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(api_options));
+        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetDatasetRequest();
     request.set_project_id(project_id);
@@ -256,7 +263,7 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
 
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
-        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(api_options));
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetTableRequest();
     request.set_project_id(project_id);
@@ -361,7 +368,7 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
                                   vector<unique_ptr<Constraint>> &res_constraints) {
 
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
-        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(api_options));
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetTableRequest();
     request.set_project_id(project_id);
@@ -419,7 +426,7 @@ BigqueryClient::CreateReadSession(const string &dataset_id,
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 
     // Initialize the client.
-    auto connection = google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection(grpc_options);
+    auto connection = google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection(OptionsGRPC());
     auto client = google::cloud::bigquery_storage_v1::BigQueryReadClient(connection);
 
     // Create the ReadSession.
@@ -453,7 +460,7 @@ BigqueryClient::CreateWriteStream(const string &dataset_id, const string &table_
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 
     // Set retry and backoff policies.
-    auto options = grpc_options
+    auto options = OptionsGRPC()
                        .set<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicyOption>(
                            CustomIdempotencyPolicy().clone())
                        .set<google::cloud::bigquery_storage_v1::BigQueryWriteRetryPolicyOption>(
@@ -490,7 +497,7 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                                                 dataset_id,
                                                 table_id,
                                                 num_streams,
-                                                grpc_options,
+                                                OptionsGRPC(),
                                                 column_ids,
                                                 filter_cond);
 }
@@ -511,7 +518,7 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
         throw InternalException("Failed to verify that \"%s.%s\" exists.", entry->schema.name, entry->name);
     }
 
-    auto options = grpc_options
+    auto options = OptionsGRPC()
                        .set<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicyOption>(
                            CustomIdempotencyPolicy().clone())
                        .set<google::cloud::bigquery_storage_v1::BigQueryWriteRetryPolicyOption>(
@@ -529,7 +536,7 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 
 google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query, const string &location) {
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(api_options));
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     auto response = PostQueryJob(client, query, location);
     if (!response) {
@@ -540,7 +547,8 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
         int delay = 1;
         int max_retries = 3;
         for (int i = 0; i < max_retries; i++) {
-            auto job_status = GetJob(client, response->job_reference().job_id(), response->job_reference().location().value());
+            auto job_status =
+                GetJob(client, response->job_reference().job_id(), response->job_reference().location().value());
             if (job_status.ok() && job_status->status().state() == "DONE") {
                 if (!job_status->status().error_result().reason().empty()) {
                     throw BinderException(job_status->status().error_result().message());
@@ -605,9 +613,9 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
 
     auto query_request = google::cloud::bigquery::v2::QueryRequest();
     *query_request.mutable_query() = query;
-	*query_request.mutable_request_id() = GenerateJobId();
+    *query_request.mutable_request_id() = GenerateJobId();
     *query_request.mutable_default_dataset() = dataset_ref;
-	query_request.set_dry_run(false);
+    query_request.set_dry_run(false);
     query_request.mutable_use_legacy_sql()->set_value(false);
 
     // query_request.mutable_set_preserve_nulls()->set_value(true);
