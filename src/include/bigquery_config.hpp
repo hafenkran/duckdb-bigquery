@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef defined(__linux__)
+#include <unistd.h>
+#endif
+
 #include "duckdb.hpp"
 
 namespace duckdb {
@@ -8,7 +12,9 @@ namespace bigquery {
 inline string DetectCAPath() {
 	string ca_path;
 
-#ifdef __linux__
+#if defined(_WIN32) || defined(_WIN64)
+	return ca_path;
+#elif defined(__linux__) || defined(__unix__)
     if (const char* ca_path_env = std::getenv("SSL_CERT_FILE"); ca_path_env != nullptr) {
         return std::string(ca_path_env);
     }
@@ -20,7 +26,6 @@ inline string DetectCAPath() {
     };
 	for (const char* path : ca_paths) {
         if (access(path, R_OK) == 0) {
-			std::cout << "Detected CA path: " << path << std::endl;
             return std::string(path);
         }
     }
