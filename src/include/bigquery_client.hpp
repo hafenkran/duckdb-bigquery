@@ -31,7 +31,7 @@ public:
                             const string &api_endpoint = "",
                             const string &grpc_endpoint = "");
     explicit BigqueryClient(ConnectionDetails &conn);
-    ~BigqueryClient();
+    ~BigqueryClient() = default;
 
     BigqueryClient(const BigqueryClient &);
     BigqueryClient &operator=(const BigqueryClient &);
@@ -108,15 +108,16 @@ private:
         const string &query,
         const string &location = "");
 
+    google::cloud::Options OptionsAPI();
+	google::cloud::Options OptionsGRPC();
+
+private:
     string dsn;
     string project_id;
     string dataset_id;
     string default_location;
     string api_endpoint;
     string grpc_endpoint;
-
-    google::cloud::Options api_options;
-    google::cloud::Options grpc_options;
 
     bool is_dev_env = false;
 };

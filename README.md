@@ -194,10 +194,11 @@ D CALL bigquery_clear_cache();
 
 ### Additional Extension Settings
 
-| Settings                              | Description                                                       | Default |
-| ------------------------------------- | ----------------------------------------------------------------- | ------- |
-| bigquery_debug_show_queries           | [DEBUG] - whether to print all queries sent to BigQuery to stdout | `false` |
-| bigquery_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown            | `true` |
+| Settings                        | Description                                                               | Default |
+| ------------------------------- | ------------------------------------------------------------------------- | ------- |
+| bq_debug_show_queries           | [DEBUG] - whether to print all queries sent to BigQuery to stdout         | `false` |
+| bq_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown                    | `true`  |
+| bq_curl_ca_bundle_path          | Path to the CA certificates used by cURL for SSL certificate verification |         |
 
 ## Limitations
 
