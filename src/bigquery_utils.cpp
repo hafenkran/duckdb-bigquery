@@ -17,6 +17,7 @@
 #include "bigquery_utils.hpp"
 
 
+
 namespace duckdb {
 namespace bigquery {
 

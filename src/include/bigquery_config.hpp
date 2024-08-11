@@ -1,15 +1,14 @@
 #pragma once
 
-#ifdef defined(__linux__)
-#include <unistd.h>
-#endif
-
 #include "duckdb.hpp"
+
+#include <fstream>
+#include <cstdlib>
 
 namespace duckdb {
 namespace bigquery {
 
-inline string DetectCAPath() {
+inline std::string DetectCAPath() {
 	string ca_path;
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -25,7 +24,7 @@ inline string DetectCAPath() {
         "/etc/ssl/cert.pem"
     };
 	for (const char* path : ca_paths) {
-        if (access(path, R_OK) == 0) {
+        if (std::ifstream(path).good()) {
             return std::string(path);
         }
     }
@@ -33,6 +32,7 @@ inline string DetectCAPath() {
 
 	return ca_path;
 }
+
 
 struct BigqueryConfig {
 public:
@@ -73,7 +73,7 @@ public:
 
 	static void SetCurlCaBundlePath(ClientContext &context, SetScope scope, Value &parameter) {
 		string path = StringValue::Get(parameter);
-		if (!path.empty() && access(path.c_str(), R_OK) != 0) {
+		if (!path.empty() || !std::ifstream(path).good()) {
 			throw InvalidInputException("Path to CA bundle is not readable");
 		}
 		CurlCaBundlePath() = path;
