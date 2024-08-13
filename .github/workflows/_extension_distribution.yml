@@ -45,10 +45,6 @@ on:
                 required: false
                 type: boolean
                 default: true
-            enable_rust:
-                required: false
-                type: boolean
-                default: false
             # Supply an override repository to build, instead of using the current one
             override_repository:
                 required: false
@@ -69,6 +65,17 @@ on:
                 required: false
                 type: string
                 default: ''
+            # Pass extra toolchains
+            #   available: (rust)
+            extra_toolchains:
+                required: false
+                type: string
+                default: ''
+            # DEPRECATED: use extra_toolchains instead
+            enable_rust:
+                required: false
+                type: boolean
+                default: false
 
 jobs:
     generate_matrix:
@@ -156,11 +163,10 @@ jobs:
                   apt-get install -y -qq software-properties-common
                   apt-get install -y -qq --fix-missing ninja-build make gcc-multilib g++-multilib libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libc6-dev-i386 lib32readline6-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client pkg-config
 
-            - name: Install required ubuntu packages (custom)
-              if: ${{ matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64' }}
+            - name: Install required manylinux packages
+              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
               run: |
-                  apt-get update -y -qq
-                  apt-get install -y -qq bison flex
+                  yum install -y epel-release -y pkgconfig
 
             - name: Install cross compiler for linux_arm64
               shell: bash
@@ -179,17 +185,17 @@ jobs:
                   git --version
 
             - name: Setup Rust
-              if: ${{ inputs.enable_rust && matrix.duckdb_arch == 'linux_amd64'}}
+              if: ${{ (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) && matrix.duckdb_arch == 'linux_amd64'}}
               uses: dtolnay/rust-toolchain@stable
 
             - name: Setup Rust for cross compilation
-              if: ${{ inputs.enable_rust && matrix.duckdb_arch == 'linux_arm64'}}
+              if: ${{ (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) && matrix.duckdb_arch == 'linux_arm64'}}
               uses: dtolnay/rust-toolchain@stable
               with:
                   targets: aarch64-unknown-linux-gnu
 
             - name: Setup Rust for manylinux (dtolnay/rust-toolchain doesn't work due to curl being old here)
-              if: ${{ inputs.enable_rust && matrix.duckdb_arch == 'linux_amd64_gcc4' }}
+              if: ${{ (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) && matrix.duckdb_arch == 'linux_amd64_gcc4' }}
               run: |
                   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
                   echo "$HOME/.cargo/bin" >> $GITHUB_PATH
@@ -202,6 +208,16 @@ jobs:
                   chmod +x cmake-3.21.3-linux-x86_64.sh
                   ./cmake-3.21.3-linux-x86_64.sh --skip-license --prefix=/usr/local
                   cmake --version
+
+            - name: Install parser tools
+              if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;') && (matrix.duckdb_arch == 'linux_amd64' || matrix.duckdb_arch == 'linux_arm64') }}
+              run: |
+                  apt-get install -y -qq bison flex
+
+            - name: Install parser tools (manylinux)
+              if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;') && matrix.duckdb_arch == 'linux_amd64_gcc4'}}
+              run: |
+                  yum install -y bison flex
 
             ###
             # Checkin out repositories
@@ -227,24 +243,10 @@ jobs:
                   cd duckdb
                   git checkout ${{ inputs.duckdb_version }}
 
-            # - name: Fix CentOS 7 EOL
-            #   if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
-            #   run: |
-            #       # Workaround the fact that CentOS 7 is EOL
-            #       sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-            #       sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-            #       yum-config-manager --disable centos-sclo-rh
-            #       yum install epel-release -y bison pkgconfig flex libcurl libcurl-devel
-
             - name: Setup ManyLinux2014
               if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
               run: |
                   ./duckdb/scripts/setup_manylinux2014.sh general ccache ssh python_alias openssl curl
-
-            - name: Install required CentOS packages (custom)
-              if: ${{ matrix.duckdb_arch == 'linux_amd64_gcc4' }}
-              run: |
-                  yum install -y epel-release -y bison pkgconfig flex
 
             - uses: actions/checkout@v3
               name: Checkout Extension CI tools
@@ -270,15 +272,11 @@ jobs:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             - name: Configure OpenSSL for Rust
-              if: ${{ inputs.enable_rust }}
+              if: ${{ (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) }}
               run: |
                   echo "OPENSSL_ROOT_DIR=`pwd`/build/release/vcpkg_installed/${{ matrix.vcpkg_triplet }}" >> $GITHUB_ENV
                   echo "OPENSSL_DIR=`pwd`/build/release/vcpkg_installed/${{ matrix.vcpkg_triplet }}" >> $GITHUB_ENV
                   echo "OPENSSL_USE_STATIC_LIBS=true" >> $GITHUB_ENV
-
-            - name: Configure safe directory
-              run: |
-                  git config --global --add safe.directory /__w/duckdb-bigquery/duckdb-bigquery
 
             ###
             # Building & testing
@@ -352,10 +350,6 @@ jobs:
               run: |
                   brew install ninja
 
-            - name: Install additional packages (custom)
-              run: |
-                  brew install bison flex
-
             - name: Setup Ccache
               uses: hendrikmuhs/ccache-action@main
               with:
@@ -363,7 +357,16 @@ jobs:
 
             - uses: actions/setup-python@v5
               with:
-                  python-version: '3.12'
+                  python-version: '3.11'
+
+            - uses: actions/checkout@v3
+              name: Checkout Extension CI tools
+              if: ${{inputs.override_ci_tools_ref != ''}}
+              with:
+                  path: 'extension-ci-tools'
+                  ref: ${{ inputs.override_ci_tools_ref }}
+                  repository: ${{ inputs.override_ci_tools_repository }}
+                  fetch-depth: 0
 
             - name: Checkout DuckDB to version
               run: |
@@ -376,9 +379,14 @@ jobs:
                   vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
 
             - name: Install Rust cross compile dependency
-              if: ${{ inputs.enable_rust && matrix.osx_build_arch == 'x86_64'}}
+              if: ${{ (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) && matrix.osx_build_arch == 'x86_64'}}
               run: |
                   rustup target add x86_64-apple-darwin
+
+            - name: Install parser tools
+              if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;')}}
+              run: |
+                  brew install bison flex
 
             - name: Build extension
               shell: bash
@@ -456,6 +464,11 @@ jobs:
               if: inputs.enable_rust
               uses: dtolnay/rust-toolchain@stable
 
+            - name: Install parser tools
+              if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;')}}
+              run: |
+                  choco install winflexbison3
+
             - uses: r-lib/actions/setup-r@v2
               if: matrix.duckdb_arch == 'windows_amd64_rtools'
               with:
@@ -490,8 +503,9 @@ jobs:
             - name: Build extension
               env:
                   DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+                  DUCKDB_PLATFORM_RTOOLS: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 1 || 0 }}
               run: |
-                  make release CURL_LIBRARY=$CURL_LIBRARY CURL_INCLUDE_DIR=$CURL_INCLUDE_DIR
+                  make release
 
             - id: 'auth'
               uses: 'google-github-actions/auth@v2'
