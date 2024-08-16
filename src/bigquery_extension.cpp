@@ -18,6 +18,7 @@
 #include "bigquery_execute.hpp"
 #include "bigquery_extension.hpp"
 #include "bigquery_scan.hpp"
+#include "bigquery_secret.hpp"
 #include "bigquery_storage.hpp"
 
 namespace duckdb {
@@ -39,6 +40,16 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     bigquery::BigQueryExecuteFunction bigquery_execute_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_execute_function);
+
+	// Support secret manager
+	SecretType secret_type;
+	secret_type.name = "bigquery";
+	secret_type.deserializer = KeyValueSecret::Deserialize<KeyValueSecret>;
+	secret_type.default_provider = "config";
+	ExtensionUtil::RegisterSecretType(instance, secret_type);
+
+	CreateSecretFunction create_secret_function = bigquery::BuildCreateBigQuerySecretFunction();
+	ExtensionUtil::RegisterFunction(instance, create_secret_function);
 
     auto &config = DBConfig::GetConfig(instance);
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();

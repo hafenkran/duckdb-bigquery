@@ -3,6 +3,7 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/common/enums/access_mode.hpp"
 
+#include "bigquery_secret.hpp"
 #include "storage/bigquery_options.hpp"
 #include "storage/bigquery_schema_set.hpp"
 
@@ -12,11 +13,12 @@ class BigquerySchemaEntry;
 
 class BigqueryCatalog : public Catalog {
 public:
-    explicit BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p);
+    explicit BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p, unique_ptr<AuthenticationInfo> auth_info);
     ~BigqueryCatalog();
 
     ConnectionDetails con_details;
     BigqueryOptions options;
+	unique_ptr<AuthenticationInfo> auth_info;
 
 public:
     string GetCatalogType() override {

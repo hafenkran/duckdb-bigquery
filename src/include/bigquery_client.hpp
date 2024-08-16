@@ -6,6 +6,7 @@
 
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_proto_writer.hpp"
+#include "bigquery_secret.hpp"
 #include "bigquery_utils.hpp"
 
 #include "duckdb.hpp"
@@ -29,8 +30,9 @@ public:
     explicit BigqueryClient(const string &project_id,
                             const string &dataset_id = "",
                             const string &api_endpoint = "",
-                            const string &grpc_endpoint = "");
-    explicit BigqueryClient(ConnectionDetails &conn);
+                            const string &grpc_endpoint = "",
+							unique_ptr<AuthenticationInfo> auth_info = nullptr);
+    explicit BigqueryClient(ConnectionDetails &conn, unique_ptr<AuthenticationInfo> auth_info);
     ~BigqueryClient() = default;
 
     BigqueryClient(const BigqueryClient &);
@@ -118,6 +120,7 @@ private:
     string default_location;
     string api_endpoint;
     string grpc_endpoint;
+	unique_ptr<AuthenticationInfo> auth_info;
 
     bool is_dev_env = false;
 };
