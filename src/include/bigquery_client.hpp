@@ -28,6 +28,7 @@ namespace bigquery {
 class BigqueryClient {
 public:
     explicit BigqueryClient(const string &project_id,
+							const string &execution_project_id = "",
                             const string &dataset_id = "",
                             const string &api_endpoint = "",
                             const string &grpc_endpoint = "",
@@ -115,6 +116,7 @@ private:
 
 private:
     string dsn;
+    string execution_project_id;
     string project_id;
     string dataset_id;
     string default_location;

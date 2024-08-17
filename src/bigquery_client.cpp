@@ -92,11 +92,13 @@ bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
 
 
 BigqueryClient::BigqueryClient(const string &project_id,
+                               const string &execution_project_id,
                                const string &dataset_id,
                                const string &api_endpoint,
                                const string &grpc_endpoint,
 							   unique_ptr<AuthenticationInfo> auth_info)
-    : project_id(project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint), auth_info(std::move(auth_info)) {
+    : project_id(project_id), execution_project_id(execution_project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint), auth_info(std::move(auth_info)) {
+
     if (project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
     }
@@ -106,7 +108,7 @@ BigqueryClient::BigqueryClient(const string &project_id,
 }
 
 BigqueryClient::BigqueryClient(ConnectionDetails &conn, unique_ptr<AuthenticationInfo> auth_info)
-    : BigqueryClient(conn.project_id, conn.dataset_id, conn.api_endpoint, conn.grpc_endpoint) {
+    : BigqueryClient(conn.project_id, conn.execution_project_id, conn.dataset_id, conn.api_endpoint, conn.grpc_endpoint) {
 }
 
 BigqueryClient::BigqueryClient(const BigqueryClient &other) {
@@ -432,7 +434,7 @@ BigqueryClient::CreateReadSession(const string &dataset_id,
                                   const idx_t num_streams,
                                   const vector<string> &selected,
                                   const string &filter_cond) {
-    const string parent = BigqueryUtils::FormatParentString(project_id);
+    const string parent = BigqueryUtils::FormatParentString(execution_project_id);
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 
     // Initialize the client.
@@ -504,6 +506,7 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
     return make_shared_ptr<BigqueryArrowReader>(project_id,
+                                                execution_project_id,
                                                 dataset_id,
                                                 table_id,
                                                 num_streams,

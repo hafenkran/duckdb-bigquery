@@ -11,6 +11,7 @@ namespace bigquery {
 class BigqueryClient;
 
 struct BigqueryBindData : public TableFunctionData {
+    string execution_project_id;
     string project_id;
     string dataset_id;
     string table_id;

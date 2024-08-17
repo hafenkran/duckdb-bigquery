@@ -19,6 +19,7 @@ namespace bigquery {
 struct BigqueryArrowReader {
 public:
     BigqueryArrowReader(const string &project_id,
+                        const string &execution_project_id,
                         const string &dataset_id,
                         const string &table_id,
                         idx_t num_streams,
@@ -46,6 +47,7 @@ private:
     void ReadStructColumn(const std::shared_ptr<arrow::StructArray> &struct_array, Vector &out_vec);
 
     string project_id;
+    string execution_project_id;
     string dataset_id;
     string table_id;
 

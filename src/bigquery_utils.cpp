@@ -55,11 +55,18 @@ ConnectionDetails BigqueryUtils::ParseConnectionString(const string &connection_
                 details.grpc_endpoint = value;
             } else if (key == "project") {
                 details.project_id = value;
+            } else if (key == "execution_project") {
+                details.execution_project_id = value;
             } else if (key == "dataset") {
                 details.dataset_id = value;
             }
         }
     }
+
+	// default to the project_id if execution_project_id is not set
+	if (details.execution_project_id.empty()) {
+		details.execution_project_id = details.project_id;
+	}
 
     details.dsn = connection_string;
     return details;

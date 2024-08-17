@@ -62,6 +62,10 @@ public:
     bool InMemory() override;
     string GetDBPath() override;
 
+    const string GetExecutionProjectID() {
+        return con_details.execution_project_id;
+    }
+
     const string GetProjectID() {
         return con_details.project_id;
     }
