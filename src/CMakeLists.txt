@@ -13,4 +13,5 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_storage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_sql.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_list_jobs.cpp
     PARENT_SCOPE)
