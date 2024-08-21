@@ -17,7 +17,6 @@
 #include "bigquery_utils.hpp"
 
 
-
 namespace duckdb {
 namespace bigquery {
 
@@ -97,10 +96,10 @@ BigqueryTableRef BigqueryUtils::ParseTableString(const string &table_string) {
             }
             if (matches.size() >= 3) {
                 result.dataset_id = matches[2].str();
-			}
+            }
             if (matches.size() >= 4) {
                 result.table_id = matches[3].str();
-			}
+            }
             return result;
         }
     }
@@ -132,7 +131,7 @@ std::string BigqueryUtils::FormatTableStringSimple(const std::string &project_id
     return result;
 }
 
-std::string BigqueryUtils::ForamtTableString(const BigqueryTableRef &table_ref) {
+std::string BigqueryUtils::FormatTableString(const BigqueryTableRef &table_ref) {
     return FormatTableString(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
 }
 
@@ -557,6 +556,11 @@ std::string BigqueryUtils::IntervalToBigqueryIntervalString(const interval_t &in
            std::to_string(remaining_micros % 1000000);
 }
 
+uint64_t Iso8601ToMillis(const std::string &iso8601) {
+	auto timestamp = Timestamp::FromString(iso8601);
+	auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+	return timestamp_ms;
+}
 
 } // namespace bigquery
 } // namespace duckdb

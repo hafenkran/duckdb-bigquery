@@ -85,7 +85,7 @@ public:
     static std::string FormatTableStringSimple(const std::string &project_id,
                                                const std::string &dataset_id,
                                                const std::string &table_id = "");
-    static std::string ForamtTableString(const BigqueryTableRef &table_ref);
+    static std::string FormatTableString(const BigqueryTableRef &table_ref);
     static std::string FormatTableStringSimple(const BigqueryTableRef &table_ref);
 
     static google::protobuf::FieldDescriptorProto::Type LogicalTypeToProtoType(const LogicalType &type);
