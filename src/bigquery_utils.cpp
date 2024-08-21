@@ -565,12 +565,17 @@ std::string BigqueryUtils::IntervalToBigqueryIntervalString(const interval_t &in
 }
 
 const string BigqueryTableRef::TableString() const {
-	return BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
+    return BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 }
 
 const string BigqueryTableRef::TableStringSimple() const {
-	return BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, table_id);
+    return BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, table_id);
 }
+
+uint64_t Iso8601ToMillis(const std::string &iso8601) {
+    auto timestamp = Timestamp::FromString(iso8601);
+    auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+    return timestamp_ms;
 
 } // namespace bigquery
 } // namespace duckdb
