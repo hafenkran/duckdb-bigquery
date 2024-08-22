@@ -24,6 +24,17 @@
 namespace duckdb {
 namespace bigquery {
 
+struct ListJobsParams{
+    std::optional<bool> all_users;
+    std::optional<int> max_results;
+    std::optional<std::string> min_creation_time;
+    std::optional<std::string> max_creation_time;
+    std::optional<std::string> page_token;
+    std::optional<std::string> projection;
+    std::optional<std::string> state_filter;
+    std::optional<std::string> parent_job_id;
+};
+
 class BigqueryClient {
 public:
     explicit BigqueryClient(const string &project_id,
@@ -42,13 +53,15 @@ public:
     static BigqueryClient NewClient(const string &connection_string);
 
 public:
-    bool DatasetExists(const string &dataset_id);
+	vector<BigqueryDatasetRef> GetDatasets();
+	BigqueryDatasetRef GetDataset(const string &dataset_id);
+	bool DatasetExists(const string &dataset_id);
+
+    vector<BigqueryTableRef> GetTables(const string &dataset_id);
+    BigqueryTableRef GetTable(const string &dataset_id, const string &table_id);
     bool TableExists(const string &dataset_id, const string &table_id);
 
-    vector<BigqueryDatasetRef> GetDatasets();
-    vector<BigqueryTableRef> GetTables(const string &dataset_id);
-    BigqueryDatasetRef GetDataset(const string &dataset_id);
-    BigqueryTableRef GetTable(const string &dataset_id, const string &table_id);
+	vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
 
     void CreateDataset(const CreateSchemaInfo &info, const BigqueryDatasetRef &dataset_ref);
     void CreateTable(const CreateTableInfo &info, const BigqueryTableRef &table_ref);
