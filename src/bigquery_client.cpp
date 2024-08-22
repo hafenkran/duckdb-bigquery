@@ -184,6 +184,72 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
     return info;
 }
 
+vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(const ListJobsParams &params) {
+	std::cout << "BigqueryClient::ListJobs" << std::endl;
+	auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+	auto request = google::cloud::bigquery::v2::ListJobsRequest();
+	request.set_project_id(project_id);
+
+	if (params.all_users.has_value()) {
+		auto all_users = params.all_users.value();
+		request.set_all_users(all_users);
+	}
+	if (params.max_results.has_value()) {
+		std::int32_t max_results = params.max_results.value();
+		request.mutable_max_results()->set_value(max_results);
+	}
+	if (params.min_creation_time.has_value()) {
+		auto min_creation_time = params.min_creation_time.value();
+		auto timestamp = Timestamp::FromString(min_creation_time);
+		auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+		request.set_min_creation_time(timestamp_ms);
+	}
+	if (params.max_creation_time.has_value()) {
+		auto max_creation_time = params.max_creation_time.value();
+		auto timestamp = Timestamp::FromString(max_creation_time);
+		auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+		request.mutable_max_creation_time()->set_value(timestamp_ms);
+	}
+	if (params.page_token.has_value()) {
+		auto page_token = params.page_token.value();
+		request.set_page_token(page_token);
+	}
+	if (params.projection.has_value()) {
+		auto projection = params.projection.value();
+		if (projection == "full") {
+			auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_FULL;
+			request.set_projection(mapped);
+		} else if (projection == "minimal") {
+			auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_MINIMAL;
+			request.set_projection(mapped);
+		} else {
+			throw BinderException("Invalid projection value: %s", projection);
+		}
+	}
+	// if (params.state_filter.has_value()) {
+	// 	request.set_state_filter(params.state_filter.value());
+	// }
+	if (params.parent_job_id.has_value()) {
+		auto parent_job_id = params.parent_job_id.value();
+		request.set_parent_job_id(parent_job_id);
+	}
+
+	vector<google::cloud::bigquery::v2::ListFormatJob> result;
+	auto response = client.ListJobs(request);
+	for (const auto &job : response) {
+		if (!job.ok()) {
+			throw BinderException(job.status().message());
+		}
+
+		auto job_val = job.value();
+		result.push_back(job_val);
+	}
+
+	return result;
+}
+
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
         google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
