@@ -45,26 +45,15 @@ This downloads the `roots.pem` file and sets the `GRPC_DEFAULT_SSL_ROOTS_FILE_PA
 
 ## Quickstart
 
-To use this extension, DuckDB must be started with the [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Depending on the kind of client you are using, you can achieve this by either using the `allow_unsigned_extensions` flag in your clients or, in the case of the CLI client, by starting with the `-unsigned` flag as follows:
+The BigQuery extension can be installed directly from the Community Extension Repository, eliminating the need to enable the `unsigned` mode. To do so, use the following command to install and load the extension:
 
-```bash
-# Example: Python
-con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
-
-# Example: CLI
-duckdb -unsigned
+```sql
+-- Install and load the DuckDB BigQuery extension from the Community Repository
+FORCE INSTALL 'bigquery' FROM community;
+LOAD 'bigquery';
 ```
 
 > Note: Windows user require an additional step to configure the gRPC SSL certificates (see [here](#windows-grpc-configuration)).
-
-Once DuckDB is running with unsigned extensions enabled, install and load the previously downloaded DuckDB BigQuery Extension:
-
-```sql
--- Set the custom repository, then install and load the DuckDB BigQuery extension
-D SET custom_extension_repository = 'http://storage.googleapis.com/hafenkran';
-D FORCE INSTALL 'bigquery';
-D LOAD 'bigquery';
-```
 
 After loading the extension, you can connect to your BigQuery project using the `ATTACH` statement. Replace `my_gcp_project` with the name of your actual Google Cloud Project. Here is an example:
 
@@ -107,6 +96,29 @@ D SHOW ALL TABLES;
 ├──────────┼──────────────────┼──────────┼──────────────┼───────────────────┼───────────┤
 │ bq       │ quacking_dataset │ duck_tbl │ [i, s]       │ [BIGINT, VARCHAR] │ false     │
 └──────────┴──────────────────┴──────────┴──────────────┴───────────────────┴───────────┘
+```
+
+## Install Latest Updates from Custom Repository
+
+The most recent updates and fixes may not be immediately available in the Community Extension repository. If necessary, these updates can be obtained from a custom repository.
+
+To install the extension from the custom repository, DuckDB must be started with the [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Depending on the kind of client you are using, you can achieve this by either using the `allow_unsigned_extensions` flag in your clients or, in the case of the CLI client, by starting with the `-unsigned` flag as follows:
+
+```bash
+# Example: Python
+con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
+
+# Example: CLI
+duckdb -unsigned
+```
+
+Then you can set the custom repository and download it as follows:
+
+```sql
+-- Set the custom repository, then install and load the DuckDB BigQuery extension
+D SET custom_extension_repository = 'http://storage.googleapis.com/hafenkran';
+D FORCE INSTALL 'bigquery';
+D LOAD 'bigquery';
 ```
 
 ## Additional Operations and Settings
