@@ -185,7 +185,6 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
 }
 
 vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(const ListJobsParams &params) {
-	std::cout << "BigqueryClient::ListJobs" << std::endl;
 	auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
 		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 

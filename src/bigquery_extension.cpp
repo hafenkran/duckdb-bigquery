@@ -40,6 +40,9 @@ static void LoadInternal(DatabaseInstance &instance) {
 	bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
 	ExtensionUtil::RegisterFunction(instance, bigquery_list_jobs_function);
 
+	bigquery::BigQueryGetJobFunction bigquery_get_job_function;
+	ExtensionUtil::RegisterFunction(instance, bigquery_get_job_function);
+
     auto &config = DBConfig::GetConfig(instance);
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
 

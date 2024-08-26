@@ -11,15 +11,6 @@
 namespace duckdb {
 namespace bigquery {
 
-static constexpr const char *LIST_JOBS_DOC_DESCRIPTION = R"(
-	Lists all jobs in the BigQuery project. Job information is available for a six month period after creation.
-)";
-
-static constexpr const char *LIST_JOBS_DOC_EXAMPLE = R"(
-	-- List all jobs in the BigQuery project
-	SELECT * FROM bigquery_list_jobs('my_project');
-)";
-
 
 struct ListJobsBindData : public TableFunctionData {
     explicit ListJobsBindData(BigqueryCatalog &bq_catalog, ListJobsParams &params)
@@ -66,7 +57,7 @@ void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<str
     };
 
     if (projection == "full") {
-		std::vector<ColumnInfo> additional_columns = {
+        std::vector<ColumnInfo> additional_columns = {
             {"total slot time (ms)", LogicalTypeId::BIGINT},
             {"user email", LogicalTypeId::VARCHAR},
             {"principal subject", LogicalTypeId::VARCHAR},
@@ -181,7 +172,7 @@ static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &dat
         // jobId, project, location
         output.SetValue(value_idx++, out_idx, Value(job_ref.job_id()));
         output.SetValue(value_idx++, out_idx, Value(job_ref.project_id()));
-		output.SetValue(value_idx++, out_idx, Value(job_ref.location().value()));
+        output.SetValue(value_idx++, out_idx, Value(job_ref.location().value()));
 
         // creation time
         if (job_stats.creation_time() > 0) {
@@ -281,6 +272,56 @@ static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &dat
     }
 }
 
+struct GetJobBindData : public TableFunctionData {
+    explicit GetJobBindData(BigqueryCatalog &bq_catalog, string job_id)
+        : bq_catalog(bq_catalog), job_id(std::move(job_id)) {
+    }
+
+public:
+    BigqueryCatalog &bq_catalog;
+    string job_id;
+    bool finished = false;
+};
+
+struct GetJobGlobalFunctionState : public GlobalTableFunctionState {
+    explicit GetJobGlobalFunctionState() {
+    }
+
+public:
+    bool finished = false;
+    google::cloud::bigquery::v2::Job job;
+};
+
+static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
+                                                     TableFunctionBindInput &input,
+                                                     vector<LogicalType> &return_types,
+                                                     vector<string> &names) {
+
+    auto database_name = input.inputs[0].GetValue<string>();
+    auto &database_manager = DatabaseManager::Get(context);
+    auto database = database_manager.GetDatabase(context, database_name);
+    if (!database) {
+        throw BinderException("Failed to find attached database " + database_name);
+    }
+
+    auto &catalog = database->GetCatalog();
+    if (catalog.GetCatalogType() != "bigquery") {
+        throw BinderException("Database " + database_name + " is not a BigQuery database");
+    }
+    auto &bq_catalog = catalog.Cast<BigqueryCatalog>();
+
+	auto job_id = input.inputs[1].GetValue<string>();
+
+	// Initialize the names and return types
+	InitializeNamesAndReturnTypes(return_types, names, "full");
+
+	return make_uniq<GetJobBindData>(bq_catalog, job_id);
+}
+
+static void BigQueryGetJobFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+
+}
+
 BigQueryListJobsFunction::BigQueryListJobsFunction()
     : TableFunction("bigquery_list_jobs",
                     {LogicalType::VARCHAR},
@@ -296,6 +337,16 @@ BigQueryListJobsFunction::BigQueryListJobsFunction()
     named_parameters["stateFilter"] = LogicalType::VARCHAR;
     named_parameters["parentJobId"] = LogicalType::VARCHAR;
 }
+
+
+BigQueryGetJobFunction::BigQueryGetJobFunction()
+    : TableFunction("bigquery_get_job",
+                    {LogicalType::VARCHAR},
+                    BigQueryGetJobFunc,
+                    BigQueryListJobsBind) {
+    named_parameters["jobId"] = LogicalType::VARCHAR;
+}
+
 
 } // namespace bigquery
 } // namespace duckdb

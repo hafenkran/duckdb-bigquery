@@ -10,5 +10,10 @@ public:
     BigQueryListJobsFunction();
 };
 
+class BigQueryGetJobFunction : public TableFunction {
+public:
+	BigQueryGetJobFunction();
+};
+
 } // namespace bigquery
 } // namespace duckdb
