@@ -17,31 +17,33 @@
 #include "bigquery_utils.hpp"
 
 
-
 namespace duckdb {
 namespace bigquery {
 
+BigqueryConfig BigqueryConfig::FromDSN(const std::string &connection_string) {
+    std::string billing_project_id, project_id, dataset_id, api_endpoint, grpc_endpoint;
 
-ConnectionDetails BigqueryUtils::ParseConnectionString(const string &connection_string) {
-    ConnectionDetails details;
     std::istringstream stream(connection_string);
     std::string segment;
 
-    // Extract the first segment
+    // Parse the first segment, assuming it could be a special table string
     std::getline(stream, segment, ' ');
     if (segment.find('=') == std::string::npos) {
-        // Use the custom parsing function if the first segment does not contain "="
-        auto table_ref = ParseTableString(segment);
-        details.project_id = table_ref.project_id;
-        details.dataset_id = table_ref.dataset_id;
+        auto table_ref = BigqueryUtils::ParseTableString(segment);
+        project_id = table_ref.project_id;
+        dataset_id = table_ref.dataset_id;
+
+        // Optional error handling if table ID should not be present
         if (table_ref.has_table_id()) {
-            throw BinderException("Table ID is not supported in connection string");
+            throw std::invalid_argument("Table ID is not supported in the connection string");
         }
     }
 
-    // Parse the rest of the connection string for key=value pairs
+    // reset stream to parse key=value pairs
     stream.str(connection_string);
     stream.clear();
+
+    // extract key=value pairs from the rest of the connection string
     while (std::getline(stream, segment, ' ')) {
         size_t equal_pos = segment.find('=');
         if (equal_pos != std::string::npos) {
@@ -49,20 +51,23 @@ ConnectionDetails BigqueryUtils::ParseConnectionString(const string &connection_
             std::string value = segment.substr(equal_pos + 1);
 
             // Assign values based on the key
-            if (key == "api_endpoint") {
-                details.api_endpoint = value;
-            } else if (key == "grpc_endpoint") {
-                details.grpc_endpoint = value;
-            } else if (key == "project") {
-                details.project_id = value;
+            if (key == "project") {
+                project_id = value;
             } else if (key == "dataset") {
-                details.dataset_id = value;
+                dataset_id = value;
+            } else if (key == "api_endpoint") {
+                api_endpoint = value;
+            } else if (key == "grpc_endpoint") {
+                grpc_endpoint = value;
+            } else {
+                throw std::invalid_argument("Unknown key in connection string: " + key);
             }
+        } else {
+            throw std::invalid_argument("Invalid segment in connection string: " + segment);
         }
     }
 
-    details.dsn = connection_string;
-    return details;
+    return BigqueryConfig(project_id, dataset_id, billing_project_id, api_endpoint, grpc_endpoint);
 }
 
 BigqueryTableRef BigqueryUtils::ParseTableString(const string &table_string) {
@@ -97,10 +102,10 @@ BigqueryTableRef BigqueryUtils::ParseTableString(const string &table_string) {
             }
             if (matches.size() >= 3) {
                 result.dataset_id = matches[2].str();
-			}
+            }
             if (matches.size() >= 4) {
                 result.table_id = matches[3].str();
-			}
+            }
             return result;
         }
     }
@@ -132,7 +137,7 @@ std::string BigqueryUtils::FormatTableStringSimple(const std::string &project_id
     return result;
 }
 
-std::string BigqueryUtils::ForamtTableString(const BigqueryTableRef &table_ref) {
+std::string BigqueryUtils::FormatTableString(const BigqueryTableRef &table_ref) {
     return FormatTableString(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
 }
 
@@ -556,7 +561,6 @@ std::string BigqueryUtils::IntervalToBigqueryIntervalString(const interval_t &in
            std::to_string(hours) + ":" + std::to_string(minutes) + ":" + std::to_string(seconds) + "." +
            std::to_string(remaining_micros % 1000000);
 }
-
 
 } // namespace bigquery
 } // namespace duckdb
