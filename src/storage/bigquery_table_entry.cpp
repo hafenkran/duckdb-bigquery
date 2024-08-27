@@ -32,6 +32,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
 
     auto result = make_uniq<BigqueryBindData>();
+    result->execution_project_id = bigquery_catalog.GetExecutionProjectID();
     result->project_id = bigquery_catalog.GetProjectID();
     result->dataset_id = schema.name;
     result->table_id = name;

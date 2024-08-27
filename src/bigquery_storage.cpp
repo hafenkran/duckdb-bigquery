@@ -5,6 +5,7 @@
 #include "duckdb/parser/parsed_data/attach_info.hpp"
 #include "duckdb/transaction/transaction_manager.hpp"
 
+#include "bigquery_secret.hpp"
 #include "bigquery_storage.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_options.hpp"
@@ -24,7 +25,8 @@ static unique_ptr<Catalog> BigqueryAttach(StorageExtensionInfo *storage_info,
                                           AccessMode access_mode) {
     BigqueryOptions options;
     options.access_mode = access_mode;
-    return duckdb::make_uniq<BigqueryCatalog>(db, info.path, options);
+	auto authInfo = BuildAuthenticationInfo(context, info);
+    return duckdb::make_uniq<BigqueryCatalog>(db, info.path, options, std::move(authInfo));
 }
 
 

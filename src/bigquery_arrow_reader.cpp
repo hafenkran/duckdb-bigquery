@@ -24,20 +24,21 @@ namespace duckdb {
 namespace bigquery {
 
 BigqueryArrowReader::BigqueryArrowReader(const string &project_id,
+										 const string &execution_project_id,
                                          const string &dataset_id,
                                          const string &table_id,
                                          idx_t num_streams,
                                          const google::cloud::Options &options,
                                          const vector<string> &selected_columns,
                                          const string &filter_condition)
-    : project_id(project_id), dataset_id(dataset_id), table_id(table_id), num_streams(num_streams), options(options),
+    : project_id(project_id), execution_project_id(execution_project_id), dataset_id(dataset_id), table_id(table_id), num_streams(num_streams), options(options),
       localhost_test_env(false) {
 
     if (options.has<google::cloud::EndpointOption>()) {
         localhost_test_env = true; // TODO
     }
 
-    const string parent = BigqueryUtils::FormatParentString(project_id);
+    const string parent = BigqueryUtils::FormatParentString(execution_project_id);
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 
     // Initialize the Client

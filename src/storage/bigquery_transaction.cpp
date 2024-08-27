@@ -1,3 +1,4 @@
+#include "bigquery_secret.hpp"
 #include "storage/bigquery_transaction.hpp"
 #include "storage/bigquery_catalog.hpp"
 
@@ -15,7 +16,7 @@ BigqueryTransaction::BigqueryTransaction(BigqueryCatalog &bigquery_catalog,
                                          TransactionManager &manager,
                                          ClientContext &context)
     : Transaction(manager, context), bigquery_catalog(bigquery_catalog), access_mode(bigquery_catalog.options.access_mode){
-    client = make_shared_ptr<BigqueryClient>(bigquery_catalog.con_details);
+    client = make_shared_ptr<BigqueryClient>(bigquery_catalog.con_details, std::move(bigquery_catalog.auth_info));
 }
 
 BigqueryTransaction::~BigqueryTransaction() {

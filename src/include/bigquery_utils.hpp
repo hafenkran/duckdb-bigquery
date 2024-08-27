@@ -19,6 +19,7 @@ struct BigqueryUtils;
 
 struct ConnectionDetails {
     string dsn;
+    string execution_project_id;
     string project_id;
     string dataset_id;
     string api_endpoint;

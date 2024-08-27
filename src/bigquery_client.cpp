@@ -2,6 +2,7 @@
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_config.hpp"
 #include "bigquery_proto_writer.hpp"
+#include "bigquery_secret.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
 #include "storage/bigquery_catalog.hpp"
@@ -91,10 +92,13 @@ bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
 
 
 BigqueryClient::BigqueryClient(const string &project_id,
+                               const string &execution_project_id,
                                const string &dataset_id,
                                const string &api_endpoint,
-                               const string &grpc_endpoint)
-    : project_id(project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint) {
+                               const string &grpc_endpoint,
+							   unique_ptr<AuthenticationInfo> auth_info)
+    : project_id(project_id), execution_project_id(execution_project_id), dataset_id(dataset_id), api_endpoint(api_endpoint), grpc_endpoint(grpc_endpoint), auth_info(std::move(auth_info)) {
+
     if (project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
     }
@@ -103,8 +107,8 @@ BigqueryClient::BigqueryClient(const string &project_id,
     }
 }
 
-BigqueryClient::BigqueryClient(ConnectionDetails &conn)
-    : BigqueryClient(conn.project_id, conn.dataset_id, conn.api_endpoint, conn.grpc_endpoint) {
+BigqueryClient::BigqueryClient(ConnectionDetails &conn, unique_ptr<AuthenticationInfo> auth_info)
+    : BigqueryClient(conn.project_id, conn.execution_project_id, conn.dataset_id, conn.api_endpoint, conn.grpc_endpoint) {
 }
 
 BigqueryClient::BigqueryClient(const BigqueryClient &other) {
@@ -161,6 +165,10 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     if (!ca_path.empty()) {
         options.set<google::cloud::v2_27::CARootsFilePathOption>(ca_path);
     }
+	if(auth_info){
+		options.set<google::cloud::UnifiedCredentialsOption>(
+		google::cloud::MakeServiceAccountCredentials(auth_info->service_account_json));
+	}
     return options;
 }
 
@@ -172,6 +180,10 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
             options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
         }
     }
+	if(auth_info){
+		options.set<google::cloud::UnifiedCredentialsOption>(
+		google::cloud::MakeServiceAccountCredentials(auth_info->service_account_json));
+	}
     return options;
 }
 
@@ -422,7 +434,7 @@ BigqueryClient::CreateReadSession(const string &dataset_id,
                                   const idx_t num_streams,
                                   const vector<string> &selected,
                                   const string &filter_cond) {
-    const string parent = BigqueryUtils::FormatParentString(project_id);
+    const string parent = BigqueryUtils::FormatParentString(execution_project_id);
     const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
 
     // Initialize the client.
@@ -494,6 +506,7 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
     return make_shared_ptr<BigqueryArrowReader>(project_id,
+                                                execution_project_id,
                                                 dataset_id,
                                                 table_id,
                                                 num_streams,

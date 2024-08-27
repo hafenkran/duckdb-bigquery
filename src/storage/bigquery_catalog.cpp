@@ -2,6 +2,7 @@
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
 #include "duckdb/storage/database_size.hpp"
 
+#include "bigquery_secret.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_options.hpp"
 #include "storage/bigquery_schema_entry.hpp"
@@ -11,8 +12,8 @@
 namespace duckdb {
 namespace bigquery {
 
-BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p)
-    : Catalog(db_p), options(options_p), schemas(*this) {
+BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p, unique_ptr<AuthenticationInfo> auth_info_p)
+    : Catalog(db_p), options(options_p), schemas(*this), auth_info(std::move(auth_info_p)) {
     con_details = BigqueryUtils::ParseConnectionString(connection_str);
     if (!con_details.is_valid()) {
         throw BinderException("Invalid connection string: %s", connection_str);
