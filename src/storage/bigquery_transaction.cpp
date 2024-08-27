@@ -14,8 +14,11 @@ namespace bigquery {
 BigqueryTransaction::BigqueryTransaction(BigqueryCatalog &bigquery_catalog,
                                          TransactionManager &manager,
                                          ClientContext &context)
-    : Transaction(manager, context), bigquery_catalog(bigquery_catalog), access_mode(bigquery_catalog.options.access_mode){
-    client = make_shared_ptr<BigqueryClient>(bigquery_catalog.con_details);
+    : Transaction(manager, context),      //
+      bigquery_catalog(bigquery_catalog), //
+      access_mode(bigquery_catalog.options.access_mode) {
+    // initialize the BigqueryClient
+    client = make_shared_ptr<BigqueryClient>(bigquery_catalog.config);
 }
 
 BigqueryTransaction::~BigqueryTransaction() {

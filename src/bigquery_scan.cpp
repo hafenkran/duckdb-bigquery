@@ -127,7 +127,7 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
     result->project_id = table_ref.project_id;
     result->dataset_id = table_ref.dataset_id;
     result->table_id = table_ref.table_id;
-    result->bq_client = make_shared_ptr<BigqueryClient>(result->project_id);
+    result->bq_client = make_shared_ptr<BigqueryClient>(BigqueryConfig(result->project_id));
 
     auto arrow_reader = result->bq_client->CreateArrowReader(result->dataset_id, result->table_id, 1);
 

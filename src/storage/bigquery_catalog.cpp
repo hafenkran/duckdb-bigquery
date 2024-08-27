@@ -11,15 +11,15 @@
 namespace duckdb {
 namespace bigquery {
 
-BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p)
-    : Catalog(db_p), options(options_p), schemas(*this) {
-    con_details = BigqueryUtils::ParseConnectionString(connection_str);
-    if (!con_details.is_valid()) {
-        throw BinderException("Invalid connection string: %s", connection_str);
-    }
+BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, BigqueryConfig config, BigqueryOptions options_p)
+	: Catalog(db_p), config(config), options(options_p), schemas(*this) {
 }
 
-BigqueryCatalog::~BigqueryCatalog() {
+BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const string &dsn, BigqueryOptions options_p)
+    : BigqueryCatalog(db_p, BigqueryConfig::FromDSN(dsn), options_p) {
+    if (!config.has_project_id()) {
+        throw BinderException("Invalid connection string: %s", dsn);
+    }
 }
 
 void BigqueryCatalog::Initialize(bool load_builtin) {
@@ -38,14 +38,14 @@ void BigqueryCatalog::Initialize(bool load_builtin) {
 }
 
 void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(SchemaCatalogEntry &)> callback) {
-    if (!con_details.dataset_id.empty()) {
+    if (!config.dataset_id.empty()) {
         if (!default_dataset) {
             auto bq_transaction = dynamic_cast<BigqueryTransaction *>(GetCatalogTransaction(context).transaction.get());
             auto bq_client = bq_transaction->GetBigqueryClient();
-            auto dataset_ref = bq_client->GetDataset(con_details.dataset_id);
+            auto dataset_ref = bq_client->GetDataset(config.dataset_id);
             CreateSchemaInfo info;
-            info.catalog = con_details.project_id;
-            info.schema = con_details.dataset_id;
+            info.catalog = config.project_id;
+            info.schema = config.dataset_id;
             default_dataset = make_uniq<BigquerySchemaEntry>(*this, info, dataset_ref);
         }
         callback(*default_dataset);
@@ -112,7 +112,7 @@ bool BigqueryCatalog::InMemory() {
 };
 
 string BigqueryCatalog::GetDBPath() {
-    return con_details.project_id;
+    return config.project_id;
 };
 
 void BigqueryCatalog::ClearCache() {
