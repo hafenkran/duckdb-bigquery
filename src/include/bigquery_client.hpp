@@ -26,20 +26,8 @@ namespace bigquery {
 
 class BigqueryClient {
 public:
-    explicit BigqueryClient(const string &project_id,
-                            const string &dataset_id = "",
-                            const string &api_endpoint = "",
-                            const string &grpc_endpoint = "");
-    explicit BigqueryClient(ConnectionDetails &conn);
-    ~BigqueryClient() = default;
-
-    BigqueryClient(const BigqueryClient &);
-    BigqueryClient &operator=(const BigqueryClient &);
-
-    BigqueryClient(BigqueryClient &&other) noexcept;
-    BigqueryClient &operator=(BigqueryClient &&other) noexcept;
-
-    static BigqueryClient NewClient(const string &connection_string);
+	explicit BigqueryClient(const BigqueryConfig &config);
+    ~BigqueryClient() {};
 
 public:
     bool DatasetExists(const string &dataset_id);
@@ -47,6 +35,7 @@ public:
 
     vector<BigqueryDatasetRef> GetDatasets();
     vector<BigqueryTableRef> GetTables(const string &dataset_id);
+
     BigqueryDatasetRef GetDataset(const string &dataset_id);
     BigqueryTableRef GetTable(const string &dataset_id, const string &table_id);
 
@@ -65,23 +54,6 @@ public:
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
 
-    void CreateReadSession(const string &project_id, const string &dataset_id, const string &table_id);
-    // void ReadArrowResutls(google::cloud::bigquery::storage::v1::ArrowSchema const &schema,
-    //                       google::cloud::bigquery::storage::v1::ArrowRecordBatch const &batch);
-
-    std::pair<google::cloud::bigquery_storage_v1::BigQueryReadClient, //
-              google::cloud::bigquery::storage::v1::ReadSession>
-    CreateReadSession(const string &dataset_id,
-                      const string &table_id,
-                      const idx_t num_streams,
-                      const vector<string> &column_ids = std::vector<string>(),
-                      const string &filter_cond = "");
-
-    std::pair<shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient>,
-              shared_ptr<google::cloud::bigquery::storage::v1::WriteStream>>
-    CreateWriteStream(const string &dataset_id, const string &table_id);
-
-
     shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,
                                                       const string &table_id,
                                                       const idx_t num_streams,
@@ -92,7 +64,7 @@ public:
 
 
     string GetProjectID() const {
-        return project_id;
+        return config.project_id;
     }
 
 private:
@@ -112,14 +84,7 @@ private:
 	google::cloud::Options OptionsGRPC();
 
 private:
-    string dsn;
-    string project_id;
-    string dataset_id;
-    string default_location;
-    string api_endpoint;
-    string grpc_endpoint;
-
-    bool is_dev_env = false;
+	BigqueryConfig config;
 };
 
 } // namespace bigquery
