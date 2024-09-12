@@ -82,7 +82,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     }
     auto ca_path = BigquerySettings::CurlCaBundlePath();
     if (!ca_path.empty()) {
-        options.set<google::cloud::v2_27::CARootsFilePathOption>(ca_path);
+        options.set<google::cloud::v2_29::CARootsFilePathOption>(ca_path);
     }
     return options;
 }
