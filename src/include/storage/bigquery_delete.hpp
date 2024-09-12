@@ -45,7 +45,7 @@ public:
     }
 
     string GetName() const override;
-    string ParamsToString() const override;
+    InsertionOrderPreservingMap<string> ParamsToString() const override;
 };
 
 } // namespace bigquery
