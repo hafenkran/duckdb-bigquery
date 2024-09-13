@@ -12,10 +12,11 @@ class BigquerySchemaEntry;
 
 class BigqueryCatalog : public Catalog {
 public:
+	explicit BigqueryCatalog(AttachedDatabase &db_p, BigqueryConfig config, BigqueryOptions options_p);
     explicit BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p);
-    ~BigqueryCatalog();
+    ~BigqueryCatalog() = default;
 
-    ConnectionDetails con_details;
+    BigqueryConfig config;
     BigqueryOptions options;
 
 public:
@@ -61,11 +62,11 @@ public:
     string GetDBPath() override;
 
     const string GetProjectID() {
-        return con_details.project_id;
+        return config.project_id;
     }
 
     const string GetDefaultDatasetID() {
-        return con_details.dataset_id;
+        return config.dataset_id;
     }
 
     void ClearCache();

@@ -34,7 +34,7 @@ inline std::string DetectCAPath() {
 }
 
 
-struct BigqueryConfig {
+struct BigquerySettings {
 public:
 	static string& DefaultLocation() {
 		static string bigquery_default_location = "US";

@@ -14,17 +14,13 @@
 #include "bigquery_attach.hpp"
 #include "bigquery_clear_cache.hpp"
 #include "bigquery_client.hpp"
-#include "bigquery_config.hpp"
+#include "bigquery_settings.hpp"
 #include "bigquery_execute.hpp"
 #include "bigquery_extension.hpp"
 #include "bigquery_scan.hpp"
 #include "bigquery_storage.hpp"
 
 namespace duckdb {
-
-// static void SetBigqueryDebugQueryPrint(ClientContext &context, SetScope scope, Value &parameter) {
-//     bigquery::BigqueryClient::DebugSetPrintQueries(BooleanValue::Get(parameter));
-// }
 
 static void LoadInternal(DatabaseInstance &instance) {
 
@@ -46,18 +42,18 @@ static void LoadInternal(DatabaseInstance &instance) {
     config.AddExtensionOption("bq_experimental_filter_pushdown",
                               "Whether to use filter pushdown (currently experimental)",
                               LogicalType::BOOLEAN,
-                              Value(bigquery::BigqueryConfig::ExperimentalFilterPushdown()),
-                              bigquery::BigqueryConfig::SetExperimentalFilterPushdown);
+                              Value(bigquery::BigquerySettings::ExperimentalFilterPushdown()),
+                              bigquery::BigquerySettings::SetExperimentalFilterPushdown);
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,
-                              Value(bigquery::BigqueryConfig::DebugQueryPrint()),
-                              bigquery::BigqueryConfig::SetDebugQueryPrint);
+                              Value(bigquery::BigquerySettings::DebugQueryPrint()),
+                              bigquery::BigquerySettings::SetDebugQueryPrint);
     config.AddExtensionOption("bq_curl_ca_bundle_path",
                               "Path to the CA bundle for curl",
                               LogicalType::VARCHAR,
-                              Value(bigquery::BigqueryConfig::CurlCaBundlePath()),
-                              bigquery::BigqueryConfig::SetCurlCaBundlePath);
+                              Value(bigquery::BigquerySettings::CurlCaBundlePath()),
+                              bigquery::BigquerySettings::SetCurlCaBundlePath);
 }
 
 void BigqueryExtension::Load(DuckDB &db) {

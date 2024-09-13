@@ -2,7 +2,7 @@
 
 #include "storage/bigquery_schema_set.hpp"
 #include "storage/bigquery_transaction.hpp"
-#include "bigquery_config.hpp"
+#include "bigquery_settings.hpp"
 
 namespace duckdb {
 namespace bigquery {
@@ -16,9 +16,9 @@ optional_ptr<CatalogEntry> BigquerySchemaSet::CreateSchema(ClientContext &contex
     auto bqclient = transaction.GetBigqueryClient();
 
     BigqueryDatasetRef dataset_ref;
-	dataset_ref.project_id = bq_catalog.con_details.project_id;
+	dataset_ref.project_id = bq_catalog.config.project_id;
     dataset_ref.dataset_id = info.schema;
-    dataset_ref.location = BigqueryConfig::DefaultLocation();
+    dataset_ref.location = BigquerySettings::DefaultLocation();
 
     bqclient->CreateDataset(info, dataset_ref);
     auto schema_entry = make_uniq<BigquerySchemaEntry>(catalog, info, dataset_ref);
