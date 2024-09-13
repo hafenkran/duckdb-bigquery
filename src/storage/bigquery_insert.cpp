@@ -125,8 +125,10 @@ string BigqueryInsert::GetName() const {
     return table ? "BIGQUERY_INSERT" : "BIGQUERY_CREATE_TABLE_AS";
 }
 
-string BigqueryInsert::ParamsToString() const {
-    return table ? table->name : info->Base().table;
+InsertionOrderPreservingMap<string> BigqueryInsert::ParamsToString() const {
+    InsertionOrderPreservingMap<string> result;
+    result["Table Name"] = table ? table->name : info->Base().table;
+    return result;
 }
 
 // ### PLAN
