@@ -51,8 +51,10 @@ string BigqueryDelete::GetName() const {
     return "BIGQUERY_DELETE";
 }
 
-string BigqueryDelete::ParamsToString() const {
-    return table.name;
+InsertionOrderPreservingMap<string> BigqueryDelete::ParamsToString() const {
+    InsertionOrderPreservingMap<string> result;
+    result["Table Name"] = table.name;
+    return result;
 }
 
 unique_ptr<PhysicalOperator> BigqueryCatalog::PlanDelete(ClientContext &content,
