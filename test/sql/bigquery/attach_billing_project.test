@@ -1,0 +1,37 @@
+# name: test/sql/bigquery/function_scan.test
+# description: Test altering tables
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_BILLING_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET} billing_project=${BQ_TEST_BILLING_PROJECT}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.billing_tbl;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.billing_tbl(i INTEGER);
+
+query I
+SELECT CASE
+	WHEN project_id = '${BQ_TEST_BILLING_PROJECT}' THEN 'Match'
+	ELSE 'No Match'
+END AS compare_project_id
+FROM bigquery_execute('bq', 'INSERT INTO ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.billing_tbl VALUES (12)');
+----
+Match
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.billing_tbl;
+----
+12
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.billing_tbl;
