@@ -11,6 +11,8 @@
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
 
+#include "bigquery_utils.hpp"
+
 
 namespace duckdb {
 namespace bigquery {
@@ -18,9 +20,8 @@ namespace bigquery {
 
 struct BigqueryArrowReader {
 public:
-    BigqueryArrowReader(const string &project_id,
-                        const string &dataset_id,
-                        const string &table_id,
+    BigqueryArrowReader(const BigqueryTableRef table_ref,
+						const string billing_project_id,
                         idx_t num_streams,
                         const google::cloud::Options &options,
                         const vector<string> &column_ids = std::vector<string>(),
@@ -45,9 +46,8 @@ private:
     void ReadListColumn(const std::shared_ptr<arrow::ListArray> &list_array, Vector &out_vec);
     void ReadStructColumn(const std::shared_ptr<arrow::StructArray> &struct_array, Vector &out_vec);
 
-    string project_id;
-    string dataset_id;
-    string table_id;
+	BigqueryTableRef table_ref;
+	string billing_project_id;
 
     idx_t num_streams;
     idx_t next_stream = 0;

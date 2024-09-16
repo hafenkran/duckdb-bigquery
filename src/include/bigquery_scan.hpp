@@ -11,9 +11,8 @@ namespace bigquery {
 class BigqueryClient;
 
 struct BigqueryBindData : public TableFunctionData {
-    string project_id;
-    string dataset_id;
-    string table_id;
+	BigqueryConfig config;
+	BigqueryTableRef table_ref;
 
     shared_ptr<BigqueryClient> bq_client;
 
@@ -22,11 +21,11 @@ struct BigqueryBindData : public TableFunctionData {
     idx_t estimated_row_count = 1;
 
     string ParentString() const {
-        return BigqueryUtils::FormatParentString(project_id);
+        return BigqueryUtils::FormatParentString(table_ref.project_id);
     }
 
     string TableString() const {
-        return BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
+        return BigqueryUtils::FormatTableString(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
     }
 };
 
