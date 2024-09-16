@@ -55,8 +55,10 @@ string BigqueryUpdate::GetName() const {
     return "BIGQUERY_UPDATE";
 }
 
-string BigqueryUpdate::ParamsToString() const {
-    return table.name;
+InsertionOrderPreservingMap<string> BigqueryUpdate::ParamsToString() const {
+    InsertionOrderPreservingMap<string> result;
+    result["Table Name"] = table.name;
+    return result;
 }
 
 unique_ptr<PhysicalOperator> BigqueryCatalog::PlanUpdate(ClientContext &context,
