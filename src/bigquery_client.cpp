@@ -210,7 +210,7 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
 
 bool BigqueryClient::DatasetExists(const string &dataset_id) {
     auto client = google::cloud::bigquerycontrol_v2::DatasetServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(google::cloud::Options{}));
+        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetDatasetRequest();
     request.set_project_id(config.project_id);
@@ -226,7 +226,7 @@ bool BigqueryClient::DatasetExists(const string &dataset_id) {
 
 bool BigqueryClient::TableExists(const string &dataset_id, const string &table_id) {
     auto client = google::cloud::bigquerycontrol_v2::TableServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(google::cloud::Options{}));
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetTableRequest();
     request.set_project_id(config.project_id);
@@ -427,7 +427,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
     }
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(google::cloud::Options{}));
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetJobRequest();
     request.set_project_id(config.project_id);
