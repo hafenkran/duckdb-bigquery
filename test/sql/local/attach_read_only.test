@@ -11,6 +11,15 @@ require-env BQ_GRPC_ENDPOINT
 statement ok
 ATTACH 'project=test api_endpoint=${BQ_API_ENDPOINT} grpc_endpoint=${BQ_GRPC_ENDPOINT}' AS bq (TYPE bigquery);
 
+statement ok
+DROP TABLE IF EXISTS bq.dataset1.read_only;
+
+statement ok
+DETACH DATABASE IF EXISTS bq;
+
+statement ok
+ATTACH 'project=test api_endpoint=${BQ_API_ENDPOINT} grpc_endpoint=${BQ_GRPC_ENDPOINT}' AS bq (TYPE bigquery, READ_ONLY);
+
 statement error
 CREATE TABLE bq.dataset1.read_only(i INTEGER);
 ----
