@@ -14,6 +14,9 @@ public:
     ~BigqueryProtoWriter();
 
     void InitMessageDescriptor(BigqueryTableEntry *entry);
+    void CreateNestedMessage(google::protobuf::DescriptorProto *desc_proto,
+                             const string &name,
+                             const vector<pair<string, LogicalType>> &child_types);
 
     void WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs);
     void WriteMessageField(google::protobuf::Message *msg,

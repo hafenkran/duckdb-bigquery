@@ -64,7 +64,7 @@ void ValidateIntervalRange(const duckdb::interval_t &value) { // TODO
 }
 
 BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google::cloud::Options &options) {
-	auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
+    auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
     auto project_id = bq_catalog.GetProjectID();
     auto dataset_id = entry->schema.name;
     auto table_id = entry->name;
@@ -99,15 +99,9 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
         }
     }
 
-	if (!created_successfully) {
-		throw BinderException("Cannot create BigQuery write stream to " + table_string);
-	}
-
-    // auto write_stream_status = write_client->CreateWriteStream(table_string, stream);
-    // if (!write_stream_status) {
-    //     throw BinderException("Cannot create BigQuerywrite stream");
-    // }
-    // write_stream = write_stream_status.value();
+    if (!created_successfully) {
+        throw BinderException("Cannot create BigQuery write stream to " + table_string);
+    }
 }
 
 BigqueryProtoWriter::~BigqueryProtoWriter() {
@@ -128,51 +122,52 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     int32_t num = 1;
     auto &column_list = entry->GetColumns();
     for (auto &column : column_list.Logical()) {
-        switch (column.GetType().id()) {
+        const auto &column_type = column.GetType();
+
+        switch (column_type.id()) {
         case LogicalTypeId::LIST: {
-            auto &child_type = ListType::GetChildType(column.GetType());
-            auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child_type);
-            auto *field_desc_proto = desc_proto->add_field();
-            field_desc_proto->set_name(column.GetName());
-            field_desc_proto->set_number(num++);
-            field_desc_proto->set_type(proto_type);
-            field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
+            auto &child_type = ListType::GetChildType(column_type);
+
+            if (child_type.id() == LogicalTypeId::STRUCT) {
+                auto &child_types = StructType::GetChildTypes(child_type);
+                CreateNestedMessage(desc_proto, column.GetName(), child_types);
+                desc_proto->mutable_field(desc_proto->field_size() - 1)
+                    ->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
+            } else {
+                // For other types within a LIST, handle normally
+                // Set the field as a repeated message for the LIST of STRUCTS
+                auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child_type);
+                auto *field_desc_proto = desc_proto->add_field();
+                field_desc_proto->set_name(column.GetName());
+                field_desc_proto->set_number(num++);
+                field_desc_proto->set_type(proto_type);
+                field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
+            }
             break;
         }
         case LogicalTypeId::ARRAY: {
             auto &child_type = ArrayType::GetChildType(column.GetType());
-            auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child_type);
-            auto *field_desc_proto = desc_proto->add_field();
-            field_desc_proto->set_name(column.GetName());
-            field_desc_proto->set_number(num++);
-            field_desc_proto->set_type(proto_type);
-            field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
+
+            if (child_type.id() == LogicalTypeId::STRUCT) {
+                auto &child_types = StructType::GetChildTypes(child_type);
+                CreateNestedMessage(desc_proto, column.GetName(), child_types);
+                desc_proto->mutable_field(desc_proto->field_size() - 1)
+                    ->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
+            } else {
+                // For other types within an ARRAY, handle normally
+                // Set the field as a repeated message for the ARRAY of STRUCTS
+                auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child_type);
+                auto *field_desc_proto = desc_proto->add_field();
+                field_desc_proto->set_name(column.GetName());
+                field_desc_proto->set_number(num++);
+                field_desc_proto->set_type(proto_type);
+                field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
+            }
             break;
         }
         case LogicalTypeId::STRUCT: {
-            auto &child_types = StructType::GetChildTypes(column.GetType());
-
-            auto *nested_desc_proto = desc_proto->add_nested_type();
-            auto nested_type_name = column.GetName() + "Msg";
-            nested_type_name[0] = std::toupper(nested_type_name[0]);
-            nested_desc_proto->set_name(nested_type_name);
-
-            auto nested_num = 1;
-            for (auto &child : child_types) {
-                auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child.second);
-                auto *child_field_desc_proto = nested_desc_proto->add_field();
-                child_field_desc_proto->set_name(child.first);
-                child_field_desc_proto->set_number(nested_num++);
-                child_field_desc_proto->set_type(proto_type);
-                child_field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
-            }
-
-            auto *field_desc_proto = desc_proto->add_field();
-            field_desc_proto->set_name(column.GetName());
-            field_desc_proto->set_number(num++);
-            field_desc_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
-            field_desc_proto->set_type_name(nested_type_name);
-            field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
+            auto &child_types = StructType::GetChildTypes(column_type);
+            CreateNestedMessage(desc_proto, column.GetName(), child_types);
             break;
         }
         default: {
@@ -203,13 +198,32 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     if (msg_descriptor == nullptr) {
         throw BinderException("Cannot get message descriptor from file descriptor");
     }
-
-    // msg_prototype = msg_factory->GetPrototype(msg_descriptor);
-    // if (msg_prototype == nullptr) {
-    //     throw BinderException("Cannot get message prototype from message descriptor");
-    // }
 }
 
+void BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProto *desc_proto,
+                                              const string &name,
+                                              const vector<pair<string, LogicalType>> &child_types) {
+    auto *nested_desc_proto = desc_proto->add_nested_type();
+    auto nested_type_name = name + "Msg";
+    nested_type_name[0] = std::toupper(nested_type_name[0]);
+    nested_desc_proto->set_name(nested_type_name);
+
+    int nested_num = 1;
+    for (const auto &child : child_types) {
+        auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child.second);
+        auto *child_field_desc_proto = nested_desc_proto->add_field();
+        child_field_desc_proto->set_name(child.first);
+        child_field_desc_proto->set_number(nested_num++);
+        child_field_desc_proto->set_type(proto_type);
+        child_field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
+    }
+
+    auto *field_desc_proto = desc_proto->add_field();
+    field_desc_proto->set_name(name);
+    field_desc_proto->set_number(desc_proto->field_size() + 1);
+    field_desc_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
+    field_desc_proto->set_type_name(nested_type_name);
+}
 
 void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs) {
     auto msg_factory = google::protobuf::DynamicMessageFactory();
@@ -324,7 +338,14 @@ void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,
     auto &child_types = StructType::GetChildTypes(col_type);
     auto &child_values = StructValue::GetChildren(val);
 
-    auto *nested_msg = reflection->MutableMessage(msg, field);
+	google::protobuf::Message *nested_msg = nullptr;
+    if (field->is_repeated()) {
+        nested_msg = reflection->AddMessage(msg, field);
+    } else {
+        nested_msg = reflection->MutableMessage(msg, field);
+    }
+
+    // Iterate through child types and values
     const google::protobuf::Reflection *nested_reflection = nested_msg->GetReflection();
     for (idx_t j = 0; j < child_types.size(); j++) {
         auto &child_type = child_types[j].second;
@@ -568,6 +589,14 @@ void BigqueryProtoWriter::WriteRepeatedField(google::protobuf::Message *msg,
         for (const auto &item : children) {
             if (!item.IsNull()) {
                 reflection->AddString(msg, field, item.GetValueUnsafe<string>());
+            }
+        }
+        break;
+    }
+    case LogicalTypeId::STRUCT: {
+		for (auto &item : children) {
+            if (!item.IsNull()) {
+                WriteMessageField(msg, reflection, field, child_type, item);
             }
         }
         break;
