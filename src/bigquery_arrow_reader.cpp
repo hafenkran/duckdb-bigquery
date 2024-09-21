@@ -471,8 +471,20 @@ void BigqueryArrowReader::ReadListColumn(const std::shared_ptr<arrow::ListArray>
             break;
         }
         case arrow::Type::STRUCT: {
-            ReadStructColumn(std::static_pointer_cast<arrow::StructArray>(values), out_vec);
-            break;
+			auto struct_array = std::static_pointer_cast<arrow::StructArray>(values);
+
+			auto struct_type = BigqueryUtils::ArrowTypeToLogicalType(struct_array->type());
+			duckdb::Vector struct_vector(struct_type);
+
+			ReadStructColumn(struct_array, struct_vector);
+			for (int32_t i = start_offset; i < end_offset; ++i) {
+				if (!struct_array->IsNull(i)) {
+					list_values.push_back(struct_vector.GetValue(i));
+				} else {
+					list_values.push_back(Value());
+				}
+			}
+			break;
         }
         default:
             throw InternalException("Unsupported Arrow type: " + values->type()->name());
