@@ -1,0 +1,16 @@
+# name: test/sql/bigquery/attach_filter_pushdown.test
+# description: Test selection with filter pushdown
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_BILLING_PROJECT
+
+require-env BQ_TEST_DATASET
+
+query I
+SELECT COUNT(*) FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', billing_project=${BQ_TEST_BILLING_PROJECT});
+----
+7
