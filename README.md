@@ -4,23 +4,23 @@ This repository contains the [DuckDB](https://duckdb.org) BigQuery Extension. Th
 
 Please note that this extension is in its initial release. While it covers most of the essentials, you might run into some limitations, issues, or bugs. So far, this extension has only been tested on Linux systems.
 
-> This extension only works for DuckDB v1.0.0 and only `linux_amd64`, `linux_amd64_gcc4`, `osx_arm64`, and `windows_amd64` builds are currently supported.
+> This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `osx_arm64`, and `windows_amd64`.
 
 ## Preliminaries
 
-To get started, you will need to setup the [Google Cloud CLI (gcloud)](https://cloud.google.com/sdk/gcloud). This set of tools enables the interaction with Google Cloud services right from your terminal. Download the latest version from the [Google Cloud CLI installation page](https://cloud.google.com/sdk/docs/install) and follow the instructions to select and authenticate your Google Cloud project for using BigQuery. You have the following two options to authenticate:
+### Authentication Option 1: Configure ADC with your Google Account
 
-### Option 1: Configure ADC with your Google Account
+To authenticate using your Google Account, first install the [Google Cloud CLI (gcloud)](https://cloud.google.com/sdk/gcloud). Download the latest version from the [Google Cloud CLI installation page](https://cloud.google.com/sdk/docs/install) and follow the instructions to select and authenticate your Google Cloud project for using BigQuery.
 
-To set up authentication, we use the Application Default Credentials ([ADC](https://cloud.google.com/docs/authentication/provide-credentials-adc)) which offer a simple way to set credentials accessing services in the Google Cloud Platform. To do so, just execute the following command and follow the steps along:
+After installation, run the following command to authenticate and follow the steps along:
 
 ```bash
 gcloud auth application-default login
 ```
 
-### Option 2: Configure Service account keys
+### Authentication Option 2: Configure Service account keys
 
-Alternatively, you can authenticate using a service account and its keys. To do this, create a service account in the Google Cloud Console, assign the necessary roles, and download the JSON key file. Save the JSON key file securely on your system. Next, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to point to this file. For example, on Linux or macOS, use:
+Alternatively, you can authenticate using a service account. First, create a service account in the Google Cloud Console, assign the necessary roles, and download the JSON key file. Next, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the file path. For example:
 
 ```bash
 # On Linux or macOS
@@ -32,7 +32,7 @@ set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.js
 
 ### Windows gRPC Configuration
 
-On Windows, gRPC requires an additional environment variable to configure the trust store for SSL certificates. Download and configure it using ([official documentation](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows)):
+On Windows, gRPC requires an additional environment variable to configure the trust store for SSL certificates. Download and configure it using (see [official documentation](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows)):
 
 ```bash
 @powershell -NoProfile -ExecutionPolicy unrestricted -Command ^
@@ -45,7 +45,7 @@ This downloads the `roots.pem` file and sets the `GRPC_DEFAULT_SSL_ROOTS_FILE_PA
 
 ## Quickstart
 
-The BigQuery extension can be installed directly from the Community Extension Repository, eliminating the need to enable the `unsigned` mode. To do so, use the following command to install and load the extension:
+The BigQuery extension can be installed from the official [Community Extension Repository](https://community-extensions.duckdb.org/), eliminating the need to enable the `unsigned` mode. Just use the following command to install and load the extension:
 
 ```sql
 -- Install and load the DuckDB BigQuery extension from the Community Repository
@@ -100,19 +100,17 @@ D SHOW ALL TABLES;
 
 ## Install Latest Updates from Custom Repository
 
-The most recent updates and fixes may not be immediately available in the Community Extension repository. If necessary, these updates can be obtained from a custom repository.
-
-To install the extension from the custom repository, DuckDB must be started with the [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Depending on the kind of client you are using, you can achieve this by either using the `allow_unsigned_extensions` flag in your clients or, in the case of the CLI client, by starting with the `-unsigned` flag as follows:
+Updates may not always be immediately available in the Community Extension repository. However, they can be obtained from a custom repository. To get the latest updates, start DuckDB with [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Use the `allow_unsigned_extensions` flag for client connections, or start the CLI with `-unsigned` as follows:
 
 ```bash
-# Example: Python
-con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
-
 # Example: CLI
 duckdb -unsigned
+
+# Example: Python
+con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
 ```
 
-Then you can set the custom repository and download it as follows:
+Then set the custom repository and install the extension:
 
 ```sql
 -- Set the custom repository, then install and load the DuckDB BigQuery extension
@@ -214,7 +212,7 @@ D CALL bigquery_clear_cache();
 
 ## Limitations
 
-There are some minor limitations that arise from the combination of DuckDB and BigQuery. These include:
+There are some limitations that arise from the combination of DuckDB and BigQuery. These include:
 
 * **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported.
 
