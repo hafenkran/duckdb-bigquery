@@ -23,22 +23,21 @@
 namespace duckdb {
 namespace bigquery {
 
-BigqueryArrowReader::BigqueryArrowReader(const string &project_id,
-                                         const string &dataset_id,
-                                         const string &table_id,
+BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
+                                         const string billing_project_id,
                                          idx_t num_streams,
                                          const google::cloud::Options &options,
                                          const vector<string> &selected_columns,
                                          const string &filter_condition)
-    : project_id(project_id), dataset_id(dataset_id), table_id(table_id), num_streams(num_streams), options(options),
+    : table_ref(table_ref), billing_project_id(billing_project_id), num_streams(num_streams), options(options),
       localhost_test_env(false) {
 
     if (options.has<google::cloud::EndpointOption>()) {
         localhost_test_env = true; // TODO
     }
 
-    const string parent = BigqueryUtils::FormatParentString(project_id);
-    const string table_ref = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
+    const string parent = BigqueryUtils::FormatParentString(billing_project_id);
+    const string table_string = table_ref.TableString();
 
     // Initialize the Client
     auto connection = google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection(options);
@@ -46,7 +45,7 @@ BigqueryArrowReader::BigqueryArrowReader(const string &project_id,
 
     // Create the ReadSession
     auto session = google::cloud::bigquery::storage::v1::ReadSession();
-    session.set_table(table_ref);
+    session.set_table(table_string);
     session.set_data_format(google::cloud::bigquery::storage::v1::DataFormat::ARROW);
 
     auto *read_options = session.mutable_read_options();
@@ -633,7 +632,7 @@ void BigqueryArrowReader::ReadStructColumn(const std::shared_ptr<arrow::StructAr
                 throw InternalException("Unsupported Arrow type: " + field_type->name());
             }
         }
-		out_vec.SetValue(row, Value::STRUCT(std::move(struct_values)));
+        out_vec.SetValue(row, Value::STRUCT(std::move(struct_values)));
     }
 }
 

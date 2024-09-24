@@ -343,9 +343,9 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                                                                   const idx_t num_streams,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
-    return make_shared_ptr<BigqueryArrowReader>(config.project_id,
-                                                dataset_id,
-                                                table_id,
+
+    return make_shared_ptr<BigqueryArrowReader>(BigqueryTableRef(config.project_id, dataset_id, table_id),
+                                                config.billing_project(),
                                                 num_streams,
                                                 OptionsGRPC(),
                                                 column_ids,
@@ -430,7 +430,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetJobRequest();
-    request.set_project_id(config.project_id);
+    request.set_project_id(config.billing_project());
     request.set_job_id(job_id);
     if (!location.empty()) {
         request.set_location(location);
@@ -471,7 +471,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     }
 
     auto request = google::cloud::bigquery::v2::PostQueryRequest();
-    request.set_project_id(config.project_id);
+    request.set_project_id(config.billing_project());
     *request.mutable_query_request() = query_request;
 
     return job_client.Query(request);

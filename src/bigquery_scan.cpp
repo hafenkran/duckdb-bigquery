@@ -21,7 +21,6 @@
 namespace duckdb {
 namespace bigquery {
 
-
 struct BigqueryGlobalFunctionState : public GlobalTableFunctionState {
     explicit BigqueryGlobalFunctionState(shared_ptr<BigqueryArrowReader> arrow_reader)
         : arrow_reader(std::move(arrow_reader)) {
@@ -123,13 +122,25 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
         throw ParserException("Invalid table string: %s", table_string);
     }
 
-    auto result = make_uniq<BigqueryBindData>();
-    result->project_id = table_ref.project_id;
-    result->dataset_id = table_ref.dataset_id;
-    result->table_id = table_ref.table_id;
-    result->bq_client = make_shared_ptr<BigqueryClient>(BigqueryConfig(result->project_id));
+    string billing_project_id, api_endpoint, grpc_endpoint;
+    for (auto &kv : input.named_parameters) {
+        auto loption = StringUtil::Lower(kv.first);
+        if (loption == "billing_project") {
+            billing_project_id = kv.second.GetValue<string>();
+        } else if (loption == "api_endpoint") {
+            api_endpoint = kv.second.GetValue<string>();
+        } else if (loption == "grpc_endpoint") {
+            grpc_endpoint = kv.second.GetValue<string>();
+        }
+    }
 
-    auto arrow_reader = result->bq_client->CreateArrowReader(result->dataset_id, result->table_id, 1);
+    auto result = make_uniq<BigqueryBindData>();
+    result->table_ref = table_ref;
+    result->config =
+        BigqueryConfig(table_ref.project_id, table_ref.dataset_id, billing_project_id, api_endpoint, grpc_endpoint);
+    result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
+
+    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref.dataset_id, table_ref.table_id, 1);
 
     // Get the table info (columns, constraints, etc.)
     ColumnList columns;
@@ -141,7 +152,7 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
         return_types.push_back(column.GetType());
     }
     if (names.empty()) {
-        throw std::runtime_error("no columns for table " + result->table_id);
+        throw std::runtime_error("no columns for table " + table_ref.table_id);
     }
 
     // TODO GetMaxRowId
@@ -182,8 +193,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
     }
 
     idx_t k_max_read_streams = 1;
-    auto arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.dataset_id,
-                                                               bind_data.table_id,
+    auto arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.table_ref.dataset_id,
+                                                               bind_data.table_ref.table_id,
                                                                k_max_read_streams,
                                                                selected_fields,
                                                                filter_string);
@@ -272,6 +283,10 @@ BigqueryScanFunction::BigqueryScanFunction()
     table_scan_progress = BigqueryScanProgress;
     projection_pushdown = true;
     filter_pushdown = true;
+
+    named_parameters["billing_project"] = LogicalType::VARCHAR;
+    named_parameters["api_endpoint"] = LogicalType::VARCHAR;
+    named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
 }
 
 

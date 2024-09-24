@@ -9,10 +9,9 @@
 #include <google/protobuf/descriptor.pb.h>
 
 #include <arrow/api.h>
-#include <regex>
 #include <chrono>
+#include <regex>
 #include <thread>
-
 
 
 namespace duckdb {
@@ -22,6 +21,7 @@ struct BigqueryUtils;
 
 struct BigqueryConfig {
 public:
+	BigqueryConfig() = default;
     explicit BigqueryConfig(const std::string &project_id,
                             const std::string &dataset_id = "",
                             const std::string &billing_project_id = "",
@@ -42,17 +42,17 @@ public:
 
     ~BigqueryConfig() = default;
 
-	const bool has_project_id() const {
-		return !project_id.empty();
-	}
+    const bool has_project_id() const {
+        return !project_id.empty();
+    }
 
     const bool has_dataset_id() const {
         return !dataset_id.empty();
     }
 
-	const bool has_billing_project_id() const {
-		return !billing_project_id.empty();
-	}
+    const bool has_billing_project_id() const {
+        return !billing_project_id.empty();
+    }
 
     const bool has_api_endpoint() const {
         return !api_endpoint.empty();
@@ -67,9 +67,9 @@ public:
                api_endpoint.find("127.0.0.1") != std::string::npos;
     }
 
-	const string billing_project() const {
-		return has_billing_project_id() ? billing_project_id : project_id;
-	}
+    const string billing_project() const {
+        return has_billing_project_id() ? billing_project_id : project_id;
+    }
 
     static BigqueryConfig FromDSN(const string &connection_string);
 
@@ -82,19 +82,26 @@ public:
 };
 
 struct BigqueryDatasetRef {
-    string project_id;
-    string dataset_id;
-    string location;
+	BigqueryDatasetRef() = default;
+	BigqueryDatasetRef(const string &project_id, const string &dataset_id)
+		: project_id(project_id), dataset_id(dataset_id) {
+	}
 
     const bool has_dataset_id() const {
         return dataset_id != "";
     }
+
+public:
+    string project_id;
+    string dataset_id;
+    string location;
 };
 
 struct BigqueryTableRef {
-    string project_id;
-    string dataset_id;
-    string table_id;
+    BigqueryTableRef() = default;
+    BigqueryTableRef(const string &project_id, const string &dataset_id, const string &table_id)
+        : project_id(project_id), dataset_id(dataset_id), table_id(table_id) {
+    }
 
     const bool has_dataset_id() const {
         return dataset_id != "";
@@ -103,6 +110,14 @@ struct BigqueryTableRef {
     const bool has_table_id() const {
         return table_id != "";
     }
+
+    const string TableString() const;
+    const string TableStringSimple() const;
+
+public:
+    string project_id;
+    string dataset_id;
+    string table_id;
 };
 
 struct BigqueryTypeData {

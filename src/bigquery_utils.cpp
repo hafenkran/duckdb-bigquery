@@ -55,6 +55,8 @@ BigqueryConfig BigqueryConfig::FromDSN(const std::string &connection_string) {
                 project_id = value;
             } else if (key == "dataset") {
                 dataset_id = value;
+            } else if (key == "billing_project") {
+                billing_project_id = value;
             } else if (key == "api_endpoint") {
                 api_endpoint = value;
             } else if (key == "grpc_endpoint") {
@@ -560,6 +562,14 @@ std::string BigqueryUtils::IntervalToBigqueryIntervalString(const interval_t &in
     return std::to_string(years) + "-" + std::to_string(months) + " " + std::to_string(days) + " " +
            std::to_string(hours) + ":" + std::to_string(minutes) + ":" + std::to_string(seconds) + "." +
            std::to_string(remaining_micros % 1000000);
+}
+
+const string BigqueryTableRef::TableString() const {
+	return BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
+}
+
+const string BigqueryTableRef::TableStringSimple() const {
+	return BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, table_id);
 }
 
 } // namespace bigquery
