@@ -14,3 +14,11 @@ query I
 SELECT COUNT(*) FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', billing_project=${BQ_TEST_BILLING_PROJECT});
 ----
 7
+
+statement ok
+ATTACH 'project=bigquery-public-data dataset=geo_us_boundaries billing_project=${BQ_TEST_BILLING_PROJECT}' AS bq (TYPE bigquery);
+
+query I
+SELECT COUNT(*) FROM bq.geo_us_boundaries.cnecta;
+----
+7
