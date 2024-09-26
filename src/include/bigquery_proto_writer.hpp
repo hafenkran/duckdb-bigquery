@@ -34,6 +34,7 @@ public:
                     const google::protobuf::FieldDescriptor *field,
                     const duckdb::LogicalType &col_type,
                     const duckdb::Value &val);
+    void Finalize();
 
 
 private:
@@ -46,8 +47,10 @@ private:
 
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
+    std::unique_ptr<google::cloud::AsyncStreamingReadWriteRpc<google::cloud::bigquery::storage::v1::AppendRowsRequest, google::cloud::bigquery::storage::v1::AppendRowsResponse>> grpc_stream;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;
-    // google::cloud::bigquery::storage::v1::AppendRowsRequest append_request;
+    mutex write_lock;
+    atomic<int> write_count;
 };
 
 } // namespace bigquery

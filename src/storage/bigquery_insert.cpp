@@ -109,6 +109,14 @@ SinkResultType BigqueryInsert::Sink(ExecutionContext &context, DataChunk &chunk,
     return SinkResultType::NEED_MORE_INPUT;
 }
 
+// ### FINALIZE
+SinkFinalizeType BigqueryInsert::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
+                                          OperatorSinkFinalizeInput &input) const {
+    auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
+    gstate.writer->Finalize();
+    return SinkFinalizeType::READY;
+}
+
 // ### GET DATA
 SourceResultType BigqueryInsert::GetData(ExecutionContext &context,
                                          DataChunk &chunk,

@@ -102,6 +102,15 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
     if (!created_successfully) {
         throw BinderException("Cannot create BigQuery write stream to " + table_string);
     }
+
+    auto rpc_stream = write_client->AsyncAppendRows();
+    if (!rpc_stream->Start().get()) {
+        auto status = rpc_stream->Finish().get();
+        std::cerr << "Unable to start AppendRows stream: " << status << "\n";
+        throw IOException("Unable to create BigQuery write stream to " + table_string);
+    }
+
+    grpc_stream = std::move(rpc_stream);
 }
 
 BigqueryProtoWriter::~BigqueryProtoWriter() {
@@ -288,44 +297,27 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         delete msg;
     }
 
-    int max_retries = 100;
-    for (int attempt = 0; attempt < max_retries; attempt++) {
-        auto stream = write_client->AsyncAppendRows();
-        auto handle_broken_stream = [&stream](char const *where) {
-            auto status = stream->Finish().get();
-            std::cerr << "Unexpected streaming RPC error in " << where << ": " << status << "\n";
-            throw std::runtime_error("Unexpected streaming RPC error");
-        };
+    lock_guard<mutex> lock(write_lock);
+    if (!grpc_stream->Write(request, grpc::WriteOptions()).get()) {
+        throw IOException("Unable to write chunk: stream already closed");
+    }
+    write_count++;
+}
 
-        if (!stream->Start().get()) {
-            handle_broken_stream("Start");
-        }
+void BigqueryProtoWriter::Finalize() {
+    grpc_stream->WritesDone().get();
 
-        auto write = stream->Write(request, grpc::WriteOptions()).get();
-        if (!write) {
-            if (attempt < max_retries - 1) {
-                std::cout << "Retrying..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                continue;
-            } else {
-                handle_broken_stream("Write");
-                throw std::runtime_error("Write failed");
-            }
+    for (int i = 0; i < write_count; i++) {
+        auto response = grpc_stream->Read().get();
+        if (response->has_error()) {
+            throw IOException("Unexpected streaming RPC error while reading write result: %s",
+                              response->error().message());
         }
+    }
 
-        // GET THE RESPONSE AND ERROR HANDLING
-        auto response = stream->Read().get();
-        if (!response) {
-            if (attempt < max_retries - 1) {
-                std::cout << "Retrying..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                continue;
-            } else {
-                handle_broken_stream("Read");
-                throw std::runtime_error("Read failed");
-            }
-        }
-        break;
+    auto finish = grpc_stream->Finish().get();
+    if (!finish.ok() && finish.code() != google::cloud::StatusCode::kNotFound) {
+        throw IOException("Unexpected streaming RPC error: %s", finish.message());
     }
 }
 
