@@ -39,6 +39,7 @@ void BigqueryCatalog::Initialize(bool load_builtin) {
 
 void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(SchemaCatalogEntry &)> callback) {
     if (!config.dataset_id.empty()) {
+        lock_guard<mutex> lock(default_dataset_lock);
         if (!default_dataset) {
             auto bq_transaction = dynamic_cast<BigqueryTransaction *>(GetCatalogTransaction(context).transaction.get());
             auto bq_client = bq_transaction->GetBigqueryClient();
