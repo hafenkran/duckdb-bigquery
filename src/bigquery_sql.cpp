@@ -118,9 +118,10 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
 	if (info.schema.empty()) {
 		throw BinderException("Schema not specified for AlterTableInfo");
 	}
+	auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.name);
 	std::stringstream stmt;
 	stmt << "ALTER TABLE ";
-	stmt << BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.name) << " ";
+	stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
 
 	switch (info.alter_table_type) {
 		case AlterTableType::RENAME_COLUMN: {
@@ -223,7 +224,8 @@ string BigquerySQL::CreateTableInfoToSQL(const string &project_id, const CreateT
         stmt << "IF NOT EXISTS ";
     }
     // Append the table name
-    stmt << BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.table) << " ";
+    auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.table);
+    stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
     stmt << BigqueryColumnsToSQL(info.columns, info.constraints);
     return stmt.str();
 }
@@ -242,7 +244,8 @@ string BigquerySQL::CreateViewInfoToSQL(const string &project_id, const CreateVi
         stmt << "IF NOT EXISTS ";
     }
     // Append the view name
-    stmt << BigqueryUtils::FormatTableStringSimple(info.catalog, info.schema, info.view_name) << " ";
+    auto table_string = BigqueryUtils::FormatTableStringSimple(info.catalog, info.schema, info.view_name);
+    stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
     if (!info.aliases.empty()) {
         stmt << "(";
         for (size_t i = 0; i < info.aliases.size(); i++) {
