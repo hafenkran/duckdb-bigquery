@@ -29,4 +29,12 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.my_fancy_test_table;
 42
 
 statement ok
+DELETE FROM bq.${BQ_TEST_DATASET}.my_fancy_test_table WHERE i > 24;
+
+query I
+SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.my_fancy_test_table;
+----
+0
+
+statement ok
 DROP TABLE bq.${BQ_TEST_DATASET}.my_fancy_test_table;
