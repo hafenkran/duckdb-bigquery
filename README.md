@@ -98,27 +98,6 @@ D SHOW ALL TABLES;
 └──────────┴──────────────────┴──────────┴──────────────┴───────────────────┴───────────┘
 ```
 
-## Install Latest Updates from Custom Repository
-
-Updates may not always be immediately available in the Community Extension repository. However, they can be obtained from a custom repository. To get the latest updates, start DuckDB with [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Use the `allow_unsigned_extensions` flag for client connections, or start the CLI with `-unsigned` as follows:
-
-```bash
-# Example: CLI
-duckdb -unsigned
-
-# Example: Python
-con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
-```
-
-Then set the custom repository and install the extension:
-
-```sql
--- Set the custom repository, then install and load the DuckDB BigQuery extension
-D SET custom_extension_repository = 'http://storage.googleapis.com/hafenkran';
-D FORCE INSTALL 'bigquery';
-D LOAD 'bigquery';
-```
-
 ## Additional Operations and Settings
 
 The following SQL statements provide a brief overview of supported functionalities and include examples for interacting with BigQuery:
@@ -180,7 +159,7 @@ D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
 
 ### `bigquery_execute` Function
 
-The `bigquery_execute` function enables you to execute arbitrary queries directly in BigQuery, including specialized functions or options which are unique to BigQuery. These queries can be expressed in native GoogleSQL and are executed without prior parsing or interpretation by DuckDB.
+The `bigquery_execute` function lets you run arbitrary queries directly in BigQuery in native Google SQL. These queries are executed without interpretation by DuckDB:
 
 ```sql
 D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
@@ -196,10 +175,32 @@ D CALL bigquery_execute('bq', '
 
 ### `bigquery_clear_cache` Function
 
-To ensure a consistent and efficient interaction with BigQuery, DuckDB employs, similar to other extensions, a caching mechanism. This mechanism stores schema information, such as datasets, table names, their columns, etc. locally to avoid continuously fetching this data from BigQuery. If changes are made to the schema through a different connection, such as new columns being added to a table, the local cache becomes outdated. In this case, the function `bigquery_clear_cache` can be executed to clear the internal caches allowing DuckDB to refetch the most current schema information from BigQuery.
+DuckDB caches schema metadata, such as datasets and table structures, to avoid repeated fetches from BigQuery. If the schema changes externally, use `bigquery_clear_cache` to update the cache and retrieve the latest schema information:
 
 ```sql
 D CALL bigquery_clear_cache();
+```
+
+### Reading Public Datasets
+
+Public datasets can be accessed by specifying your project as a `billing_project`. All queries will then be executed and billed on that project. This works for functions such as `bigquery_scan`, `bigquery_execute`, and the `ATTACH` command.
+
+```sql
+D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', billing_project='my_gcp_project');
+┌─────────┬──────────────────┬──────────────────────┬───┬───────────────────┬───────────────┬───────────────┬──────────────────────┐
+│ geo_id  │ cnecta_fips_code │         name         │ … │ area_water_meters │ int_point_lat │ int_point_lon │     cnecta_geom      │
+│ varchar │     varchar      │       varchar        │   │       int64       │    double     │    double     │       varchar        │
+├─────────┼──────────────────┼──────────────────────┼───┼───────────────────┼───────────────┼───────────────┼──────────────────────┤
+│ 710     │ 710              │ Augusta-Waterville…  │ … │         183936850 │    44.4092939 │   -69.6901717 │ POLYGON((-69.79281…  │
+│ 775     │ 775              │ Portland-Lewiston-…  │ … │        1537827560 │    43.8562034 │   -70.3192682 │ POLYGON((-70.48007…  │
+│ 770     │ 770              │ Pittsfield-North A…  │ … │          24514153 │    42.5337519 │   -73.1678825 │ POLYGON((-73.30698…  │
+│ 790     │ 790              │ Springfield-Hartfo…  │ … │         256922043 │    42.0359069 │   -72.6213616 │ POLYGON((-72.63682…  │
+│ 715     │ 715              │ Boston-Worcester-P…  │ … │        3004814151 │    42.3307869 │   -71.3296644 │ MULTIPOLYGON(((-71…  │
+│ 725     │ 725              │ Lebanon-Claremont,…  │ … │          58476158 │    43.6727226 │   -72.2484543 │ POLYGON((-72.39601…  │
+│ 720     │ 720              │ Bridgeport-New Hav…  │ … │         374068423 │    41.3603421 │   -73.1284227 │ MULTIPOLYGON(((-72…  │
+├─────────┴──────────────────┴──────────────────────┴───┴───────────────────┴───────────────┴───────────────┴──────────────────────┤
+│ 7 rows                                                                                                      11 columns (7 shown) │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Additional Extension Settings
@@ -219,6 +220,27 @@ There are some limitations that arise from the combination of DuckDB and BigQuer
 * **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 
 * **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
+
+## Install Latest Updates from Custom Repository
+
+Updates may not always be immediately available in the Community Extension repository. However, they can be obtained from a custom repository. To get the latest updates, start DuckDB with [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Use the `allow_unsigned_extensions` flag for client connections, or start the CLI with `-unsigned` as follows:
+
+```bash
+# Example: CLI
+duckdb -unsigned
+
+# Example: Python
+con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
+```
+
+Then set the custom repository and install the extension:
+
+```sql
+-- Set the custom repository, then install and load the DuckDB BigQuery extension
+D SET custom_extension_repository = 'http://storage.googleapis.com/hafenkran';
+D FORCE INSTALL 'bigquery';
+D LOAD 'bigquery';
+```
 
 ## Building the Project
 
