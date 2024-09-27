@@ -325,6 +325,11 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
                 throw std::runtime_error("Read failed");
             }
         }
+
+        if (response && response->has_error()) {
+            throw IOException("Failed to write chunk: %s", response->error().message());
+        }
+
         break;
     }
 }
