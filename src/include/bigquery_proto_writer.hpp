@@ -14,6 +14,7 @@ public:
     ~BigqueryProtoWriter();
 
     void InitMessageDescriptor(BigqueryTableEntry *entry);
+    void InitAppendStream(google::cloud::bigquery::storage::v1::AppendRowsRequest &request);
     void CreateNestedMessage(google::protobuf::DescriptorProto *desc_proto,
                              const string &name,
                              const vector<pair<string, LogicalType>> &child_types);
