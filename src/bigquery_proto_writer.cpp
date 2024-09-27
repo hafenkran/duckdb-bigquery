@@ -288,8 +288,6 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         delete msg;
     }
 
-    lock_guard<mutex> lock(write_lock);
-
     if (!grpc_stream) {
         return InitAppendStream(request);
     }
