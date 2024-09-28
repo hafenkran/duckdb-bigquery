@@ -82,7 +82,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
 
         // Create the write stream
         auto stream = google::cloud::bigquery::storage::v1::WriteStream();
-        stream.set_type(google::cloud::bigquery::storage::v1::WriteStream_Type::WriteStream_Type_COMMITTED);
+        stream.set_type(google::cloud::bigquery::storage::v1::WriteStream_Type::WriteStream_Type_PENDING);
 
         auto write_stream_status = write_client->CreateWriteStream(table_string, stream);
         if (write_stream_status) {
@@ -290,20 +290,23 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
 
     int max_retries = 100;
     for (int attempt = 0; attempt < max_retries; attempt++) {
-        auto stream = write_client->AsyncAppendRows();
-        auto handle_broken_stream = [&stream](char const *where) {
-            auto status = stream->Finish().get();
-            std::cerr << "Unexpected streaming RPC error in " << where << ": " << status << "\n";
-            throw std::runtime_error("Unexpected streaming RPC error");
+        auto handle_broken_stream = [this](char const *where) {
+            auto status = grpc_stream->Finish().get();
+            throw IOException("Unexpected streaming RPC error in %s: %s", where, status.message());
         };
 
-        if (!stream->Start().get()) {
-            handle_broken_stream("Start");
+        if (!grpc_stream) {
+            grpc_stream = write_client->AsyncAppendRows();
+
+            if (!grpc_stream->Start().get()) {
+                handle_broken_stream("Start");
+            }
         }
 
-        auto write = stream->Write(request, grpc::WriteOptions()).get();
+        auto write = grpc_stream->Write(request, grpc::WriteOptions()).get();
         if (!write) {
             if (attempt < max_retries - 1) {
+                grpc_stream.reset();
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 continue;
@@ -314,9 +317,10 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         }
 
         // GET THE RESPONSE AND ERROR HANDLING
-        auto response = stream->Read().get();
+        auto response = grpc_stream->Read().get();
         if (!response) {
             if (attempt < max_retries - 1) {
+                grpc_stream.reset();
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 continue;
@@ -326,6 +330,31 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
             }
         }
         break;
+    }
+}
+
+void BigqueryProtoWriter::Finalize() {
+    if (!grpc_stream) {
+        return;
+    }
+
+    grpc_stream->WritesDone().get();
+    auto finish = grpc_stream->Finish().get();
+    if (!finish.ok()) {
+        throw IOException("Unexpected streaming RPC error: %s", finish.message());
+    }
+
+    auto finalize = write_client->FinalizeWriteStream(write_stream.name());
+    if (!finalize) {
+        throw IOException("Unexpected error finalizing write stream: %s", finalize.status().message());
+    }
+
+    auto commit_request = google::cloud::bigquery::storage::v1::BatchCommitWriteStreamsRequest();
+    commit_request.set_parent(table_string);
+    commit_request.add_write_streams(write_stream.name());
+    auto commit = write_client->BatchCommitWriteStreams(commit_request);
+    if (!commit) {
+        throw IOException("Unexpected error commiting write streams: %s", commit.status().message());
     }
 }
 
