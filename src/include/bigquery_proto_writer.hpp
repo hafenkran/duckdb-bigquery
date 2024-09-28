@@ -47,6 +47,7 @@ private:
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;
+    std::unique_ptr<google::cloud::AsyncStreamingReadWriteRpc<google::cloud::bigquery::storage::v1::AppendRowsRequest, google::cloud::bigquery::storage::v1::AppendRowsResponse>> grpc_stream;
     // google::cloud::bigquery::storage::v1::AppendRowsRequest append_request;
 };
 

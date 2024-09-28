@@ -290,20 +290,24 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
 
     int max_retries = 100;
     for (int attempt = 0; attempt < max_retries; attempt++) {
-        auto stream = write_client->AsyncAppendRows();
-        auto handle_broken_stream = [&stream](char const *where) {
-            auto status = stream->Finish().get();
+        auto handle_broken_stream = [this](char const *where) {
+            auto status = grpc_stream->Finish().get();
             std::cerr << "Unexpected streaming RPC error in " << where << ": " << status << "\n";
             throw std::runtime_error("Unexpected streaming RPC error");
         };
 
-        if (!stream->Start().get()) {
-            handle_broken_stream("Start");
+        if (!grpc_stream) {
+            grpc_stream = write_client->AsyncAppendRows();
+
+            if (!grpc_stream->Start().get()) {
+                handle_broken_stream("Start");
+            }
         }
 
-        auto write = stream->Write(request, grpc::WriteOptions()).get();
+        auto write = grpc_stream->Write(request, grpc::WriteOptions()).get();
         if (!write) {
             if (attempt < max_retries - 1) {
+                grpc_stream.reset();
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 continue;
@@ -314,9 +318,10 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         }
 
         // GET THE RESPONSE AND ERROR HANDLING
-        auto response = stream->Read().get();
+        auto response = grpc_stream->Read().get();
         if (!response) {
             if (attempt < max_retries - 1) {
+                grpc_stream.reset();
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 continue;
