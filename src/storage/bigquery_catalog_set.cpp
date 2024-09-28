@@ -40,11 +40,7 @@ void BigqueryCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 }
 
 void BigqueryCatalogSet::Scan(ClientContext &context, const std::function<void(CatalogEntry &)> &callback) {
-    if (!is_loaded) {
-        is_loaded = true;
-        LoadEntries(context);
-    }
-
+    TryLoadEntries(context);
     lock_guard<mutex> lock(entry_lock);
     for (auto &entry : entries) {
         callback(*entry.second);
@@ -52,10 +48,7 @@ void BigqueryCatalogSet::Scan(ClientContext &context, const std::function<void(C
 }
 
 optional_ptr<CatalogEntry> BigqueryCatalogSet::GetEntry(ClientContext &context, const string &name) {
-    if (!is_loaded) {
-        is_loaded = true;
-        LoadEntries(context);
-    }
+    TryLoadEntries(context);
 
     lock_guard<mutex> lock(entry_lock);
     auto entry = entries.find(name);
@@ -74,6 +67,16 @@ void BigqueryCatalogSet::ClearEntries() {
 void BigqueryCatalogSet::EraseEntryInternal(const string &name) {
     lock_guard<mutex> lock(entry_lock);
     entries.erase(name);
+}
+
+void BigqueryCatalogSet::TryLoadEntries(ClientContext &context) {
+    lock_guard<mutex> lock(load_lock);
+    if (is_loaded) {
+        return;
+    }
+
+    is_loaded = true;
+    LoadEntries(context);
 }
 
 BigqueryInSchemaSet::BigqueryInSchemaSet(BigquerySchemaEntry &schema)

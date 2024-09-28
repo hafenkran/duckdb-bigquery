@@ -74,6 +74,7 @@ public:
 private:
     BigquerySchemaSet schemas;
     unique_ptr<BigquerySchemaEntry> default_dataset;
+    mutex default_dataset_lock;
 };
 
 } // namespace bigquery
