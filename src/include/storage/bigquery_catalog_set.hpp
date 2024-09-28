@@ -30,8 +30,11 @@ protected:
     Catalog &catalog;
 
 private:
-    bool is_loaded = false;
+    void TryLoadEntries(ClientContext &context);
+
+    atomic<bool> is_loaded = false;
     mutex entry_lock;
+    mutex load_lock;
     case_insensitive_map_t<unique_ptr<CatalogEntry>> entries;
 };
 
