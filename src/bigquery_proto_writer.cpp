@@ -82,7 +82,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
 
         // Create the write stream
         auto stream = google::cloud::bigquery::storage::v1::WriteStream();
-        stream.set_type(google::cloud::bigquery::storage::v1::WriteStream_Type::WriteStream_Type_COMMITTED);
+        stream.set_type(google::cloud::bigquery::storage::v1::WriteStream_Type::WriteStream_Type_PENDING);
 
         auto write_stream_status = write_client->CreateWriteStream(table_string, stream);
         if (write_stream_status) {
@@ -347,6 +347,14 @@ void BigqueryProtoWriter::Finalize() {
     auto finalize = write_client->FinalizeWriteStream(write_stream.name());
     if (!finalize) {
         throw IOException("Unexpected error finalizing write stream: %s", finalize.status().message());
+    }
+
+    auto commit_request = google::cloud::bigquery::storage::v1::BatchCommitWriteStreamsRequest();
+    commit_request.set_parent(table_string);
+    commit_request.add_write_streams(write_stream.name());
+    auto commit = write_client->BatchCommitWriteStreams(commit_request);
+    if (!commit) {
+        throw IOException("Unexpected error commiting write streams: %s", commit.status().message());
     }
 }
 
