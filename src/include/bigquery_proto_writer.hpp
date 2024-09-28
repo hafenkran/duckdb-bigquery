@@ -35,6 +35,7 @@ public:
                     const duckdb::LogicalType &col_type,
                     const duckdb::Value &val);
 
+    void Finalize();
 
 private:
     string table_string;

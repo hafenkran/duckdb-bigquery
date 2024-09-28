@@ -120,6 +120,14 @@ SourceResultType BigqueryInsert::GetData(ExecutionContext &context,
     return SourceResultType::FINISHED;
 }
 
+// ### FINALIZE
+SinkFinalizeType BigqueryInsert::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
+                                          OperatorSinkFinalizeInput &input) const {
+    auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
+    gstate.writer->Finalize();
+    return SinkFinalizeType::READY;
+}
+
 // ### HELPERS
 string BigqueryInsert::GetName() const {
     return table ? "BIGQUERY_INSERT" : "BIGQUERY_CREATE_TABLE_AS";

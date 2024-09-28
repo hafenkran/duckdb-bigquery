@@ -292,8 +292,7 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
     for (int attempt = 0; attempt < max_retries; attempt++) {
         auto handle_broken_stream = [this](char const *where) {
             auto status = grpc_stream->Finish().get();
-            std::cerr << "Unexpected streaming RPC error in " << where << ": " << status << "\n";
-            throw std::runtime_error("Unexpected streaming RPC error");
+            throw IOException("Unexpected streaming RPC error in %s: %s", where, status.message());
         };
 
         if (!grpc_stream) {
@@ -331,6 +330,23 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
             }
         }
         break;
+    }
+}
+
+void BigqueryProtoWriter::Finalize() {
+    if (!grpc_stream) {
+        return;
+    }
+
+    grpc_stream->WritesDone().get();
+    auto finish = grpc_stream->Finish().get();
+    if (!finish.ok()) {
+        throw IOException("Unexpected streaming RPC error: %s", finish.message());
+    }
+
+    auto finalize = write_client->FinalizeWriteStream(write_stream.name());
+    if (!finalize) {
+        throw IOException("Unexpected error finalizing write stream: %s", finalize.status().message());
     }
 }
 
