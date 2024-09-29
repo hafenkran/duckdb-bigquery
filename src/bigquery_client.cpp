@@ -91,7 +91,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto options = google::cloud::Options{};
     if (!config.grpc_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.grpc_endpoint);
-		if (config.is_dev_env()) {
+        if (config.is_dev_env()) {
             options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
         }
     }
@@ -283,6 +283,54 @@ void BigqueryClient::DropView(const DropInfo &info) {
 void BigqueryClient::DropDataset(const DropInfo &info) {
     auto drop_query = BigquerySQL::DropInfoToSQL(GetProjectID(), info);
     ExecuteQuery(drop_query);
+}
+
+void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
+                                              map<string, CreateTableInfo> &table_infos) {
+    google::cloud::bigquery::v2::QueryResponse res =
+        ExecuteQuery("SELECT table_name, column_name, data_type, is_nullable, ordinal_position, column_default FROM `" +
+                         dataset_ref.project_id + "." + dataset_ref.dataset_id +
+                         ".INFORMATION_SCHEMA.COLUMNS` ORDER BY table_name, ordinal_position",
+                     dataset_ref.location);
+
+    google::protobuf::RepeatedPtrField<google::protobuf::Struct> rows = res.rows();
+
+    for (auto &row : rows) {
+        const auto &fields = row.fields();
+        const auto &field_list = fields.at("f").list_value().values();
+
+        if (field_list.size() < 6) {
+            throw BinderException("Unexpected number of fields in the row.");
+        }
+
+        string table_name = field_list[0].struct_value().fields().at("v").string_value();
+        string column_name = field_list[1].struct_value().fields().at("v").string_value();
+        string data_type = field_list[2].struct_value().fields().at("v").string_value();
+        string is_nullable = field_list[3].struct_value().fields().at("v").string_value();
+        string column_default = field_list[5].struct_value().fields().at("v").string_value();
+
+        auto column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
+        ColumnDefinition column(column_name, std::move(column_type));
+
+        if (!column_default.empty() && column_default != "\"\"") {
+            auto expressions = Parser::ParseExpressionList(column_default);
+            if (expressions.empty()) {
+                throw InternalException("Expression list is empty");
+            }
+            column.SetDefaultValue(std::move(expressions[0]));
+        }
+
+        if (table_infos.find(table_name) == table_infos.end()) {
+            table_infos[table_name] = CreateTableInfo(dataset_ref.project_id, dataset_ref.dataset_id, table_name);
+        }
+
+        table_infos[table_name].columns.AddColumn(std::move(column));
+
+        if (is_nullable == "NO") {
+            auto field_index = table_infos[table_name].columns.GetColumnIndex(column_name);
+            table_infos[table_name].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+        }
+    }
 }
 
 void BigqueryClient::GetTableInfo(const string &dataset_id,
