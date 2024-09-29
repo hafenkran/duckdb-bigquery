@@ -158,8 +158,13 @@ public:
     static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
+	static LogicalType BigquerySQLToLogicalType(const string &type);
 
     static string IntervalToBigqueryIntervalString(const interval_t &interval);
+
+private:
+	static vector<string> SplitStructFields(const string &struct_field_str);
+	static string StructRemoveWhitespaces(const string &struct_str);
 };
 
 
