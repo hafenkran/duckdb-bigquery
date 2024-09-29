@@ -26,7 +26,7 @@ namespace bigquery {
 
 class BigqueryClient {
 public:
-	explicit BigqueryClient(const BigqueryConfig &config);
+    explicit BigqueryClient(const BigqueryConfig &config);
     ~BigqueryClient() {};
 
 public:
@@ -47,6 +47,7 @@ public:
     void DropTable(const DropInfo &info);
     void DropView(const DropInfo &info);
 
+    void GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref, map<string, CreateTableInfo> &table_infos);
     void GetTableInfo(const string &dataset_id,
                       const string &table_id,
                       ColumnList &res_columns,
@@ -82,10 +83,10 @@ private:
         const string &location = "");
 
     google::cloud::Options OptionsAPI();
-	google::cloud::Options OptionsGRPC();
+    google::cloud::Options OptionsGRPC();
 
 private:
-	BigqueryConfig config;
+    BigqueryConfig config;
 };
 
 } // namespace bigquery
