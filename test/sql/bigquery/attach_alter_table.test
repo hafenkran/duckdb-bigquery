@@ -63,7 +63,7 @@ FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = 'alter_table_alter_column_type'
   AND COLUMN_NAME = 'i';
 ----
-i	FLOAT
+i	DOUBLE
 
 ### Test - SET_DEFAULT
 statement ok

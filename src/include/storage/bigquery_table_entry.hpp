@@ -20,6 +20,9 @@ struct BigqueryTableInfo {
     BigqueryTableInfo(const BigqueryTableRef &table_ref)
         : BigqueryTableInfo(table_ref.project_id, table_ref.dataset_id, table_ref.table_id) {
     }
+    BigqueryTableInfo(unique_ptr<CreateTableInfo> info) : create_info(std::move(info)) {
+        create_info->columns.SetAllowDuplicates(true);
+    }
 
     const string &GetTableName() const {
         return create_info->table;

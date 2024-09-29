@@ -44,6 +44,10 @@ public:
         return bq_dataset_ref.location;
     }
 
+	BigqueryDatasetRef &GetBigqueryDatasetRef() {
+		return bq_dataset_ref;
+	}
+
 private:
     void TryDropEntry(ClientContext &context, CatalogType type, const string &name);
 
