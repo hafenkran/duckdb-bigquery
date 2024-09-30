@@ -17,6 +17,7 @@
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
+#include "google/cloud/bigquery/storage/v1/bigquery_read_options.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_write_options.h"
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
@@ -391,11 +392,21 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                                                                   const idx_t num_streams,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
+    auto options =
+        OptionsGRPC()
+            .set<google::cloud::bigquery_storage_v1::BigQueryReadRetryPolicyOption>(
+                google::cloud::bigquery_storage_v1::BigQueryReadLimitedTimeRetryPolicy(std::chrono::minutes(10)).clone())
+            .set<google::cloud::bigquery_storage_v1::BigQueryReadBackoffPolicyOption>(
+                google::cloud::ExponentialBackoffPolicy(
+                    /*initial_delay=*/std::chrono::milliseconds(200),
+                    /*maximum_delay=*/std::chrono::seconds(60),
+                    /*scaling=*/2.0)
+                    .clone());
 
     return make_shared_ptr<BigqueryArrowReader>(BigqueryTableRef(config.project_id, dataset_id, table_id),
                                                 config.billing_project(),
                                                 num_streams,
-                                                OptionsGRPC(),
+                                                options,
                                                 column_ids,
                                                 filter_cond);
 }
