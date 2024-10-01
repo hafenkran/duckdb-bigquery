@@ -504,29 +504,35 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.eol lf
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         name: Checkout override repository
         if: ${{inputs.override_repository != ''}}
         with:
           repository: ${{ inputs.override_repository }}
           ref: ${{ inputs.override_ref }}
           fetch-depth: 0
-          submodules: "true"
+          submodules: 'true'
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         name: Checkout current repository
         if: ${{inputs.override_repository == ''}}
         with:
           fetch-depth: 0
-          submodules: "true"
+          submodules: 'true'
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Setup Rust
-        if: inputs.enable_rust
+        if: (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;'))
         uses: dtolnay/rust-toolchain@stable
+
+      - name: 'Setup go'
+        if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
 
       - name: Install parser tools
         if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;')}}
@@ -536,16 +542,22 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
         if: matrix.duckdb_arch == 'windows_amd64_rtools'
         with:
-          r-version: "devel"
+          r-version: 'devel'
           update-rtools: true
-          rtools-version: "42" # linker bug in 43
+          rtools-version: '42' # linker bug in 43
 
-      - uses: actions/checkout@v3
+      - name: setup rtools gcc for vcpkg
+        if: matrix.duckdb_arch == 'windows_amd64_rtools'
+        run: |
+          cp C:/rtools42/x86_64-w64-mingw32.static.posix/bin/gcc.exe C:/rtools42/x86_64-w64-mingw32.static.posix/bin/x86_64-w64-mingw32-gcc.exe
+          cp C:/rtools42/x86_64-w64-mingw32.static.posix/bin/g++.exe C:/rtools42/x86_64-w64-mingw32.static.posix/bin/x86_64-w64-mingw32-g++.exe
+          cp C:/rtools42/x86_64-w64-mingw32.static.posix/bin/gfortran.exe C:/rtools42/x86_64-w64-mingw32.static.posix/bin/x86_64-w64-mingw32-gfortran.exe
+
+      - uses: actions/checkout@v4
         name: Checkout Extension CI tools
-        if: ${{inputs.override_ci_tools_ref != ''}}
         with:
-          path: "extension-ci-tools"
-          ref: ${{ inputs.override_ci_tools_ref }}
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
           repository: ${{ inputs.override_ci_tools_repository }}
           fetch-depth: 0
 
@@ -554,8 +566,20 @@ jobs:
           cd duckdb
           git checkout ${{ inputs.duckdb_version }}
 
+      - name: Tag extension
+        if: ${{inputs.extension_tag != ''}}
+        run: |
+          git tag ${{ inputs.extension_tag }}
+
+      - name: Tag DuckDB extension
+        if: ${{inputs.duckdb_tag != ''}}
+        run: |
+          cd duckdb
+          git tag ${{ inputs.duckdb_tag }}
+
       - name: Setup Ccache
         uses: hendrikmuhs/ccache-action@main
+        continue-on-error: true
         with:
           key: ${{ github.job }}-${{ matrix.duckdb_arch }}
 
@@ -563,6 +587,13 @@ jobs:
         uses: lukka/run-vcpkg@v11.1
         with:
           vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
+          vcpkgGitURL: ${{ inputs.vcpkg_url }}
+
+      - name: Run custom toolchain script
+        if: ${{ inputs.custom_toolchain_script }}
+        shell: bash
+        run: |
+          bash scripts/setup-custom-toolchain.sh
 
       - name: Build extension
         env:
@@ -596,6 +627,16 @@ jobs:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: |
             build/release/extension/${{ inputs.extension_name }}/${{ inputs.extension_name }}.duckdb_extension
+
+      - name: Print Rust logs
+        if: ${{ inputs.rust_logs && (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) }}
+        shell: bash
+        run: |
+          for filename in build/release/rust/src/*/*build-*.log; do
+            echo Printing logs for file $filename
+            cat $filename;
+            echo Done printing logs for $filename
+          done
 
   wasm:
     name: DuckDB-Wasm
