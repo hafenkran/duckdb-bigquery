@@ -264,6 +264,7 @@ jobs:
       - name: Create Ccache directory
         run: |
           mkdir ccache_dir
+          rm -rf /opt/hostedtoolcache
 
       - name: Load Ccache
         uses: actions/cache@v4
@@ -282,10 +283,6 @@ jobs:
         uses: "google-github-actions/auth@v2"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-
-      # - name: "Set up Cloud SDK"
-      #   if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
-      #   uses: "google-github-actions/setup-gcloud@v2"
 
       - name: Test extension
         if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
