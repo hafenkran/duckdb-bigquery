@@ -403,11 +403,11 @@ jobs:
         run: |
           rustup target add x86_64-apple-darwin
 
-      - name: 'Setup go'
-        if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.23'
+      # - name: 'Setup go'
+      #   if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
+      #   uses: actions/setup-go@v4
+      #   with:
+      #     go-version: '1.23'
 
       - name: Install parser tools
         if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;')}}
@@ -528,11 +528,11 @@ jobs:
         if: (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;'))
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 'Setup go'
-        if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.23'
+      # - name: 'Setup go'
+      #   if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
+      #   uses: actions/setup-go@v4
+      #   with:
+      #     go-version: '1.23'
 
       - name: Install parser tools
         if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;')}}
