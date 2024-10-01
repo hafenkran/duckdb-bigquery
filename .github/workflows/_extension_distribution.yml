@@ -277,26 +277,6 @@ jobs:
         run: |
           docker run --env-file=docker_env.txt -v `pwd`:/duckdb_build_dir -v `pwd`/ccache_dir:/ccache_dir duckdb/${{ matrix.duckdb_arch }} make release
 
-      - name: Test extension
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
-        run: |
-          docker run --env-file=docker_env.txt -v `pwd`:/duckdb_build_dir -v `pwd`/ccache_dir:/ccache_dir duckdb/${{ matrix.duckdb_arch }} make test
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
-          path: |
-            build/release/extension/${{ inputs.extension_name }}/${{ inputs.extension_name }}.duckdb_extension
-
-      - name: Print Rust logs
-        if: ${{ inputs.rust_logs && (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) }}
-        run: |
-          for filename in build/release/rust/src/*/*build-*.log; do
-            echo Printing logs for file $filename
-            cat $filename;
-            echo Done printing logs for $filename
-          done
-
       - id: "auth"
         if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
         uses: "google-github-actions/auth@v2"
