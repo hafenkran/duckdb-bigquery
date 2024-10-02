@@ -264,6 +264,7 @@ jobs:
       - name: Create Ccache directory
         run: |
           mkdir ccache_dir
+          du -sh /opt/hostedtoolcache
           rm -rf /opt/hostedtoolcache
 
       - name: Load Ccache
