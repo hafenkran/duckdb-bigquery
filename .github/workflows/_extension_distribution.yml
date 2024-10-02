@@ -236,8 +236,9 @@ jobs:
       - name: Build Docker image
         shell: bash
         run: |
-          docker ps -a
+          docker system df
           docker rmi $(docker images -a -q)
+          docker system df
           docker build \
             --build-arg 'vcpkg_url=${{ inputs.vcpkg_url }}' \
             --build-arg 'vcpkg_commit=${{ inputs.vcpkg_commit }}' \
