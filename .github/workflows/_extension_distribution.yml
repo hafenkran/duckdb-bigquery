@@ -236,12 +236,14 @@ jobs:
       - name: Build Docker image
         shell: bash
         run: |
+          docker --version
           docker build \
             --build-arg 'vcpkg_url=${{ inputs.vcpkg_url }}' \
             --build-arg 'vcpkg_commit=${{ inputs.vcpkg_commit }}' \
-            --build-arg 'extra_toolchains=${{ inputs.enable_rust  && format(';{0};rust;', inputs.extra_toolchains) || format(';{0};', inputs.extra_toolchains) }}' \
+            --build-arg 'extra_toolchains=${{ inputs.enable_rust && format(';{0};rust;', inputs.extra_toolchains) || format(';{0};', inputs.extra_toolchains) }}' \
             -t duckdb/${{ matrix.duckdb_arch }} \
             ./extension-ci-tools/docker/${{ matrix.duckdb_arch }}
+          docker images
 
       - name: Create env file for docker
         run: |
