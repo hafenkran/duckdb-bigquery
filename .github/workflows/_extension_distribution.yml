@@ -193,6 +193,14 @@ jobs:
       DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
     steps:
+      - name: Free up some space
+        run: |
+          df -h
+          sudo rm -rf /opt/hostedtoolcache
+          docker system df
+          docker rmi $(docker images -a -q)
+          df -h
+
       - uses: actions/checkout@v4
         name: Checkout override repository
         if: ${{inputs.override_repository != ''}}
@@ -264,8 +272,6 @@ jobs:
       - name: Create Ccache directory
         run: |
           mkdir ccache_dir
-          du -sh /opt/hostedtoolcache
-          rm -rf /opt/hostedtoolcache
 
       - name: Load Ccache
         uses: actions/cache@v4
