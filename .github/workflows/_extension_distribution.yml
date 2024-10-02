@@ -236,6 +236,7 @@ jobs:
       - name: Build Docker image
         shell: bash
         run: |
+          docker ps -a
           docker rmi $(docker images -a -q)
           docker build \
             --build-arg 'vcpkg_url=${{ inputs.vcpkg_url }}' \
