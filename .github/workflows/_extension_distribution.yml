@@ -295,7 +295,7 @@ jobs:
           docker run \
             -e BQ_TEST_PROJECT=$BQ_TEST_PROJECT \
             -e BQ_TEST_DATASET=$BQ_TEST_DATASET \
-            -e GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS \
+            -e GOOGLE_APPLICATION_CREDENTIALS=/auth/gcloud-service-key.json \
             -v $GOOGLE_APPLICATION_CREDENTIALS:/auth/gcloud-service-key.json \
             -v `pwd`:/duckdb_build_dir \
             -v `pwd`/ccache_dir:/ccache_dir \
