@@ -292,10 +292,10 @@ jobs:
         run: |
           echo "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}" > /tmp/gcloud-service-key.json
           docker run \
-            -e BQ_TEST_PROJECT=${{ secrets.BQ_TEST_PROJECT }} \
-            -e BQ_TEST_DATASET=${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }} \
-            -e GOOGLE_APPLICATION_CREDENTIALS=/auth/gcloud-service-key.json \
-            -v /tmp/gcloud-service-key.json:/auth/gcloud-service-key.json \
+            -e BQ_TEST_PROJECT=$BQ_TEST_PROJECT \
+            -e BQ_TEST_DATASET=$BQ_TEST_DATASET \
+            -e GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS \
+            -v $GOOGLE_APPLICATION_CREDENTIALS:/auth/gcloud-service-key.json \
             -v `pwd`:/duckdb_build_dir \
             -v `pwd`/ccache_dir:/ccache_dir \
             duckdb/${{ matrix.duckdb_arch }} make test
