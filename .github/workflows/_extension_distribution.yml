@@ -193,6 +193,14 @@ jobs:
       DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
     steps:
+      - name: Free up some space
+        run: |
+          df -h
+          sudo rm -rf /opt/hostedtoolcache
+          docker system df
+          docker rmi $(docker images -a -q)
+          df -h
+
       - uses: actions/checkout@v4
         name: Checkout override repository
         if: ${{inputs.override_repository != ''}}
@@ -236,16 +244,12 @@ jobs:
       - name: Build Docker image
         shell: bash
         run: |
-          docker system df
-          docker rmi $(docker images -a -q)
-          docker system df
           docker build \
             --build-arg 'vcpkg_url=${{ inputs.vcpkg_url }}' \
             --build-arg 'vcpkg_commit=${{ inputs.vcpkg_commit }}' \
             --build-arg 'extra_toolchains=${{ inputs.enable_rust && format(';{0};rust;', inputs.extra_toolchains) || format(';{0};', inputs.extra_toolchains) }}' \
             -t duckdb/${{ matrix.duckdb_arch }} \
             ./extension-ci-tools/docker/${{ matrix.duckdb_arch }}
-          docker images
 
       - name: Create env file for docker
         run: |
