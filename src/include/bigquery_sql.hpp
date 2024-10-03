@@ -33,6 +33,26 @@ public:
     static string BigqueryColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints);
 };
 
+struct BigqueryPseudoColumns {
+public:
+	static const std::unordered_set<string> GetPseudoColumns() {
+		static const std::unordered_set<string> pseudoColumn = {
+			"_PARTITIONTIME",
+			"_PARTITIONDATE",
+			"_TABLE_SUFFIX",
+			"_FILE_NAME",
+			"_ROW_TIMESTAMP",
+			"_STREAMING_TIMESTAMP",
+			"_DATASTORE_ID",
+		};
+		return pseudoColumn;
+	}
+
+	static bool IsPsuedoColumn(const string &column_name) {
+		return GetPseudoColumns().count(column_name) > 0;
+	}
+};
+
 
 } // namespace bigquery
 } // namespace duckdb
