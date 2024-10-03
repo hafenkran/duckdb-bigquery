@@ -35,7 +35,7 @@ DROP TABLE bq.${BQ_TEST_DATASET}.my_fancy_test_table;
 
 statement ok
 CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.multiple_row_groups AS (
-  SELECT * FROM 'data/multiple_row_groups.parquet'
+  SELECT * FROM 'test/data/multiple_row_groups.parquet'
 );
 
 query I
