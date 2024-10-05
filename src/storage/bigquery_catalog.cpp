@@ -70,7 +70,7 @@ optional_ptr<SchemaCatalogEntry> BigqueryCatalog::GetSchema(CatalogTransaction t
                                                             OnEntryNotFound if_not_found,
                                                             QueryErrorContext error_context) {
     auto schema_entry = schemas.GetEntry(transaction.GetContext(), schema_name);
-    if (!schema_entry && if_not_found == OnEntryNotFound::RETURN_NULL) {
+    if (!schema_entry && if_not_found != OnEntryNotFound::RETURN_NULL) {
         throw BinderException("Schema with name \"%s\" not found", schema_name);
     }
     return reinterpret_cast<SchemaCatalogEntry *>(schema_entry.get());
