@@ -1,0 +1,18 @@
+# name: test/sql/bigquery/attach_use_logic.test
+# description: Test the use logic
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+USE bq.${BQ_TEST_DATASET};
+
+statement ok
+SHOW ALL TABLES;
