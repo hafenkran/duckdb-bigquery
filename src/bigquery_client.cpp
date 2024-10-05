@@ -61,7 +61,8 @@ public:
     }
 };
 
-class CustomWriteIdempotencyPolicy : public google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicy {
+class CustomWriteIdempotencyPolicy
+    : public google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicy {
 public:
     ~CustomWriteIdempotencyPolicy() override = default;
     std::unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicy> clone()
@@ -307,13 +308,8 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
 
 void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
                                               map<string, CreateTableInfo> &table_infos) {
-    const auto table_string = BigqueryUtils::FormatTableStringSimple(dataset_ref.project_id,
-                                                                     dataset_ref.dataset_id,
-                                                                     "INFORMATION_SCHEMA.COLUMNS");
-    const auto info_schema_query = R"(
-        SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position,
-        FROM `)" + table_string + R"(`ORDER BY table_name, ordinal_position
-    )";
+    const auto info_schema_query =
+        BigquerySQL::ColumnsFromInformationSchema(dataset_ref.project_id, dataset_ref.dataset_id);
 
     auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
     auto rows = query_response.rows();

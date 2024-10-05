@@ -425,6 +425,17 @@ string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector
     return str.str();
 }
 
+string BigquerySQL::ColumnsFromInformationSchema(const string &project_id, const string &dataset_id) {
+	const auto table_string =
+        BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.COLUMNS");
+
+	std::stringstream query;
+	query << "SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
+	query << "FROM `" << table_string << "` ";
+	query << "ORDER BY table_name, ordinal_position";
+	return query.str();
+}
+
 
 } // namespace bigquery
 } // namespace duckdb
