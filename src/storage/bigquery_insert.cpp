@@ -116,7 +116,6 @@ SourceResultType BigqueryInsert::GetData(ExecutionContext &context,
     auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
     chunk.SetCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.insert_count));
-
     return SourceResultType::FINISHED;
 }
 
