@@ -326,7 +326,10 @@ string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &
     auto filters = ExtractFilters(*child.children[0]);
     if (!filters.empty()) {
         sql += " WHERE " + filters;
-    }
+    } else {
+		// Each UPDATE statement must have a WHERE clause
+		sql += " WHERE true";
+	}
     return sql;
 }
 
