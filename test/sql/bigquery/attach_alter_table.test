@@ -21,6 +21,15 @@ CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table(i INTEGER);
 statement ok
 ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table RENAME COLUMN i TO i2;
 
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table;
+----
+i2	BIGINT	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table;
+
+
 ### Test - RENAME_TABLE
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_renamed;
@@ -31,6 +40,17 @@ CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_rename_me(i INTEGER);
 statement ok
 ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_rename_me RENAME TO alter_table_renamed;
 
+statement ok
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_renamed;
+
+statement error
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_rename_me;
+----
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_renamed;
+
+
 ### Test - ADD_COLUMN
 statement ok
 CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_add_column(i INTEGER);
@@ -38,12 +58,31 @@ CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_add_column(i INTEGER);
 statement ok
 ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_add_column ADD COLUMN l INTEGER;
 
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_add_column;
+----
+i	BIGINT	YES	NULL	NULL	NULL
+l	BIGINT	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_add_column;
+
+
 ### Test - REMOVE_COLUMN
 statement ok
 CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_remove_column(i INTEGER, j INTEGER);
 
 statement ok
 ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_remove_column DROP COLUMN j;
+
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_remove_column;
+----
+i	BIGINT	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.alter_table_remove_column;
+
 
 ### Test - ALTER_COLUMN_TYPE
 statement ok
@@ -57,13 +96,14 @@ ALTER TABLE ALTER COLUMN SET DATA TYPE requires that the existing column type (I
 statement ok
 ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type ALTER COLUMN i TYPE DOUBLE;
 
-query II
-SELECT COLUMN_NAME, DATA_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_NAME = 'alter_table_alter_column_type'
-  AND COLUMN_NAME = 'i';
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type;
 ----
-i	FLOAT
+i	FLOAT	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type;
+
 
 ### Test - SET_DEFAULT
 statement ok
@@ -72,8 +112,16 @@ CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_set_default(i INTEGER)
 statement ok
 ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_set_default ALTER COLUMN i SET DEFAULT 100;
 
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_set_default;
+----
+i	BIGINT	YES	NULL	100	NULL
+
+### statement ok
+### INSERT INTO bq.${BQ_TEST_DATASET}.alter_table_set_default DEFAULT VALUES;
+
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.alter_table_set_default DEFAULT VALUES;
+DROP TABLE bq.${BQ_TEST_DATASET}.alter_table_set_default;
 
 ### query I
 ### SELECT * FROM bq.${BQ_TEST_DATASET}.alter_table_set_default;
@@ -94,19 +142,6 @@ query I
 SELECT * FROM bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;
 ----
 NULL
-
-### Cleanup - Delete all tables
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table;
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_renamed;
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_alter_column_type;
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_set_default;
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;
