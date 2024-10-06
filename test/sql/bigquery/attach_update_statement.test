@@ -1,0 +1,36 @@
+# name: test/sql/bigquery/attach_update_statement.test
+# description: Test for the update statement
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_debug_show_queries=true
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.update_statement (i INTEGER);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.update_statement FROM range(5);
+
+statement ok
+UPDATE bq.${BQ_TEST_DATASET}.update_statement SET i=10 WHERE 1=1;
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.update_statement;
+----
+10
+10
+10
+10
+10
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.update_statement;
