@@ -58,6 +58,16 @@ optional_ptr<CatalogEntry> BigqueryCatalogSet::GetEntry(ClientContext &context, 
     return entry->second.get();
 }
 
+optional_ptr<CatalogEntry> BigqueryCatalogSet::GetFirstEntry(ClientContext &context) {
+	TryLoadEntries(context);
+
+	lock_guard<mutex> lock(entry_lock);
+	if (entries.empty()) {
+		return nullptr;
+	}
+	return entries.begin()->second.get();
+}
+
 void BigqueryCatalogSet::ClearEntries() {
     lock_guard<mutex> lock(entry_lock);
     entries.clear();
