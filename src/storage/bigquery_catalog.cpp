@@ -69,6 +69,22 @@ optional_ptr<SchemaCatalogEntry> BigqueryCatalog::GetSchema(CatalogTransaction t
                                                             const string &schema_name,
                                                             OnEntryNotFound if_not_found,
                                                             QueryErrorContext error_context) {
+	if (schema_name == DEFAULT_SCHEMA) {
+		return GetSchema(transaction, GetDefaultDatasetID(), if_not_found, error_context);
+	}
+
+	if (IsInvalidSchema(schema_name)) {
+		// return first dataset as the default
+		auto first_entry = schemas.GetFirstEntry(transaction.GetContext());
+		if (!first_entry) {
+			if (if_not_found != OnEntryNotFound::RETURN_NULL) {
+				throw BinderException("No schema found in catalog");
+			}
+			return nullptr;
+		}
+		return reinterpret_cast<SchemaCatalogEntry *>(first_entry.get());
+	}
+
     auto schema_entry = schemas.GetEntry(transaction.GetContext(), schema_name);
     if (!schema_entry && if_not_found != OnEntryNotFound::RETURN_NULL) {
         throw BinderException("Schema with name \"%s\" not found", schema_name);
