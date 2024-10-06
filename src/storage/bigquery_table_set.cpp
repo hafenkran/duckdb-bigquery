@@ -64,6 +64,7 @@ void BigqueryTableSet::AlterTable(ClientContext &context, AlterTableInfo &info) 
 
 	auto query = BigquerySQL::AlterTableInfoToSQL(bq_catalog.GetProjectID(), info);
 	bqclient->ExecuteQuery(query);
+	ClearEntries();
 }
 
 void BigqueryTableSet::LoadEntries(ClientContext &context) {
