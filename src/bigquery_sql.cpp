@@ -432,6 +432,8 @@ string BigquerySQL::ColumnsFromInformationSchema(const string &project_id, const
 	std::stringstream query;
 	query << "SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
 	query << "FROM `" << table_string << "` ";
+	query << "WHERE is_system_defined = false ";
+	query << "AND ordinal_position IS NOT NULL ";
 	query << "ORDER BY table_name, ordinal_position";
 	return query.str();
 }
