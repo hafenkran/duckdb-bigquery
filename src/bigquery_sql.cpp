@@ -429,13 +429,13 @@ string BigquerySQL::ColumnsFromInformationSchema(const string &project_id, const
 	const auto table_string =
         BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.COLUMNS");
 
-	std::stringstream query;
-	query << "SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
-	query << "FROM `" << table_string << "` ";
-	query << "WHERE is_system_defined = false ";
-	query << "AND ordinal_position IS NOT NULL ";
-	query << "ORDER BY table_name, ordinal_position";
-	return query.str();
+    std::stringstream query;
+    query << "SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
+    query << "FROM `" << table_string << "` ";
+    query << "WHERE is_system_defined = 'NO' ";  // Adjusted the comparison
+    query << "AND ordinal_position IS NOT NULL ";
+    query << "ORDER BY table_name, ordinal_position";
+    return query.str();
 }
 
 
