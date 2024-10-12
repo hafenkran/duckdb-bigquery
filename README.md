@@ -173,6 +173,16 @@ D CALL bigquery_execute('bq', '
 ');
 ```
 
+### `bigquery_query` Function
+
+The `bigquery_query` function is similar to `bigquery_scan`, but it allows you to specify a SQL query string to be executed directly in BigQuery. This function is especially useful to get around the limitations of the BigQuery Storage Read API, such as reading from views or external tables.
+
+```sql
+D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`');
+```
+
+It executes the query without further analyzing it in BigQuery. BigQuery transparently creates a temporary result table, which is fetched in exactly the same way as with `bigquery_scan`. The result table is a temporary table which will be deleted shortly after the query is executed.
+
 ### `bigquery_clear_cache` Function
 
 DuckDB caches schema metadata, such as datasets and table structures, to avoid repeated fetches from BigQuery. If the schema changes externally, use `bigquery_clear_cache` to update the cache and retrieve the latest schema information:
