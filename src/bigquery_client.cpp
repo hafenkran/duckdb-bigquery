@@ -327,11 +327,6 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
         string is_nullable = field_list[3].struct_value().fields().at("v").string_value();
         string column_default = field_list[4].struct_value().fields().at("v").string_value();
 
-        // Skip pseudo columns for now
-        if (BigqueryPseudoColumns::IsPsuedoColumn(column_name)) {
-            continue;
-        }
-
         auto column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
         ColumnDefinition column(column_name, std::move(column_type));
 
