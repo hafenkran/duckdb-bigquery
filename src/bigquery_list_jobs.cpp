@@ -78,50 +78,50 @@ void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<str
     }
 }
 
-static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
-                                                     TableFunctionBindInput &input,
-                                                     vector<LogicalType> &return_types,
-                                                     vector<string> &names) {
-    auto database_name = input.inputs[0].GetValue<string>();
-    auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, database_name);
-    if (!database) {
-        throw BinderException("Failed to find attached database " + database_name);
-    }
+// static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
+//                                                      TableFunctionBindInput &input,
+//                                                      vector<LogicalType> &return_types,
+//                                                      vector<string> &names) {
+//     auto database_name = input.inputs[0].GetValue<string>();
+//     auto &database_manager = DatabaseManager::Get(context);
+//     auto database = database_manager.GetDatabase(context, database_name);
+//     if (!database) {
+//         throw BinderException("Failed to find attached database " + database_name);
+//     }
 
-    auto &catalog = database->GetCatalog();
-    if (catalog.GetCatalogType() != "bigquery") {
-        throw BinderException("Database " + database_name + " is not a BigQuery database");
-    }
-    auto &bq_catalog = catalog.Cast<BigqueryCatalog>();
+//     auto &catalog = database->GetCatalog();
+//     if (catalog.GetCatalogType() != "bigquery") {
+//         throw BinderException("Database " + database_name + " is not a BigQuery database");
+//     }
+//     auto &bq_catalog = catalog.Cast<BigqueryCatalog>();
 
-    ListJobsParams params;
-    std::map<std::string, std::function<void(const Value &)>> param_map = {
-        {"allUsers", [&](const Value &val) { params.all_users = val.GetValue<bool>(); }},
-        {"maxResults", [&](const Value &val) { params.max_results = val.GetValue<int>(); }},
-        {"minCreationTime", [&](const Value &val) { params.min_creation_time = val.GetValue<string>(); }},
-        {"maxCreationTime", [&](const Value &val) { params.max_creation_time = val.GetValue<string>(); }},
-        // {"pageToken", [&](const Value &val) { params.page_token = val.GetValue<string>(); }},
-        {"projection", [&](const Value &val) { params.projection = val.GetValue<string>(); }},
-        {"stateFilter", [&](const Value &val) { params.state_filter = val.GetValue<string>(); }},
-        {"parentJobId", [&](const Value &val) { params.parent_job_id = val.GetValue<string>(); }},
-    };
-    for (auto &param : input.named_parameters) {
-        auto it = param_map.find(param.first);
-        if (it != param_map.end()) {
-            it->second(param.second);
-        }
-    }
+//     ListJobsParams params;
+//     std::map<std::string, std::function<void(const Value &)>> param_map = {
+//         {"allUsers", [&](const Value &val) { params.all_users = val.GetValue<bool>(); }},
+//         {"maxResults", [&](const Value &val) { params.max_results = val.GetValue<int>(); }},
+//         {"minCreationTime", [&](const Value &val) { params.min_creation_time = val.GetValue<string>(); }},
+//         {"maxCreationTime", [&](const Value &val) { params.max_creation_time = val.GetValue<string>(); }},
+//         // {"pageToken", [&](const Value &val) { params.page_token = val.GetValue<string>(); }},
+//         {"projection", [&](const Value &val) { params.projection = val.GetValue<string>(); }},
+//         {"stateFilter", [&](const Value &val) { params.state_filter = val.GetValue<string>(); }},
+//         {"parentJobId", [&](const Value &val) { params.parent_job_id = val.GetValue<string>(); }},
+//     };
+//     for (auto &param : input.named_parameters) {
+//         auto it = param_map.find(param.first);
+//         if (it != param_map.end()) {
+//             it->second(param.second);
+//         }
+//     }
 
-    if (params.projection.has_value() && params.projection != "full" && params.projection != "minimal") {
-        throw BinderException("Invalid value for projection parameter: " + params.projection.value());
-    }
+//     if (params.projection.has_value() && params.projection != "full" && params.projection != "minimal") {
+//         throw BinderException("Invalid value for projection parameter: " + params.projection.value());
+//     }
 
-    // Initialize the names and return types
-    InitializeNamesAndReturnTypes(return_types, names, params.projection.value_or("minimal"));
+//     // Initialize the names and return types
+//     InitializeNamesAndReturnTypes(return_types, names, params.projection.value_or("minimal"));
 
-    return make_uniq<ListJobsBindData>(bq_catalog, params);
-}
+//     return make_uniq<ListJobsBindData>(bq_catalog, params);
+// }
 
 static unique_ptr<GlobalTableFunctionState> BigQueryListJobsInitGlobalState(ClientContext &context,
                                                                             TableFunctionInitInput &input) {

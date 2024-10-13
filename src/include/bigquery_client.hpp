@@ -24,7 +24,7 @@
 namespace duckdb {
 namespace bigquery {
 
-struct ListJobsParams{
+struct ListJobsParams {
     std::optional<bool> all_users;
     std::optional<int> max_results;
     std::optional<std::string> min_creation_time;
@@ -37,24 +37,18 @@ struct ListJobsParams{
 
 class BigqueryClient {
 public:
-	explicit BigqueryClient(const BigqueryConfig &config);
+    explicit BigqueryClient(const BigqueryConfig &config);
     ~BigqueryClient() {};
 
 public:
-	vector<BigqueryDatasetRef> GetDatasets();
-	BigqueryDatasetRef GetDataset(const string &dataset_id);
-	bool DatasetExists(const string &dataset_id);
-
-    vector<BigqueryTableRef> GetTables(const string &dataset_id);
-    BigqueryTableRef GetTable(const string &dataset_id, const string &table_id);
-    bool TableExists(const string &dataset_id, const string &table_id);
-
     vector<BigqueryDatasetRef> GetDatasets();
     vector<BigqueryTableRef> GetTables(const string &dataset_id);
 
     BigqueryDatasetRef GetDataset(const string &dataset_id);
     BigqueryTableRef GetTable(const string &dataset_id, const string &table_id);
-	vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
+
+    bool DatasetExists(const string &dataset_id);
+    bool TableExists(const string &dataset_id, const string &table_id);
 
     void CreateDataset(const CreateSchemaInfo &info, const BigqueryDatasetRef &dataset_ref);
     void CreateTable(const CreateTableInfo &info, const BigqueryTableRef &table_ref);
@@ -68,6 +62,8 @@ public:
                       const string &table_id,
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
+
+    vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
 
@@ -98,10 +94,10 @@ private:
         const string &location = "");
 
     google::cloud::Options OptionsAPI();
-	google::cloud::Options OptionsGRPC();
+    google::cloud::Options OptionsGRPC();
 
 private:
-	BigqueryConfig config;
+    BigqueryConfig config;
 };
 
 } // namespace bigquery

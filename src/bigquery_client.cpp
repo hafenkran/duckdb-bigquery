@@ -189,7 +189,7 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
 		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
 	auto request = google::cloud::bigquery::v2::ListJobsRequest();
-	request.set_project_id(project_id);
+	request.set_project_id(config.project_id);
 
 	if (params.all_users.has_value()) {
 		auto all_users = params.all_users.value();

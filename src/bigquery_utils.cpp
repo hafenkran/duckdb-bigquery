@@ -576,6 +576,7 @@ uint64_t Iso8601ToMillis(const std::string &iso8601) {
     auto timestamp = Timestamp::FromString(iso8601);
     auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
     return timestamp_ms;
+}
 
 } // namespace bigquery
 } // namespace duckdb
