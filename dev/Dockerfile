@@ -1,6 +1,16 @@
 # Stage 1: Build Step
 FROM ubuntu:24.04 AS builder
 
+# Set environment variables
+ENV VCPKG_ROOT=/vcpkg
+ENV VCPKG_DEFAULT_TRIPLET=x64-linux
+ENV VCPKG_MANIFEST_MODE=1
+ENV VCPKG_FEATURE_FLAGS=manifests
+ENV VCPKG_TOOLCHAIN_PATH=/vcpkg/scripts/buildsystems/vcpkg.cmake
+ENV CMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake
+ENV USE_MERGED_VCPKG_MANIFEST=1
+ENV GEN=ninja
+
 # Install necessary packages
 RUN apt-get update && \
     apt-get install -y \
@@ -18,30 +28,14 @@ RUN apt-get update && \
     wget \
     pkg-config \
     python3 \
+    && git clone https://github.com/microsoft/vcpkg.git /vcpkg \
+    && /vcpkg/bootstrap-vcpkg.sh \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /duckdb
 
-# Install vcpkg
-RUN git clone https://github.com/microsoft/vcpkg.git /vcpkg && \
-    /vcpkg/bootstrap-vcpkg.sh
-
-# Set environment variables
-ENV VCPKG_ROOT=/vcpkg
-ENV VCPKG_DEFAULT_TRIPLET=x64-linux
-ENV VCPKG_MANIFEST_MODE=1
-ENV VCPKG_FEATURE_FLAGS=manifests
-ENV VCPKG_TOOLCHAIN_PATH=/vcpkg/scripts/buildsystems/vcpkg.cmake
-ENV CMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake
-ENV USE_MERGED_VCPKG_MANIFEST=1
-ENV GEN=ninja
-
-
-# Copy local source code to the container
 COPY . /duckdb
 
-# Build the extension
 RUN make release
 
 # Stage 2: Final Docker Image
