@@ -159,7 +159,7 @@ D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
 
 ### `bigquery_execute` Function
 
-The `bigquery_execute` function lets you run arbitrary queries directly in BigQuery in native Google SQL. These queries are executed without interpretation by DuckDB:
+The `bigquery_execute` function runs queries directly in BigQuery using native GoogleSQL. These queries are executed without interpretation by DuckDB. The call is synchronous and returns a result with details about the query execution, like the following.
 
 ```sql
 D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
@@ -171,6 +171,12 @@ D CALL bigquery_execute('bq', '
         labels=[("label1","value1"),("label2","value2")]
     )
 ');
+┌─────────┬──────────────────────────────────┬─────────────────┬──────────┬────────────┬───────────────────────┬───────────────────────┐
+│ success │             job_id               │    project_id   │ location │ total_rows │ total_bytes_processed │ num_dml_affected_rows │
+│ boolean │             varchar              │     varchar     │ varchar  │   uint64   │         int64         │        varchar        │
+├─────────┼──────────────────────────────────┼─────────────────┼──────────┼────────────┼───────────────────────┼───────────────────────┤
+│ true    │ job_-Xu_D2wxe2Xjh-ArZNwZ6gut5ggi │ my_gcp_project  │ US       │          0 │                     0 │ 0                     │
+└─────────┴──────────────────────────────────┴─────────────────┴──────────┴────────────┴───────────────────────┴───────────────────────┘
 ```
 
 ### `bigquery_clear_cache` Function
