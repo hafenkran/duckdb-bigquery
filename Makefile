@@ -10,7 +10,7 @@ include extension-ci-tools/makefiles/duckdb_extension.Makefile
 
 .PHONY: docker-build
 docker-build:
-	docker build -t duckdb-bigquery:v1.1.1 -f dev/Dockerfile .
+	docker build -t duckdb-bigquery:v1.1.2 -f dev/Dockerfile .
 
 .PHONY: lint
 lint:
