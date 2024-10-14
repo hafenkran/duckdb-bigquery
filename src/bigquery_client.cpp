@@ -91,7 +91,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto options = google::cloud::Options{};
     if (!config.grpc_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.grpc_endpoint);
-		if (config.is_dev_env()) {
+        if (config.is_dev_env()) {
             options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
         }
     }
@@ -185,68 +185,76 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
 }
 
 vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(const ListJobsParams &params) {
-	auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-	auto request = google::cloud::bigquery::v2::ListJobsRequest();
-	request.set_project_id(config.project_id);
+    auto request = google::cloud::bigquery::v2::ListJobsRequest();
+    request.set_project_id(config.project_id);
 
-	if (params.all_users.has_value()) {
-		auto all_users = params.all_users.value();
-		request.set_all_users(all_users);
-	}
-	if (params.max_results.has_value()) {
-		std::int32_t max_results = params.max_results.value();
-		request.mutable_max_results()->set_value(max_results);
-	}
-	if (params.min_creation_time.has_value()) {
-		auto min_creation_time = params.min_creation_time.value();
-		auto timestamp = Timestamp::FromString(min_creation_time);
-		auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
-		request.set_min_creation_time(timestamp_ms);
-	}
-	if (params.max_creation_time.has_value()) {
-		auto max_creation_time = params.max_creation_time.value();
-		auto timestamp = Timestamp::FromString(max_creation_time);
-		auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
-		request.mutable_max_creation_time()->set_value(timestamp_ms);
-	}
-	if (params.page_token.has_value()) {
-		auto page_token = params.page_token.value();
-		request.set_page_token(page_token);
-	}
-	if (params.projection.has_value()) {
-		auto projection = params.projection.value();
-		if (projection == "full") {
-			auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_FULL;
-			request.set_projection(mapped);
-		} else if (projection == "minimal") {
-			auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_MINIMAL;
-			request.set_projection(mapped);
-		} else {
-			throw BinderException("Invalid projection value: %s", projection);
-		}
-	}
-	// if (params.state_filter.has_value()) {
-	// 	request.set_state_filter(params.state_filter.value());
-	// }
-	if (params.parent_job_id.has_value()) {
-		auto parent_job_id = params.parent_job_id.value();
-		request.set_parent_job_id(parent_job_id);
-	}
+    // Default is 1000
+    std::int32_t max_results = 1000;
+    if (params.max_results.has_value()) {
+        max_results = params.max_results.value();
+    }
+    request.mutable_max_results()->set_value(max_results);
 
-	vector<google::cloud::bigquery::v2::ListFormatJob> result;
-	auto response = client.ListJobs(request);
-	for (const auto &job : response) {
-		if (!job.ok()) {
-			throw BinderException(job.status().message());
-		}
+    if (params.all_users.has_value()) {
+        auto all_users = params.all_users.value();
+        request.set_all_users(all_users);
+    }
+    if (params.min_creation_time.has_value()) {
+        auto min_creation_time = params.min_creation_time.value();
+        auto timestamp = Timestamp::FromString(min_creation_time);
+        auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+        request.set_min_creation_time(timestamp_ms);
+    }
+    if (params.max_creation_time.has_value()) {
+        auto max_creation_time = params.max_creation_time.value();
+        auto timestamp = Timestamp::FromString(max_creation_time);
+        auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+        request.mutable_max_creation_time()->set_value(timestamp_ms);
+    }
+    if (params.page_token.has_value()) {
+        auto page_token = params.page_token.value();
+        request.set_page_token(page_token);
+    }
+    if (params.projection.has_value()) {
+        auto projection = params.projection.value();
+        if (projection == "full") {
+            auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_FULL;
+            request.set_projection(mapped);
+        } else if (projection == "minimal") {
+            auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_MINIMAL;
+            request.set_projection(mapped);
+        } else {
+            throw BinderException("Invalid projection value: %s", projection);
+        }
+    }
+    // if (params.state_filter.has_value()) {
+    // 	request.set_state_filter(params.state_filter.value());
+    // }
+    if (params.parent_job_id.has_value()) {
+        auto parent_job_id = params.parent_job_id.value();
+        request.set_parent_job_id(parent_job_id);
+    }
 
-		auto job_val = job.value();
-		result.push_back(job_val);
-	}
+    vector<google::cloud::bigquery::v2::ListFormatJob> result;
+    google::cloud::v2_27::StreamRange<google::cloud::bigquery::v2::ListFormatJob> response = client.ListJobs(request);
 
-	return result;
+    int num_results = 0;
+    for (const auto &job : response) {
+        if (!job.ok()) {
+            throw BinderException(job.status().message());
+        }
+        auto job_val = job.value();
+        result.push_back(job_val);
+
+        num_results++;
+        if (num_results >= max_results) {
+            break;
+        }
+    }
+    return result;
 }
 
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
