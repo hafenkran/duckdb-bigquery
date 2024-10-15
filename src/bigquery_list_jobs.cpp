@@ -79,19 +79,19 @@ void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<str
         return_types.emplace_back(column.type);
     }
 
-	names.emplace_back("statistics");
-	return_types.emplace_back(LogicalType::JSON());
+    names.emplace_back("statistics");
+    return_types.emplace_back(LogicalType::JSON());
 
-	names.emplace_back("error_result");
-	return_types.emplace_back(LogicalType::JSON());
+    names.emplace_back("error_result");
+    return_types.emplace_back(LogicalType::JSON());
 
-	if (projection == "full") {
-		names.emplace_back("configuration");
-		return_types.emplace_back(LogicalType::JSON());
-	}
+    if (projection == "full") {
+        names.emplace_back("configuration");
+        return_types.emplace_back(LogicalType::JSON());
+    }
 
-	names.emplace_back("status");
-	return_types.emplace_back(LogicalType::JSON());
+    names.emplace_back("status");
+    return_types.emplace_back(LogicalType::JSON());
 }
 
 static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
@@ -265,31 +265,31 @@ static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &dat
             output.SetValue(value_idx++, out_idx, Value(job_type));
         }
 
-		// statistics
-		std::string json_output;
-		google::protobuf::util::MessageToJsonString(job.statistics(), &json_output);
-		output.SetValue(value_idx++, out_idx, Value(json_output));
+        // statistics
+        std::string json_output;
+        google::protobuf::util::MessageToJsonString(job.statistics(), &json_output);
+        output.SetValue(value_idx++, out_idx, Value(json_output));
 
-		// error result
-		if (job.has_error_result()) {
-			std::string error_result_json;
-			google::protobuf::util::MessageToJsonString(job.error_result(), &error_result_json);
-			output.SetValue(value_idx++, out_idx, Value(error_result_json));
-		} else {
-			output.SetValue(value_idx++, out_idx, Value());
-		}
+        // error result
+        if (job.has_error_result()) {
+            std::string error_result_json;
+            google::protobuf::util::MessageToJsonString(job.error_result(), &error_result_json);
+            output.SetValue(value_idx++, out_idx, Value(error_result_json));
+        } else {
+            output.SetValue(value_idx++, out_idx, Value());
+        }
 
-		// configuration
-		if (bind_data.params.projection.has_value() && bind_data.params.projection.value() == "full") {
-			std::string configuration_json;
-			google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
-			output.SetValue(value_idx++, out_idx, Value(configuration_json));
-		}
+        // configuration
+        if (bind_data.params.projection.has_value() && bind_data.params.projection.value() == "full") {
+            std::string configuration_json;
+            google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
+            output.SetValue(value_idx++, out_idx, Value(configuration_json));
+        }
 
-		// status
-		std::string status_json;
-		google::protobuf::util::MessageToJsonString(job.status(), &status_json);
-		output.SetValue(value_idx++, out_idx, Value(status_json));
+        // status
+        std::string status_json;
+        google::protobuf::util::MessageToJsonString(job.status(), &status_json);
+        output.SetValue(value_idx++, out_idx, Value(status_json));
 
         out_idx++;
         job_idx++;
@@ -314,6 +314,7 @@ public:
     bool finished = false;
 };
 
+
 struct GetJobGlobalFunctionState : public GlobalTableFunctionState {
     explicit GetJobGlobalFunctionState() {
     }
@@ -323,9 +324,46 @@ public:
     google::cloud::bigquery::v2::Job job;
 };
 
+static unique_ptr<FunctionData> BigQueryGetJobBind(ClientContext &context,
+                                                   TableFunctionBindInput &input,
+                                                   vector<LogicalType> &return_types,
+                                                   vector<string> &names) {
+    auto database_name = input.inputs[0].GetValue<string>();
+    auto &database_manager = DatabaseManager::Get(context);
+    auto database = database_manager.GetDatabase(context, database_name);
+    if (!database) {
+        throw BinderException("Failed to find attached database " + database_name);
+    }
+
+    auto &catalog = database->GetCatalog();
+    if (catalog.GetCatalogType() != "bigquery") {
+        throw BinderException("Database " + database_name + " is not a BigQuery database");
+    }
+    auto &bq_catalog = catalog.Cast<BigqueryCatalog>();
+
+    auto job_id = input.inputs[1].GetValue<string>();
+
+    // Initialize the names and return types
+    InitializeNamesAndReturnTypes(return_types, names, "full");
+
+    return make_uniq<GetJobBindData>(bq_catalog, job_id);
+}
+
+static unique_ptr<GlobalTableFunctionState> BigQueryGetJobInitGlobalState(ClientContext &context,
+                                                                          TableFunctionInitInput &input) {
+    auto &data = input.bind_data->CastNoConst<GetJobBindData>();
+    auto &transaction = BigqueryTransaction::Get(context, data.bq_catalog);
+    auto bq_client = transaction.GetBigqueryClient();
+    auto job = bq_client->GetJob(data.job_id);
+
+    auto state = make_uniq<GetJobGlobalFunctionState>();
+    state->job = job;
+
+    return state;
+}
+
 
 static void BigQueryGetJobFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-
 }
 
 BigQueryListJobsFunction::BigQueryListJobsFunction()
@@ -349,7 +387,8 @@ BigQueryGetJobFunction::BigQueryGetJobFunction()
     : TableFunction("bigquery_get_job",
                     {LogicalType::VARCHAR},
                     BigQueryGetJobFunc,
-                    BigQueryListJobsBind) {
+                    BigQueryGetJobBind,
+                    BigQueryGetJobInitGlobalState) {
     named_parameters["jobId"] = LogicalType::VARCHAR;
 }
 
