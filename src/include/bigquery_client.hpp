@@ -64,6 +64,7 @@ public:
                       vector<unique_ptr<Constraint>> &res_constraints);
 
     vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
+	google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
 
