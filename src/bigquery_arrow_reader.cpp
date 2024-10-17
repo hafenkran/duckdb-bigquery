@@ -643,5 +643,9 @@ int64_t BigqueryArrowReader::GetEstimatedRowCount() {
     return read_session->estimated_row_count();
 }
 
+BigqueryTableRef BigqueryArrowReader::GetTableRef() const {
+    return table_ref;
+}
+
 } // namespace bigquery
 } // namespace duckdb

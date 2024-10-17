@@ -415,6 +415,12 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
     return *response;
 }
 
+google::cloud::bigquery::v2::Job BigqueryClient::GetJob(google::cloud::bigquery::v2::QueryResponse &query_response) 
+{
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+    auto job = GetJob(client, query_response.job_reference().job_id(), query_response.job_reference().location().value());
+    return job.value();
+}
 
 google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,

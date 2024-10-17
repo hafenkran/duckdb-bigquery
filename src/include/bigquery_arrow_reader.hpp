@@ -41,6 +41,8 @@ public:
     std::shared_ptr<arrow::Schema> ReadSchema(const google::cloud::bigquery::storage::v1::ArrowSchema &schema);
     std::shared_ptr<arrow::RecordBatch> ReadBatch(const google::cloud::bigquery::storage::v1::ArrowRecordBatch &batch);
 
+    BigqueryTableRef GetTableRef() const;
+
 private:
     void ReadSimpleColumn(const std::shared_ptr<arrow::Array> &column, Vector &out_vec);
     void ReadListColumn(const std::shared_ptr<arrow::ListArray> &list_array, Vector &out_vec);

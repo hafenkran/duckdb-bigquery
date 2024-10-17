@@ -179,6 +179,16 @@ D CALL bigquery_execute('bq', '
 └─────────┴──────────────────────────────────┴─────────────────┴──────────┴────────────┴───────────────────────┴───────────────────────┘
 ```
 
+### `bigquery_select` Function
+
+The `bigquery_select` function is similar to `bigquery_scan`, but it allows you to specify a SQL query string to be executed directly in BigQuery. This function is especially useful to get around the limitations of the BigQuery Storage Read API, such as reading from views or external tables.
+
+```sql
+D SELECT * FROM bigquery_select('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`');
+```
+
+It executes the query without further analyzing it in BigQuery. BigQuery transparently creates a temporary result table, which is fetched in exactly the same way as with `bigquery_scan`. The result table is a temporary table which will be deleted shortly after the query is executed.
+
 ### `bigquery_clear_cache` Function
 
 DuckDB caches schema metadata, such as datasets and table structures, to avoid repeated fetches from BigQuery. If the schema changes externally, use `bigquery_clear_cache` to update the cache and retrieve the latest schema information:
@@ -222,6 +232,8 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 There are some limitations that arise from the combination of DuckDB and BigQuery. These include:
 
 * **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported.
+
+To mitigate these limitations, you can use the `bigquery_select` function to execute the query directly in BigQuery.
 
 * **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 

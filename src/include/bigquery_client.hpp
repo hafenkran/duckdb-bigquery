@@ -53,6 +53,7 @@ public:
                       vector<unique_ptr<Constraint>> &res_constraints);
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
+    google::cloud::bigquery::v2::Job GetJob(google::cloud::bigquery::v2::QueryResponse &query_response);
 
     shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,
                                                       const string &table_id,

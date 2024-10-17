@@ -39,5 +39,10 @@ public:
     BigqueryScanFunction();
 };
 
+class BigquerySelectFunction : public TableFunction {
+public:
+    BigquerySelectFunction();
+};
+
 } // namespace bigquery
 } // namespace duckdb
