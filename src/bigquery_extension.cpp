@@ -30,8 +30,8 @@ static void LoadInternal(DatabaseInstance &instance) {
     bigquery::BigqueryScanFunction bigquery_scan_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_scan_function);
 
-    bigquery::BigqueryQueryFunction bigquery_query_function;
-    ExtensionUtil::RegisterFunction(instance, bigquery_query_function);
+    bigquery::BigquerySelectFunction bigquery_select_function;
+    ExtensionUtil::RegisterFunction(instance, bigquery_select_function);
 
     bigquery::BigqueryClearCacheFunction clear_cache_function;
     ExtensionUtil::RegisterFunction(instance, clear_cache_function);

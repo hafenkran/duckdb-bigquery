@@ -176,10 +176,10 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
 }
 
 
-static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
-                                                 TableFunctionBindInput &input,
-                                                 vector<LogicalType> &return_types,
-                                                 vector<string> &names) 
+static unique_ptr<FunctionData> BigquerySelectBind(ClientContext &context,
+                                                   TableFunctionBindInput &input,
+                                                   vector<LogicalType> &return_types,
+                                                   vector<string> &names) 
 {
     auto project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
@@ -338,11 +338,11 @@ BigqueryScanFunction::BigqueryScanFunction()
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
 }
 
-BigqueryQueryFunction::BigqueryQueryFunction()
-    : TableFunction("bigquery_query",
+BigquerySelectFunction::BigquerySelectFunction()
+    : TableFunction("bigquery_select",
                     {LogicalType::VARCHAR, LogicalType::VARCHAR},
                     BigqueryScan,
-                    BigqueryQueryBind,
+                    BigquerySelectBind,
                     BigqueryInitGlobalState,
                     BigqueryInitLocalState) 
 {
