@@ -257,6 +257,30 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     return result;
 }
 
+google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, const string &location) {
+	if (job_id.empty()) {
+		throw BinderException("Job ID cannot be empty");
+	}
+
+	auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+	auto request = google::cloud::bigquery::v2::GetJobRequest();
+	request.set_project_id(config.project_id);
+	request.set_job_id(job_id);
+	if (!location.empty()) {
+		request.set_location(location);
+	}
+
+	auto response = client.GetJob(request);
+	if (!response.ok()) {
+		throw BinderException(response.status().message());
+	}
+
+	auto job = response.value();
+	return job;
+}
+
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
         google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));

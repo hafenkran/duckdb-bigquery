@@ -25,6 +25,7 @@ namespace duckdb {
 namespace bigquery {
 
 struct ListJobsParams {
+	std::optional<std::string> job_id;
     std::optional<bool> all_users;
     std::optional<int> max_results;
     std::optional<std::string> min_creation_time;
