@@ -6,13 +6,12 @@
 #include <google/protobuf/util/json_util.h>
 
 #include "bigquery_client.hpp"
-#include "bigquery_list_jobs.hpp"
+#include "bigquery_jobs.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_transaction.hpp"
 
 namespace duckdb {
 namespace bigquery {
-
 
 struct ListJobsBindData : public TableFunctionData {
     explicit ListJobsBindData(BigqueryCatalog &bq_catalog, ListJobsParams &params)
@@ -23,6 +22,7 @@ public:
     BigqueryCatalog &bq_catalog;
     ListJobsParams params;
     bool finished = false;
+    mutable mutex lock;
 };
 
 struct ListJobsGlobalFunctionState : public GlobalTableFunctionState {
@@ -31,8 +31,8 @@ struct ListJobsGlobalFunctionState : public GlobalTableFunctionState {
 
 public:
     atomic<idx_t> current_idx = 0;
-	bool single_job = false;
-	google::cloud::bigquery::v2::Job job_by_id;
+    bool single_job = false;
+    google::cloud::bigquery::v2::Job job_by_id;
     vector<google::cloud::bigquery::v2::ListFormatJob> jobs_list;
 };
 
@@ -55,7 +55,7 @@ void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<str
         {"end_time", LogicalTypeId::TIMESTAMP},
         {"duration_ms", LogicalTypeId::INTERVAL},
         {"bytes_processed", LogicalTypeId::BIGINT},
-		{"total_slot_time_ms", LogicalTypeId::BIGINT},
+        {"total_slot_time_ms", LogicalTypeId::BIGINT},
         {"user_email", LogicalTypeId::VARCHAR},
         {"principal_subject", LogicalTypeId::VARCHAR},
         {"job_type", LogicalTypeId::VARCHAR},
@@ -78,7 +78,7 @@ void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<str
 
 template <typename T>
 static std::string GetJobState(const T &job) {
-	google::cloud::bigquery::v2::JobStatus status = job.status();
+    google::cloud::bigquery::v2::JobStatus status = job.status();
     if (status.state() == "DONE") {
         if (status.has_error_result()) {
             return "Error";
@@ -135,14 +135,14 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
     }
 
     // duration_ms
-	if (job_stats.start_time() > 0 && job_stats.end_time() > 0) {
-		auto duration_ms = job_stats.end_time() - job_stats.start_time();
-		auto duration_us = duration_ms * 1000; // from milliseconds to microseconds as Value::INTERVAL expects it
-		auto duration_interval = Interval::FromMicro(duration_us);
-		output.SetValue(value_idx++, out_idx, Value::INTERVAL(duration_interval));
-	} else {
-		output.SetValue(value_idx++, out_idx, Value());
-	}
+    if (job_stats.start_time() > 0 && job_stats.end_time() > 0) {
+        auto duration_ms = job_stats.end_time() - job_stats.start_time();
+        auto duration_us = duration_ms * 1000; // from milliseconds to microseconds as Value::INTERVAL expects it
+        auto duration_interval = Interval::FromMicro(duration_us);
+        output.SetValue(value_idx++, out_idx, Value::INTERVAL(duration_interval));
+    } else {
+        output.SetValue(value_idx++, out_idx, Value());
+    }
 
     // bytes processed
     if (job_stats.query().has_total_bytes_processed()) {
@@ -174,27 +174,27 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
 
     // statistics
     std::string json_output;
-    google::protobuf::util::MessageToJsonString(job_stats, &json_output);
+    auto status = google::protobuf::util::MessageToJsonString(job_stats, &json_output);
+    if (!status.ok()) {
+        throw BinderException("Failed to convert job statistics to JSON: " + std::string(status.message()));
+    }
     output.SetValue(value_idx++, out_idx, Value(json_output));
 
     // configuration
-	std::string configuration_json;
-	google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
-	output.SetValue(value_idx++, out_idx, Value(configuration_json));
+    std::string configuration_json;
+    status = google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
+    if (!status.ok()) {
+        throw BinderException("Failed to convert job configuration to JSON: " + std::string(status.message()));
+    }
+    output.SetValue(value_idx++, out_idx, Value(configuration_json));
 
     // status
     std::string status_json;
-    google::protobuf::util::MessageToJsonString(job.status(), &status_json);
+    status = google::protobuf::util::MessageToJsonString(job.status(), &status_json);
+    if (!status.ok()) {
+        throw BinderException("Failed to convert job status to JSON: " + std::string(status.message()));
+    }
     output.SetValue(value_idx++, out_idx, Value(status_json));
-
-    // // error result
-    // if (job.has_error_result()) {
-    // 	std::string error_result_json;
-    // 	google::protobuf::util::MessageToJsonString(job.error_result(), &error_result_json);
-    // 	output.SetValue(value_idx++, out_idx, Value(error_result_json));
-    // } else {
-    // 	output.SetValue(value_idx++, out_idx, Value());
-    // }
 }
 
 static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
@@ -217,7 +217,7 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
     ListJobsParams params;
     params.projection = "full"; // Full projection by default
     std::map<std::string, std::function<void(const Value &)>> param_map = {
-		{"jobId", [&](const Value &val) { params.job_id = val.GetValue<string>(); }},
+        {"jobId", [&](const Value &val) { params.job_id = val.GetValue<string>(); }},
         {"allUsers", [&](const Value &val) { params.all_users = val.GetValue<bool>(); }},
         {"maxResults", [&](const Value &val) { params.max_results = val.GetValue<int>(); }},
         {"minCreationTime", [&](const Value &val) { params.min_creation_time = val.GetValue<string>(); }},
@@ -248,21 +248,25 @@ static unique_ptr<GlobalTableFunctionState> BigQueryListJobsInitGlobalState(Clie
     auto &transaction = BigqueryTransaction::Get(context, data.bq_catalog);
     auto bq_client = transaction.GetBigqueryClient();
 
-	auto state = make_uniq<ListJobsGlobalFunctionState>();
-	if (data.params.job_id.has_value()) {
-		auto job = bq_client->GetJob(data.params.job_id.value());
-		state->single_job = true;
-		state->job_by_id = job;
-	} else {
-    	auto jobs = bq_client->ListJobs(data.params);
-    	state->jobs_list = jobs;
-	}
+    auto state = make_uniq<ListJobsGlobalFunctionState>();
+    if (data.params.job_id.has_value()) {
+        auto job = bq_client->GetJob(data.params.job_id.value());
+        state->single_job = true;
+        state->job_by_id = job;
+        std::cout << "Job ID: " << job.job_reference().job_id() << std::endl;
+    } else {
+        auto jobs = bq_client->ListJobs(data.params);
+        state->jobs_list = jobs;
+    }
     return state;
 }
 
 static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+    std::cout << "BigQueryListJobsFunc" << std::endl;
     auto &bind_data = data_p.bind_data->CastNoConst<ListJobsBindData>();
     auto &gstate = data_p.global_state->Cast<ListJobsGlobalFunctionState>();
+
+    lock_guard<mutex> glock(bind_data.lock);
     if (bind_data.finished) {
         return;
     }
@@ -270,32 +274,31 @@ static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &dat
     idx_t out_idx = 0;
     idx_t job_idx = gstate.current_idx;
 
-	if (gstate.single_job) {
-		MapJobToRow(gstate.job_by_id, output, out_idx);
-		out_idx++;
-		output.SetCardinality(out_idx);
-	} else {
-		while (out_idx < STANDARD_VECTOR_SIZE && job_idx < gstate.jobs_list.size()) {
-			const auto &job = gstate.jobs_list[job_idx];
-			MapJobToRow(job, output, out_idx);
-			out_idx++;
-			job_idx++;
-		}
+    if (gstate.single_job) {
+        MapJobToRow(gstate.job_by_id, output, out_idx);
+        out_idx++;
+        output.SetCardinality(out_idx);
+        bind_data.finished = true;
+        std::cout << "Finished" << std::endl;
+    } else {
+        while (out_idx < STANDARD_VECTOR_SIZE && job_idx < gstate.jobs_list.size()) {
+            const auto &job = gstate.jobs_list[job_idx];
+            MapJobToRow(job, output, out_idx);
+            out_idx++;
+            job_idx++;
+        }
 
-		gstate.current_idx += out_idx;
-		output.SetCardinality(out_idx);
+        gstate.current_idx += out_idx;
+        output.SetCardinality(out_idx);
 
-		if (gstate.current_idx >= gstate.jobs_list.size()) {
-			bind_data.finished = true;
-		}
-	}
-
-
+        if (gstate.current_idx >= gstate.jobs_list.size()) {
+            bind_data.finished = true;
+        }
+    }
 }
 
-
 BigQueryListJobsFunction::BigQueryListJobsFunction()
-    : TableFunction("bigquery_jobs_list",
+    : TableFunction("bigquery_jobs",
                     {LogicalType::VARCHAR},
                     BigQueryListJobsFunc,
                     BigQueryListJobsBind,

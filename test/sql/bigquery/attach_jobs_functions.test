@@ -15,11 +15,11 @@ statement ok
 CREATE TABLE job_info AS SELECT * FROM bigquery_execute('bq', 'SELECT 1 AS RESULT');
 
 query III
-SELECT state, job_type, status FROM bigquery_jobs_list('bq', maxResults=10) WHERE job_id=(SELECT job_id FROM job_info);
+SELECT state, job_type, status FROM bigquery_jobs('bq', maxResults=10) WHERE job_id=(SELECT job_id FROM job_info);
 ----
 Completed	QUERY	{"state":"DONE"}
 
 statement error
-SELECT * FROM bigquery_jobs_list('bq', jobId='my_non_existing_job_id');
+SELECT * FROM bigquery_jobs('bq', jobId='my_non_existing_job_id');
 ----
 Permanent error, with a last message of Not found: Job hafenkran:my_non_existing_job_id
