@@ -19,7 +19,7 @@
 #include "bigquery_extension.hpp"
 #include "bigquery_scan.hpp"
 #include "bigquery_storage.hpp"
-#include "bigquery_list_jobs.hpp"
+#include "bigquery_jobs.hpp"
 
 namespace duckdb {
 

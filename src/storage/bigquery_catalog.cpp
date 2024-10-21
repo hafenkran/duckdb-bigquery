@@ -11,7 +11,7 @@
 namespace duckdb {
 namespace bigquery {
 
-BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, BigqueryConfig config, BigqueryOptions options_p)
+BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const BigqueryConfig &config, BigqueryOptions options_p)
 	: Catalog(db_p), config(config), options(options_p), schemas(*this) {
 }
 
