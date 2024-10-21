@@ -30,7 +30,6 @@ struct ListJobsParams {
     std::optional<int> max_results;
     std::optional<std::string> min_creation_time;
     std::optional<std::string> max_creation_time;
-    std::optional<std::string> page_token;
     std::optional<std::string> projection;
     std::optional<std::string> state_filter;
     std::optional<std::string> parent_job_id;

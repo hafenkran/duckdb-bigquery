@@ -161,15 +161,15 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
     }
 
     // user email
-    auto user_email = job.user_email();
+    const auto &user_email = job.user_email();
     output.SetValue(value_idx++, out_idx, Value(user_email));
 
     // principal subject
-    auto principal_subject = job.principal_subject();
+    const auto &principal_subject = job.principal_subject();
     output.SetValue(value_idx++, out_idx, Value(principal_subject));
 
     // job type
-    auto job_type = job.configuration().job_type();
+    const auto &job_type = job.configuration().job_type();
     output.SetValue(value_idx++, out_idx, Value(job_type));
 
     // statistics
@@ -308,7 +308,6 @@ BigQueryListJobsFunction::BigQueryListJobsFunction()
     named_parameters["maxResults"] = LogicalType::INTEGER;
     named_parameters["minCreationTime"] = LogicalType::VARCHAR;
     named_parameters["maxCreationTime"] = LogicalType::VARCHAR;
-    named_parameters["pageToken"] = LogicalType::VARCHAR;
     named_parameters["stateFilter"] = LogicalType::VARCHAR;
     named_parameters["parentJobId"] = LogicalType::VARCHAR;
 }

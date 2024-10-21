@@ -118,7 +118,7 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
         }
 
         google::cloud::bigquery::v2::ListFormatDataset dataset_val = dataset.value();
-        auto dataset_ref = dataset_val.dataset_reference();
+        const auto &dataset_ref = dataset_val.dataset_reference();
 
         BigqueryDatasetRef info;
         info.project_id = dataset_ref.project_id();
@@ -150,7 +150,7 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
         }
 
         google::cloud::bigquery::v2::ListFormatTable table_val = table.value();
-        auto table_ref = table_val.table_reference();
+        const auto &table_ref = table_val.table_reference();
 
         BigqueryTableRef info;
         info.project_id = table_ref.project_id();
@@ -175,7 +175,7 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
     }
 
     auto dataset = response.value();
-    auto dataset_ref = dataset.dataset_reference();
+    const auto &dataset_ref = dataset.dataset_reference();
 
     BigqueryDatasetRef info;
     info.project_id = dataset_ref.project_id();
@@ -214,10 +214,6 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
         auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
         request.mutable_max_creation_time()->set_value(timestamp_ms);
     }
-    if (params.page_token.has_value()) {
-        auto page_token = params.page_token.value();
-        request.set_page_token(page_token);
-    }
     if (params.projection.has_value()) {
         auto projection = params.projection.value();
         if (projection == "full") {
@@ -230,9 +226,23 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
             throw BinderException("Invalid projection value: %s", projection);
         }
     }
-    // if (params.state_filter.has_value()) {
-    // 	request.set_state_filter(params.state_filter.value());
-    // }
+    if (params.state_filter.has_value()) {
+        auto state_filter = params.state_filter.value();
+        std::transform(state_filter.begin(), state_filter.end(), state_filter.begin(), ::tolower);
+
+        if (state_filter == "done") {
+            request.add_state_filter(
+                google::cloud::bigquery::v2::ListJobsRequest_StateFilter::ListJobsRequest_StateFilter_DONE);
+        } else if (state_filter == "pending") {
+            request.add_state_filter(
+                google::cloud::bigquery::v2::ListJobsRequest_StateFilter::ListJobsRequest_StateFilter_PENDING);
+        } else if (state_filter == "running") {
+            request.add_state_filter(
+                google::cloud::bigquery::v2::ListJobsRequest_StateFilter::ListJobsRequest_StateFilter_RUNNING);
+        } else {
+            throw BinderException("Invalid state filter value: %s", state_filter);
+        }
+    }
     if (params.parent_job_id.has_value()) {
         auto parent_job_id = params.parent_job_id.value();
         request.set_parent_job_id(parent_job_id);
@@ -258,27 +268,27 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, const string &location) {
-	if (job_id.empty()) {
-		throw BinderException("Job ID cannot be empty");
-	}
+    if (job_id.empty()) {
+        throw BinderException("Job ID cannot be empty");
+    }
 
-	auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-	auto request = google::cloud::bigquery::v2::GetJobRequest();
-	request.set_project_id(config.project_id);
-	request.set_job_id(job_id);
-	if (!location.empty()) {
-		request.set_location(location);
-	}
+    auto request = google::cloud::bigquery::v2::GetJobRequest();
+    request.set_project_id(config.project_id);
+    request.set_job_id(job_id);
+    if (!location.empty()) {
+        request.set_location(location);
+    }
 
-	auto response = client.GetJob(request);
-	if (!response.ok()) {
-		throw BinderException(response.status().message());
-	}
+    auto response = client.GetJob(request);
+    if (!response.ok()) {
+        throw BinderException(response.status().message());
+    }
 
-	auto job = response.value();
-	return job;
+    auto job = response.value();
+    return job;
 }
 
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
@@ -295,8 +305,8 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
         throw InternalException(response.status().message());
     }
 
-    auto tablae = response.value();
-    auto table_ref = tablae.table_reference();
+    auto table = response.value();
+    const auto &table_ref = table.table_reference();
 
     BigqueryTableRef info;
     info.project_id = table_ref.project_id();
@@ -412,8 +422,8 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
         ColumnDefinition column(field.name(), std::move(column_type));
         // column.SetComment(std::move(field.description));
 
-        auto default_value_expr = field.default_value_expression();
-        auto default_value = default_value_expr.value();
+        const auto &default_value_expr = field.default_value_expression();
+        const auto &default_value = default_value_expr.value();
         if (!default_value.empty() && default_value != "\"\"") {
             auto expressions = Parser::ParseExpressionList(default_value);
             if (expressions.empty()) {
@@ -426,7 +436,7 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
 
         // The field mode. Possible values include NULLABLE, REQUIRED and REPEATED.
         // The default value is NULLABLE.
-        auto mode = field.mode();
+        const auto &mode = field.mode();
         if (mode == "REQUIRED") {
             auto field_name = field.name();
             auto field_index = res_columns.GetColumnIndex(field_name);
