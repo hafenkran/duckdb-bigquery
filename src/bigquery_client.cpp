@@ -204,14 +204,12 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     }
     if (params.min_creation_time.has_value()) {
         auto min_creation_time = params.min_creation_time.value();
-        auto timestamp = Timestamp::FromString(min_creation_time);
-        auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+        auto timestamp_ms = Timestamp::GetEpochMs(min_creation_time);
         request.set_min_creation_time(timestamp_ms);
     }
     if (params.max_creation_time.has_value()) {
         auto max_creation_time = params.max_creation_time.value();
-        auto timestamp = Timestamp::FromString(max_creation_time);
-        auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
+        auto timestamp_ms = Timestamp::GetEpochMs(max_creation_time);
         request.mutable_max_creation_time()->set_value(timestamp_ms);
     }
     if (params.projection.has_value()) {
