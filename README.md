@@ -200,15 +200,15 @@ D SELECT * FROM bigquery_jobs('bq', maxResults=2);
 
 The operation supports the following additional named parameters as query arguments:
 
-| Parameter         | Type      | Description                                                                                      |
-| ----------------- | --------- | ------------------------------------------------------------------------------------------------ |
-| `jobId`           | `VARCHAR` | Filters results by job ID. Returns only the matching job, ignoring all other arguments.          |
-| `allUsers`        | `BOOLEAN` | If true, returns jobs for all users in the project. Default is false (only current user's jobs). |
-| `maxResults`      | `INTEGER` | Limits the number of jobs returned.                                                              |
-| `minCreationTime` | `VARCHAR` | Filters jobs created after the specified time (in milliseconds since the epoch).                 |
-| `maxCreationTime` | `VARCHAR` | Filters jobs created before the specified time (in milliseconds since the epoch).                |
-| `stateFilter`     | `VARCHAR` | Filters jobs by state (e.g., `PENDING`, `RUNNING`,`DONE`).                                       |
-| `parentJobId`     | `VARCHAR` | Filters results to only include child jobs of the specified parent job ID.                       |
+| Parameter         | Type        | Description                                                                                      |
+| ----------------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| `jobId`           | `VARCHAR`   | Filters results by job ID. Returns only the matching job, ignoring all other arguments.          |
+| `allUsers`        | `BOOLEAN`   | If true, returns jobs for all users in the project. Default is false (only current user's jobs). |
+| `maxResults`      | `INTEGER`   | Limits the number of jobs returned.                                                              |
+| `minCreationTime` | `TIMESTAMP` | Filters jobs created after the specified time (in milliseconds since the epoch).                 |
+| `maxCreationTime` | `TIMESTAMP` | Filters jobs created before the specified time (in milliseconds since the epoch).                |
+| `stateFilter`     | `VARCHAR`   | Filters jobs by state (e.g., `PENDING`, `RUNNING`,`DONE`).                                       |
+| `parentJobId`     | `VARCHAR`   | Filters results to only include child jobs of the specified parent job ID.                       |
 
 ### `bigquery_clear_cache` Function
 
