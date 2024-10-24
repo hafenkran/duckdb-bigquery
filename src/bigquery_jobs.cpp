@@ -174,26 +174,17 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
 
     // statistics
     std::string json_output;
-    auto status = google::protobuf::util::MessageToJsonString(job_stats, &json_output);
-    if (!status.ok()) {
-        throw BinderException("Failed to convert job statistics to JSON: " + std::string(status.message()));
-    }
+    google::protobuf::util::MessageToJsonString(job_stats, &json_output);
     output.SetValue(value_idx++, out_idx, Value(json_output));
 
     // configuration
     std::string configuration_json;
-    status = google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
-    if (!status.ok()) {
-        throw BinderException("Failed to convert job configuration to JSON: " + std::string(status.message()));
-    }
+    google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
     output.SetValue(value_idx++, out_idx, Value(configuration_json));
 
     // status
     std::string status_json;
-    status = google::protobuf::util::MessageToJsonString(job.status(), &status_json);
-    if (!status.ok()) {
-        throw BinderException("Failed to convert job status to JSON: " + std::string(status.message()));
-    }
+    google::protobuf::util::MessageToJsonString(job.status(), &status_json);
     output.SetValue(value_idx++, out_idx, Value(status_json));
 }
 
