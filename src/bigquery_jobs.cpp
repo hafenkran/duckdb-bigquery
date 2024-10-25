@@ -2,6 +2,7 @@
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
+#include "absl/status/status.h"
 
 #include <google/protobuf/util/json_util.h>
 
@@ -174,17 +175,26 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
 
     // statistics
     std::string json_output;
-    google::protobuf::util::MessageToJsonString(job_stats, &json_output);
+    absl::Status status = google::protobuf::util::MessageToJsonString(job_stats, &json_output);
+	if (!status.ok()) {
+		throw BinderException("Failed to convert job statistics to JSON");
+	}
     output.SetValue(value_idx++, out_idx, Value(json_output));
 
     // configuration
     std::string configuration_json;
-    google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
+    status = google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
+	if (!status.ok()) {
+		throw BinderException("Failed to convert job configuration to JSON" );
+	}
     output.SetValue(value_idx++, out_idx, Value(configuration_json));
 
     // status
     std::string status_json;
-    google::protobuf::util::MessageToJsonString(job.status(), &status_json);
+    status = google::protobuf::util::MessageToJsonString(job.status(), &status_json);
+	if (!status.ok()) {
+		throw BinderException("Failed to convert job status to JSON");
+	}
     output.SetValue(value_idx++, out_idx, Value(status_json));
 }
 
