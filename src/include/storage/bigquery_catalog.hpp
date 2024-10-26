@@ -12,7 +12,7 @@ class BigquerySchemaEntry;
 
 class BigqueryCatalog : public Catalog {
 public:
-	explicit BigqueryCatalog(AttachedDatabase &db_p, BigqueryConfig config, BigqueryOptions options_p);
+	explicit BigqueryCatalog(AttachedDatabase &db_p, const BigqueryConfig &config, BigqueryOptions options_p);
     explicit BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p);
     ~BigqueryCatalog() = default;
 

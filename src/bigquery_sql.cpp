@@ -120,7 +120,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
     if (info.schema.empty()) {
         throw BinderException("Schema not specified for AlterTableInfo");
     }
-    auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.name);
+    const auto &table_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.name);
     std::stringstream stmt;
     stmt << "ALTER TABLE ";
     stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
@@ -133,7 +133,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
         //
         // 		column_to_column :=
         //     		column_name TO new_column_name
-        auto rename_info = info.Cast<RenameColumnInfo>();
+        const auto &rename_info = info.Cast<RenameColumnInfo>();
         stmt << "RENAME COLUMN ";
         stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.old_name) << " TO ";
         stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_name);
@@ -142,7 +142,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
     case AlterTableType::RENAME_TABLE: {
         // Syntax
         // ALTER TABLE [IF EXISTS] table_name RENAME TO new_table_name
-        auto rename_info = info.Cast<RenameTableInfo>();
+        const auto &rename_info = info.Cast<RenameTableInfo>();
         stmt << "RENAME TO ";
         stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_table_name);
         break;
@@ -150,7 +150,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
     case AlterTableType::ADD_COLUMN: {
         // Syntax
         // ALTER TABLE table_name ADD COLUMN [IF NOT EXISTS] column [, ...]
-        auto add_column_info = dynamic_cast<const AddColumnInfo *>(&info);
+        const auto &add_column_info = dynamic_cast<const AddColumnInfo *>(&info);
         // auto add_column_info = info.Cast<AddColumnInfo>();
         stmt << "ADD COLUMN ";
         if (add_column_info->if_column_not_exists) {
@@ -162,7 +162,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
     case AlterTableType::REMOVE_COLUMN: {
         // Syntax
         // ALTER TABLE table_name DROP COLUMN [IF EXISTS] column_name [, ...]
-        auto remove_column_info = info.Cast<RemoveColumnInfo>();
+        const auto &remove_column_info = info.Cast<RemoveColumnInfo>();
         stmt << "DROP COLUMN ";
         if (remove_column_info.if_column_exists) {
             stmt << "IF EXISTS ";
@@ -173,7 +173,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
     case AlterTableType::ALTER_COLUMN_TYPE: {
         // Syntax
         // ALTER TABLE table_name ALTER COLUMN column_name SET DATA TYPE type
-        auto alter_column_type_info = dynamic_cast<const ChangeColumnTypeInfo *>(&info);
+        const auto &alter_column_type_info = dynamic_cast<const ChangeColumnTypeInfo *>(&info);
         stmt << "ALTER COLUMN ";
         stmt << BigqueryUtils::WriteQuotedIdentifier(alter_column_type_info->column_name);
         stmt << " SET DATA TYPE " << BigqueryUtils::LogicalTypeToBigquerySQL(alter_column_type_info->target_type);
@@ -182,7 +182,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
     case AlterTableType::SET_DEFAULT: {
         // Syntax
         // ALTER TABLE table_name ALTER COLUMN column_name SET DEFAULT expression
-        auto set_default_info = dynamic_cast<const SetDefaultInfo *>(&info);
+        const auto &set_default_info = dynamic_cast<const SetDefaultInfo *>(&info);
         stmt << "ALTER COLUMN ";
         stmt << BigqueryUtils::WriteQuotedIdentifier(set_default_info->column_name);
         stmt << " SET DEFAULT " << set_default_info->expression->ToString();
@@ -191,7 +191,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
     case AlterTableType::DROP_NOT_NULL: {
         // Syntax
         // ALTER TABLE table_name ALTER COLUMN column_name DROP NOT NULL
-        auto drop_not_null_info = info.Cast<DropNotNullInfo>();
+        const auto &drop_not_null_info = info.Cast<DropNotNullInfo>();
         stmt << "ALTER COLUMN ";
         stmt << BigqueryUtils::WriteQuotedIdentifier(drop_not_null_info.column_name);
         stmt << " DROP NOT NULL";

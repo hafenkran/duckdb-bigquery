@@ -24,20 +24,31 @@
 namespace duckdb {
 namespace bigquery {
 
+struct ListJobsParams {
+	std::optional<std::string> job_id;
+    std::optional<bool> all_users;
+    std::optional<int> max_results;
+    std::optional<timestamp_t> min_creation_time;
+    std::optional<timestamp_t> max_creation_time;
+    std::optional<std::string> projection;
+    std::optional<std::string> state_filter;
+    std::optional<std::string> parent_job_id;
+};
+
 class BigqueryClient {
 public:
-	explicit BigqueryClient(const BigqueryConfig &config);
+    explicit BigqueryClient(const BigqueryConfig &config);
     ~BigqueryClient() {};
 
 public:
-    bool DatasetExists(const string &dataset_id);
-    bool TableExists(const string &dataset_id, const string &table_id);
-
     vector<BigqueryDatasetRef> GetDatasets();
     vector<BigqueryTableRef> GetTables(const string &dataset_id);
 
     BigqueryDatasetRef GetDataset(const string &dataset_id);
     BigqueryTableRef GetTable(const string &dataset_id, const string &table_id);
+
+    bool DatasetExists(const string &dataset_id);
+    bool TableExists(const string &dataset_id, const string &table_id);
 
     void CreateDataset(const CreateSchemaInfo &info, const BigqueryDatasetRef &dataset_ref);
     void CreateTable(const CreateTableInfo &info, const BigqueryTableRef &table_ref);
@@ -51,6 +62,9 @@ public:
                       const string &table_id,
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
+
+    vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
+	google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
 
@@ -81,10 +95,10 @@ private:
         const string &location = "");
 
     google::cloud::Options OptionsAPI();
-	google::cloud::Options OptionsGRPC();
+    google::cloud::Options OptionsGRPC();
 
 private:
-	BigqueryConfig config;
+    BigqueryConfig config;
 };
 
 } // namespace bigquery
