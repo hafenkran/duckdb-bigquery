@@ -47,6 +47,11 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::ExperimentalFilterPushdown()),
                               bigquery::BigquerySettings::SetExperimentalFilterPushdown);
+	config.AddExtensionOption("bq_experimental_use_info_schema",
+							  "Whether to fetch table infos from BQ information schema (currently experimental). Can be significantly faster than fetching from REST API.",
+							  LogicalType::BOOLEAN,
+							  Value(bigquery::BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()),
+							  bigquery::BigquerySettings::SetExperimentalFetchCatalogFromInformationSchema);
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,
