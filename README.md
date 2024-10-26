@@ -221,11 +221,12 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 ### Additional Extension Settings
 
-| Settings                        | Description                                                               | Default |
-| ------------------------------- | ------------------------------------------------------------------------- | ------- |
-| bq_debug_show_queries           | [DEBUG] - whether to print all queries sent to BigQuery to stdout         | `false` |
-| bq_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown                    | `true`  |
-| bq_curl_ca_bundle_path          | Path to the CA certificates used by cURL for SSL certificate verification |         |
+| Setting                         | Description                                                                                | Default |
+| ------------------------------- | ------------------------------------------------------------------------------------------ | ------- |
+| bq_debug_show_queries           | [DEBUG] - whether to print all queries sent to BigQuery to stdout                          | `false` |
+| bq_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown                                     | `true`  |
+| bq_experimental_use_info_schema | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API) | `true`  |
+| bq_curl_ca_bundle_path          | Path to the CA certificates used by cURL for SSL certificate verification                  |         |
 
 ## Limitations
 

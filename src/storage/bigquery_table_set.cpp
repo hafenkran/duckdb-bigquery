@@ -5,6 +5,7 @@
 #include "bigquery_client.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
+#include "bigquery_settings.hpp"
 #include "storage/bigquery_schema_entry.hpp"
 #include "storage/bigquery_table_set.hpp"
 #include "storage/bigquery_transaction.hpp"
@@ -71,19 +72,29 @@ void BigqueryTableSet::LoadEntries(ClientContext &context) {
     auto &transaction = BigqueryTransaction::Get(context, catalog);
     auto bqclient = transaction.GetBigqueryClient();
 
-    unique_ptr<BigqueryTableInfo> info;
-    vector<unique_ptr<BigqueryTableInfo>> table_infos;
+	if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
+		map<string, CreateTableInfo> table_infos;
+		bqclient->GetTableInfosFromDataset(schema.GetBigqueryDatasetRef(), table_infos);
 
-    vector<BigqueryTableRef> table_refs = bqclient->GetTables(schema.name);
-    for (auto &table_ref : table_refs) {
-        info = make_uniq<BigqueryTableInfo>(table_ref);
-        bqclient->GetTableInfo(table_ref.dataset_id,
-                               table_ref.table_id,
-                               info->create_info->columns,
-                               info->create_info->constraints);
-        auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, *info);
-        CreateEntry(std::move(table_entry));
-    }
+		for (auto &table_info : table_infos) {
+			auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info.second);
+			CreateEntry(std::move(table_entry));
+		}
+	} else {
+		unique_ptr<BigqueryTableInfo> info;
+		vector<unique_ptr<BigqueryTableInfo>> table_infos;
+
+		vector<BigqueryTableRef> table_refs = bqclient->GetTables(schema.name);
+		for (auto &table_ref : table_refs) {
+			info = make_uniq<BigqueryTableInfo>(table_ref);
+			bqclient->GetTableInfo(table_ref.dataset_id,
+								table_ref.table_id,
+								info->create_info->columns,
+								info->create_info->constraints);
+			auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, *info);
+			CreateEntry(std::move(table_entry));
+		}
+	}
 }
 
 } // namespace bigquery

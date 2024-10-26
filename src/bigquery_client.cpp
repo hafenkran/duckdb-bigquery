@@ -17,6 +17,7 @@
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
+#include "google/cloud/bigquery/storage/v1/bigquery_read_options.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_write_options.h"
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
@@ -41,12 +42,32 @@
 namespace duckdb {
 namespace bigquery {
 
-class CustomIdempotencyPolicy : public google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicy {
+class CustomReadIdempotencyPolicy : public google::cloud::bigquery_storage_v1::BigQueryReadConnectionIdempotencyPolicy {
 public:
-    ~CustomIdempotencyPolicy() override = default;
+    ~CustomReadIdempotencyPolicy() override = default;
+    std::unique_ptr<google::cloud::bigquery_storage_v1::BigQueryReadConnectionIdempotencyPolicy> clone()
+        const override {
+        return std::make_unique<CustomReadIdempotencyPolicy>(*this);
+    }
+
+    google::cloud::Idempotency CreateReadSession(
+        google::cloud::bigquery::storage::v1::CreateReadSessionRequest const &request) override {
+        return google::cloud::Idempotency::kIdempotent;
+    }
+
+    google::cloud::Idempotency SplitReadStream(
+        google::cloud::bigquery::storage::v1::SplitReadStreamRequest const &request) override {
+        return google::cloud::Idempotency::kIdempotent;
+    }
+};
+
+class CustomWriteIdempotencyPolicy
+    : public google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicy {
+public:
+    ~CustomWriteIdempotencyPolicy() override = default;
     std::unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicy> clone()
         const override {
-        return std::make_unique<CustomIdempotencyPolicy>(*this);
+        return std::make_unique<CustomWriteIdempotencyPolicy>(*this);
     }
 
     google::cloud::Idempotency CreateWriteStream(
@@ -91,7 +112,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto options = google::cloud::Options{};
     if (!config.grpc_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.grpc_endpoint);
-		if (config.is_dev_env()) {
+        if (config.is_dev_env()) {
             options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
         }
     }
@@ -285,6 +306,51 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
     ExecuteQuery(drop_query);
 }
 
+void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
+                                              map<string, CreateTableInfo> &table_infos) {
+    const auto info_schema_query =
+        BigquerySQL::ColumnsFromInformationSchema(dataset_ref.project_id, dataset_ref.dataset_id);
+
+    auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
+    auto rows = query_response.rows();
+    for (auto &row : rows) {
+        const auto &fields = row.fields();
+        const auto &field_list = fields.at("f").list_value().values();
+
+        if (field_list.size() < 6) {
+            throw BinderException("Unexpected number of fields in the row.");
+        }
+
+        string table_name = field_list[0].struct_value().fields().at("v").string_value();
+        string column_name = field_list[1].struct_value().fields().at("v").string_value();
+        string data_type = field_list[2].struct_value().fields().at("v").string_value();
+        string is_nullable = field_list[3].struct_value().fields().at("v").string_value();
+        string column_default = field_list[4].struct_value().fields().at("v").string_value();
+
+        auto column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
+        ColumnDefinition column(column_name, std::move(column_type));
+
+        if (!column_default.empty() && column_default != "\"\"" && column_default != "NULL") {
+            auto expressions = Parser::ParseExpressionList(column_default);
+            if (expressions.empty()) {
+                throw InternalException("Expression list is empty");
+            }
+            column.SetDefaultValue(std::move(expressions[0]));
+        }
+
+        if (table_infos.find(table_name) == table_infos.end()) {
+            table_infos[table_name] = CreateTableInfo(dataset_ref.project_id, dataset_ref.dataset_id, table_name);
+        }
+
+        table_infos[table_name].columns.AddColumn(std::move(column));
+
+        if (is_nullable == "NO") {
+            auto field_index = table_infos[table_name].columns.GetColumnIndex(column_name);
+            table_infos[table_name].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+        }
+    }
+}
+
 void BigqueryClient::GetTableInfo(const string &dataset_id,
                                   const string &table_id,
                                   ColumnList &res_columns,
@@ -343,11 +409,24 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                                                                   const idx_t num_streams,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
+    auto options =
+        OptionsGRPC()
+            .set<google::cloud::bigquery_storage_v1::BigQueryReadConnectionIdempotencyPolicyOption>(
+                CustomReadIdempotencyPolicy().clone())
+            .set<google::cloud::bigquery_storage_v1::BigQueryReadRetryPolicyOption>(
+                google::cloud::bigquery_storage_v1::BigQueryReadLimitedTimeRetryPolicy(std::chrono::minutes(10))
+                    .clone())
+            .set<google::cloud::bigquery_storage_v1::BigQueryReadBackoffPolicyOption>(
+                google::cloud::ExponentialBackoffPolicy(
+                    /*initial_delay=*/std::chrono::milliseconds(200),
+                    /*maximum_delay=*/std::chrono::seconds(60),
+                    /*scaling=*/2.0)
+                    .clone());
 
     return make_shared_ptr<BigqueryArrowReader>(BigqueryTableRef(config.project_id, dataset_id, table_id),
                                                 config.billing_project(),
                                                 num_streams,
-                                                OptionsGRPC(),
+                                                options,
                                                 column_ids,
                                                 filter_cond);
 }
@@ -370,7 +449,7 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 
     auto options = OptionsGRPC()
                        .set<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicyOption>(
-                           CustomIdempotencyPolicy().clone())
+                           CustomWriteIdempotencyPolicy().clone())
                        .set<google::cloud::bigquery_storage_v1::BigQueryWriteRetryPolicyOption>(
                            google::cloud::bigquery_storage_v1::BigQueryWriteLimitedErrorCountRetryPolicy(5).clone())
                        .set<google::cloud::bigquery_storage_v1::BigQueryWriteBackoffPolicyOption>(
