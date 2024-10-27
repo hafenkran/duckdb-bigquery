@@ -139,7 +139,7 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
         }
 
         google::cloud::bigquery::v2::ListFormatDataset dataset_val = dataset.value();
-        auto dataset_ref = dataset_val.dataset_reference();
+        const auto &dataset_ref = dataset_val.dataset_reference();
 
         BigqueryDatasetRef info;
         info.project_id = dataset_ref.project_id();
@@ -171,7 +171,7 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
         }
 
         google::cloud::bigquery::v2::ListFormatTable table_val = table.value();
-        auto table_ref = table_val.table_reference();
+        const auto &table_ref = table_val.table_reference();
 
         BigqueryTableRef info;
         info.project_id = table_ref.project_id();
@@ -196,13 +196,118 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
     }
 
     auto dataset = response.value();
-    auto dataset_ref = dataset.dataset_reference();
+    const auto &dataset_ref = dataset.dataset_reference();
 
     BigqueryDatasetRef info;
     info.project_id = dataset_ref.project_id();
     info.dataset_id = dataset_ref.dataset_id();
     info.location = dataset.location();
     return info;
+}
+
+vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(const ListJobsParams &params) {
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto request = google::cloud::bigquery::v2::ListJobsRequest();
+    request.set_project_id(config.project_id);
+
+    // Default is 1000
+    std::int32_t max_results = 1000;
+    if (params.max_results.has_value()) {
+        max_results = params.max_results.value();
+    }
+    request.mutable_max_results()->set_value(max_results);
+
+    if (params.all_users.has_value()) {
+        auto all_users = params.all_users.value();
+        request.set_all_users(all_users);
+    }
+    if (params.min_creation_time.has_value()) {
+        auto min_creation_time = params.min_creation_time.value();
+        auto timestamp_ms = Timestamp::GetEpochMs(min_creation_time);
+        request.set_min_creation_time(timestamp_ms);
+    }
+    if (params.max_creation_time.has_value()) {
+        auto max_creation_time = params.max_creation_time.value();
+        auto timestamp_ms = Timestamp::GetEpochMs(max_creation_time);
+        request.mutable_max_creation_time()->set_value(timestamp_ms);
+    }
+    if (params.projection.has_value()) {
+        auto projection = params.projection.value();
+        if (projection == "full") {
+            auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_FULL;
+            request.set_projection(mapped);
+        } else if (projection == "minimal") {
+            auto mapped = google::cloud::bigquery::v2::ListJobsRequest_Projection::ListJobsRequest_Projection_MINIMAL;
+            request.set_projection(mapped);
+        } else {
+            throw BinderException("Invalid projection value: %s", projection);
+        }
+    }
+    if (params.state_filter.has_value()) {
+        auto state_filter = params.state_filter.value();
+        std::transform(state_filter.begin(), state_filter.end(), state_filter.begin(), ::tolower);
+
+        if (state_filter == "done") {
+            request.add_state_filter(
+                google::cloud::bigquery::v2::ListJobsRequest_StateFilter::ListJobsRequest_StateFilter_DONE);
+        } else if (state_filter == "pending") {
+            request.add_state_filter(
+                google::cloud::bigquery::v2::ListJobsRequest_StateFilter::ListJobsRequest_StateFilter_PENDING);
+        } else if (state_filter == "running") {
+            request.add_state_filter(
+                google::cloud::bigquery::v2::ListJobsRequest_StateFilter::ListJobsRequest_StateFilter_RUNNING);
+        } else {
+            throw BinderException("Invalid state filter value: %s", state_filter);
+        }
+    }
+    if (params.parent_job_id.has_value()) {
+        auto parent_job_id = params.parent_job_id.value();
+        request.set_parent_job_id(parent_job_id);
+    }
+
+    vector<google::cloud::bigquery::v2::ListFormatJob> result;
+    google::cloud::v2_27::StreamRange<google::cloud::bigquery::v2::ListFormatJob> response = client.ListJobs(request);
+
+    int num_results = 0;
+    for (const auto &job : response) {
+        if (!job.ok()) {
+            throw BinderException(job.status().message());
+        }
+        auto job_val = job.value();
+        result.push_back(job_val);
+
+        num_results++;
+        if (num_results >= max_results) {
+            break;
+        }
+    }
+    return result;
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, const string &location) {
+    if (job_id.empty()) {
+        throw BinderException("Job ID cannot be empty");
+    }
+
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto request = google::cloud::bigquery::v2::GetJobRequest();
+    request.set_project_id(config.project_id);
+    request.set_job_id(job_id);
+    if (!location.empty()) {
+        request.set_location(location);
+    }
+
+    auto response = client.GetJob(request);
+    if (!response.ok()) {
+        throw BinderException(response.status().message());
+    }
+
+    auto job = response.value();
+    return job;
 }
 
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
@@ -219,8 +324,8 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
         throw InternalException(response.status().message());
     }
 
-    auto tablae = response.value();
-    auto table_ref = tablae.table_reference();
+    auto table = response.value();
+    const auto &table_ref = table.table_reference();
 
     BigqueryTableRef info;
     info.project_id = table_ref.project_id();
@@ -381,8 +486,8 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
         ColumnDefinition column(field.name(), std::move(column_type));
         // column.SetComment(std::move(field.description));
 
-        auto default_value_expr = field.default_value_expression();
-        auto default_value = default_value_expr.value();
+        const auto &default_value_expr = field.default_value_expression();
+        const auto &default_value = default_value_expr.value();
         if (!default_value.empty() && default_value != "\"\"") {
             auto expressions = Parser::ParseExpressionList(default_value);
             if (expressions.empty()) {
@@ -395,7 +500,7 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
 
         // The field mode. Possible values include NULLABLE, REQUIRED and REPEATED.
         // The default value is NULLABLE.
-        auto mode = field.mode();
+        const auto &mode = field.mode();
         if (mode == "REQUIRED") {
             auto field_name = field.name();
             auto field_index = res_columns.GetColumnIndex(field_name);

@@ -19,6 +19,7 @@
 #include "bigquery_extension.hpp"
 #include "bigquery_scan.hpp"
 #include "bigquery_storage.hpp"
+#include "bigquery_jobs.hpp"
 
 namespace duckdb {
 
@@ -38,6 +39,9 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     bigquery::BigQueryExecuteFunction bigquery_execute_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_execute_function);
+
+	bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
+	ExtensionUtil::RegisterFunction(instance, bigquery_list_jobs_function);
 
     auto &config = DBConfig::GetConfig(instance);
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();

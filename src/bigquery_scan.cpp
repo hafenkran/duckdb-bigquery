@@ -27,7 +27,7 @@ struct BigqueryGlobalFunctionState : public GlobalTableFunctionState {
     }
 
     mutable mutex lock;
-    idx_t position = 0;
+    atomic<idx_t> position = 0;
     idx_t max_threads;
 
     // The index of the next stream to read (i.e., current file + 1)

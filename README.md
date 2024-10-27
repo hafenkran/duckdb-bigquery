@@ -192,6 +192,37 @@ D CALL bigquery_execute('bq', '
 └─────────┴──────────────────────────────────┴─────────────────┴──────────┴────────────┴───────────────────────┴───────────────────────┘
 ```
 
+### `bigquery_jobs` Function
+
+The `bigquery_jobs` fucntion retrieves a list of jobs within the specified project. It displays job metadata such as
+job state, start and end time, configuration, statistics, and many more. More information on the job information can be found [here](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/list).
+
+```sql
+D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
+D SELECT * FROM bigquery_jobs('bq', maxResults=2);
+┌───────────┬──────────────────────┬───────────┬───┬──────────────────────┬──────────────────┐
+│   state   │        job_id        │  project  │ … │    configuration     │      status      │
+│  varchar  │       varchar        │  varchar  │   │         json         │       json       │
+├───────────┼──────────────────────┼───────────┼───┼──────────────────────┼──────────────────┤
+│ Completed │ job_zAAv42SdMT51qk…  │ my_gcp_p… │ … │ {"query":{"query":…  │ {"state":"DONE"} │
+│ Completed │ job_ro2WURJlGlkXCC…  │ my_gcp_p… │ … │ {"query":{"query":…  │ {"state":"DONE"} │
+├───────────┴──────────────────────┴───────────┴───┴──────────────────────┴──────────────────┤
+│ 2 rows                                                                16 columns (5 shown) │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The operation supports the following additional named parameters as query arguments:
+
+| Parameter         | Type        | Description                                                                                      |
+| ----------------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| `jobId`           | `VARCHAR`   | Filters results by job ID. Returns only the matching job, ignoring all other arguments.          |
+| `allUsers`        | `BOOLEAN`   | If true, returns jobs for all users in the project. Default is false (only current user's jobs). |
+| `maxResults`      | `INTEGER`   | Limits the number of jobs returned.                                                              |
+| `minCreationTime` | `TIMESTAMP` | Filters jobs created after the specified time (in milliseconds since the epoch).                 |
+| `maxCreationTime` | `TIMESTAMP` | Filters jobs created before the specified time (in milliseconds since the epoch).                |
+| `stateFilter`     | `VARCHAR`   | Filters jobs by state (e.g., `PENDING`, `RUNNING`,`DONE`).                                       |
+| `parentJobId`     | `VARCHAR`   | Filters results to only include child jobs of the specified parent job ID.                       |
+
 ### `bigquery_clear_cache` Function
 
 DuckDB caches schema metadata, such as datasets and table structures, to avoid repeated fetches from BigQuery. If the schema changes externally, use `bigquery_clear_cache` to update the cache and retrieve the latest schema information:
