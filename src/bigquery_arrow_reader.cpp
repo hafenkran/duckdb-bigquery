@@ -71,7 +71,7 @@ shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> BigqueryArrowReader
         throw BinderException("Read session is not initialized.");
     }
     auto next_stream_idx = next_stream++;
-    if (next_stream_idx >= read_session->streams_size()) {
+    if (static_cast<int>(next_stream_idx) >= read_session->streams_size()) {
         return nullptr;
     }
     auto stream = make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>( //
@@ -641,6 +641,10 @@ int64_t BigqueryArrowReader::GetEstimatedRowCount() {
         throw BinderException("Read session is not initialized.");
     }
     return read_session->estimated_row_count();
+}
+
+BigqueryTableRef BigqueryArrowReader::GetTableRef() const {
+    return table_ref;
 }
 
 } // namespace bigquery

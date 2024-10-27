@@ -31,6 +31,9 @@ static void LoadInternal(DatabaseInstance &instance) {
     bigquery::BigqueryScanFunction bigquery_scan_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_scan_function);
 
+    bigquery::BigqueryQueryFunction bigquery_query_function;
+    ExtensionUtil::RegisterFunction(instance, bigquery_query_function);
+
     bigquery::BigqueryClearCacheFunction clear_cache_function;
     ExtensionUtil::RegisterFunction(instance, clear_cache_function);
 
@@ -48,6 +51,11 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::ExperimentalFilterPushdown()),
                               bigquery::BigquerySettings::SetExperimentalFilterPushdown);
+	config.AddExtensionOption("bq_experimental_use_info_schema",
+							  "Whether to fetch table infos from BQ information schema (currently experimental). Can be significantly faster than fetching from REST API.",
+							  LogicalType::BOOLEAN,
+							  Value(bigquery::BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()),
+							  bigquery::BigquerySettings::SetExperimentalFetchCatalogFromInformationSchema);
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,

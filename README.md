@@ -2,7 +2,7 @@
 
 This repository contains the [DuckDB](https://duckdb.org) BigQuery Extension. This extension lets DuckDB integrate with Google BigQuery, allowing users to directly access, manage, and manipulate their BigQuery datasets/tables using standard SQL statements. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel.
 
-Please note that this extension is in its initial release. While it covers most of the essentials, you might run into some limitations, issues, or bugs. So far, this extension has only been tested on Linux systems.
+Please note that this extension is in a early release. While it covers most of the essentials, you might run into some limitations, issues, or bugs.
 
 > This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `osx_arm64`, and `windows_amd64`.
 
@@ -144,6 +144,7 @@ ALTER TABLE bq.some_dataset.tbl ALTER COLUMN i DROP NOT NULL;
 
 ### `bigquery_scan` Function
 
+The `bigquery_scan` function provides direct, efficient reads from a single table within your BigQuery project. This function is ideal for simple reads where no complex SQL is required, and it supports simple projection pushdown from DuckDB. 
 If you would rather query just one table directly instead of attaching all tables, you can achieve this by directly using the `bigquery_scan` functions, such as:
 
 ```sql
@@ -157,9 +158,21 @@ D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
 └───────┴────────────────┘
 ```
 
+While `bigquery_scan` offers high-speed data retrieval, it does not support reading from views or external tables due to limitations of the Storage Read API. For those cases, consider using the `bigquery_query` function, which allows more complex querying capabilities.
+
+### `bigquery_query` Function
+
+The `bigquery_query` function allows you to run custom [GoogleSQL](https://cloud.google.com/bigquery/docs/introduction-sql) read queries within your BigQuery project. This function is also especially useful to get around the limitations of the BigQuery Storage Read API, such as reading from views or external tables.
+
+> **Note**: If your goal is straightforward table reads, `bigquery_scan` is often more efficient, as it bypasses the SQL layer for direct data access. However, `bigquery_query` is ideal when you need to execute custom SQL that requires the full querying capabilities of BigQuery expressed in GoogleSQL. In this case, BigQuery transparently creates an anonymous temporary result table, which is fetched in exactly the same way as with `bigquery_scan`.
+
+```sql
+D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`');
+```
+
 ### `bigquery_execute` Function
 
-The `bigquery_execute` function runs queries directly in BigQuery using native GoogleSQL. These queries are executed without interpretation by DuckDB. The call is synchronous and returns a result with details about the query execution, like the following.
+The `bigquery_execute` function runs arbitrary GoogleSQL queries directly in BigQuery. These queries are executed without interpretation by DuckDB. The call is synchronous and returns a result with details about the query execution, like the following.
 
 ```sql
 D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
@@ -242,17 +255,18 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 ### Additional Extension Settings
 
-| Settings                        | Description                                                               | Default |
-| ------------------------------- | ------------------------------------------------------------------------- | ------- |
-| bq_debug_show_queries           | [DEBUG] - whether to print all queries sent to BigQuery to stdout         | `false` |
-| bq_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown                    | `true`  |
-| bq_curl_ca_bundle_path          | Path to the CA certificates used by cURL for SSL certificate verification |         |
+| Setting                         | Description                                                                                | Default |
+| ------------------------------- | ------------------------------------------------------------------------------------------ | ------- |
+| bq_debug_show_queries           | [DEBUG] - whether to print all queries sent to BigQuery to stdout                          | `false` |
+| bq_experimental_filter_pushdown | [EXPERIMENTAL] - Whether or not to use filter pushdown                                     | `true`  |
+| bq_experimental_use_info_schema | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API) | `true`  |
+| bq_curl_ca_bundle_path          | Path to the CA certificates used by cURL for SSL certificate verification                  |         |
 
 ## Limitations
 
 There are some limitations that arise from the combination of DuckDB and BigQuery. These include:
 
-* **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported.
+* **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported. To mitigate these limitations, you can use the `bigquery_query` function to execute the query directly in BigQuery.
 
 * **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 

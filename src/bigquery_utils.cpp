@@ -472,6 +472,66 @@ google::protobuf::FieldDescriptorProto::Type BigqueryUtils::LogicalTypeToProtoTy
     }
 }
 
+LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
+    LogicalType result;
+
+    if (type == "STRING") {
+        result = LogicalType::VARCHAR;
+    } else if (type == "JSON") {
+        result = LogicalType::VARCHAR;
+    } else if (type == "BYTES") {
+        result = LogicalType::BLOB;
+    } else if (type == "INTEGER" || type == "INT64") {
+        result = LogicalType::BIGINT;
+    } else if (type == "FLOAT" || type == "FLOAT64") {
+        result = LogicalType::DOUBLE;
+    } else if (type == "BOOLEAN" || type == "BOOL") {
+        result = LogicalType::BOOLEAN;
+    } else if (type == "DATE") {
+        result = LogicalType::DATE;
+    } else if (type == "TIME") {
+        result = LogicalType::TIME;
+    } else if (type == "DATETIME" || type == "TIMESTAMP") {
+        result = LogicalType::TIMESTAMP;
+    } else if (type == "INTERVAL") {
+        result = LogicalType::INTERVAL;
+    } else if (type == "NUMERIC") {
+        // Fallback to default NUMERIC precision and scale
+        result = LogicalType::DECIMAL(29, 9);
+    } else if (type == "BIGNUMERIC") {
+        // Fallback to default BIGNUMERIC precision and scale
+        result = LogicalType::DECIMAL(38, 9);
+    } else if (type == "GEOGRAPHY") {
+        result = LogicalType::VARCHAR;
+    } else if (type.find("ARRAY<") == 0) {
+        string array_sub_type = type.substr(6, type.size() - 7);
+        LogicalType element_logical_type = BigquerySQLToLogicalType(array_sub_type);
+        result = LogicalType::LIST(element_logical_type);
+    } else if (type.find("STRUCT<") == 0) {
+        string struct_sub_type = type.substr(7, type.size() - 8);
+
+        child_list_t<LogicalType> struct_types;
+        vector<string> fields = SplitStructFields(struct_sub_type);
+        for (const auto &field : fields) {
+            size_t pos_space = field.find(' ');
+            if (pos_space == std::string::npos) {
+                throw BinderException("Invalid field in STRUCT type: " + field);
+            }
+
+            string field_name = field.substr(0, pos_space);
+            string field_type = field.substr(pos_space + 1);
+            LogicalType field_logical_type = BigquerySQLToLogicalType(field_type);
+            struct_types.push_back(make_pair(field_name, field_logical_type));
+        }
+
+        result = LogicalType::STRUCT(std::move(struct_types));
+    } else {
+        throw InternalException("Unknown BigQuery Type: " + type);
+    }
+
+    return result;
+}
+
 string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
     switch (type.id()) {
     case LogicalTypeId::BOOLEAN:
@@ -570,6 +630,36 @@ const string BigqueryTableRef::TableString() const {
 
 const string BigqueryTableRef::TableStringSimple() const {
     return BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, table_id);
+}
+
+vector<string> BigqueryUtils::SplitStructFields(const string &struct_field_str) {
+    vector<string> fields;
+    size_t start = 0;
+    int bracket_depth = 0;
+
+    for (size_t i = 0; i < struct_field_str.size(); i++) {
+        if (struct_field_str[i] == '<') {
+            bracket_depth++;
+        } else if (struct_field_str[i] == '>') {
+            bracket_depth--;
+        } else if (struct_field_str[i] == ',' && bracket_depth == 0) {
+            fields.push_back(struct_field_str.substr(start, i - start));
+            start = i + 2;
+        }
+    }
+
+    fields.push_back(struct_field_str.substr(start));
+    return fields;
+}
+
+string BigqueryUtils::StructRemoveWhitespaces(const string &struct_str) {
+	string result;
+	for (size_t i = 0; i < struct_str.size(); i++) {
+		if (struct_str[i] != ' ') {
+			result += struct_str[i];
+		}
+	}
+	return result;
 }
 
 uint64_t Iso8601ToMillis(const std::string &iso8601) {

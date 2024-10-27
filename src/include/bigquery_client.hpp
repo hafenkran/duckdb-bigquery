@@ -58,6 +58,7 @@ public:
     void DropTable(const DropInfo &info);
     void DropView(const DropInfo &info);
 
+    void GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref, map<string, CreateTableInfo> &table_infos);
     void GetTableInfo(const string &dataset_id,
                       const string &table_id,
                       ColumnList &res_columns,
@@ -67,6 +68,7 @@ public:
 	google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
+    google::cloud::bigquery::v2::Job GetJob(google::cloud::bigquery::v2::QueryResponse &query_response);
 
     shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,
                                                       const string &table_id,

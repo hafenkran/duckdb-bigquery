@@ -78,6 +78,15 @@ public:
 		}
 		CurlCaBundlePath() = path;
 	}
+
+	static bool& ExperimentalFetchCatalogFromInformationSchema() {
+		static bool bigquery_experimental_fetch_catalog_from_information_schema = true;
+		return bigquery_experimental_fetch_catalog_from_information_schema;
+	}
+
+	static void SetExperimentalFetchCatalogFromInformationSchema(ClientContext &context, SetScope scope, Value &parameter) {
+		ExperimentalFetchCatalogFromInformationSchema() = BooleanValue::Get(parameter);
+	}
 };
 
 
