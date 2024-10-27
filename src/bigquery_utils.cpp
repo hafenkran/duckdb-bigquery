@@ -660,6 +660,7 @@ string BigqueryUtils::StructRemoveWhitespaces(const string &struct_str) {
 		}
 	}
 	return result;
+}
 
 uint64_t Iso8601ToMillis(const std::string &iso8601) {
     auto timestamp = Timestamp::FromString(iso8601);
