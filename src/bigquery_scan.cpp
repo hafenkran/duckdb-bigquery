@@ -111,10 +111,10 @@ private:
     }
 };
 
-static void SetFromNamedParameters(const TableFunctionBindInput &input, 
-                                  string &billing_project_id, 
-                                  string &api_endpoint, 
-                                  string &grpc_endpoint) 
+static void SetFromNamedParameters(const TableFunctionBindInput &input,
+                                  string &billing_project_id,
+                                  string &api_endpoint,
+                                  string &grpc_endpoint)
 {
     for (auto &kv : input.named_parameters) {
         auto loption = StringUtil::Lower(kv.first);
@@ -130,16 +130,16 @@ static void SetFromNamedParameters(const TableFunctionBindInput &input,
 
 static void ExtractTableInfo(shared_ptr<BigqueryArrowReader> arrow_reader,
                              vector<string> &names,
-                             vector<LogicalType> &return_types) 
+                             vector<LogicalType> &return_types)
 {
     ColumnList columns;
     vector<unique_ptr<Constraint>> constraints;
-    arrow_reader->MapTableInfo(columns, constraints);   
+    arrow_reader->MapTableInfo(columns, constraints);
 
     for (auto &column : columns.Logical()) {
         names.push_back(column.GetName());
         return_types.push_back(column.GetType());
-    }       
+    }
 
     if (names.empty()) {
         auto table_ref = arrow_reader->GetTableRef();
@@ -176,10 +176,10 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
 }
 
 
-static unique_ptr<FunctionData> BigquerySelectBind(ClientContext &context,
+static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                                    TableFunctionBindInput &input,
                                                    vector<LogicalType> &return_types,
-                                                   vector<string> &names) 
+                                                   vector<string> &names)
 {
     auto project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
@@ -193,10 +193,10 @@ static unique_ptr<FunctionData> BigquerySelectBind(ClientContext &context,
     auto query_response = bq_client->ExecuteQuery(query_string);
     auto job = bq_client->GetJob(query_response);
     auto destination_table = job.configuration().query().destination_table();
-    auto table_ref = BigqueryTableRef(destination_table.project_id(), 
-                                      destination_table.dataset_id(), 
+    auto table_ref = BigqueryTableRef(destination_table.project_id(),
+                                      destination_table.dataset_id(),
                                       destination_table.table_id());
-    
+
     auto result = make_uniq<BigqueryBindData>();
     result->config = bq_config;
     result->bq_client = bq_client;
@@ -338,13 +338,13 @@ BigqueryScanFunction::BigqueryScanFunction()
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
 }
 
-BigquerySelectFunction::BigquerySelectFunction()
-    : TableFunction("bigquery_select",
+BigqueryQueryFunction::BigqueryQueryFunction()
+    : TableFunction("bigquery_query",
                     {LogicalType::VARCHAR, LogicalType::VARCHAR},
                     BigqueryScan,
-                    BigquerySelectBind,
+                    BigqueryQueryBind,
                     BigqueryInitGlobalState,
-                    BigqueryInitLocalState) 
+                    BigqueryInitLocalState)
 {
     to_string = BigqueryToString;
     cardinality = BigqueryScanCardinality;

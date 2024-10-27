@@ -39,9 +39,9 @@ public:
     BigqueryScanFunction();
 };
 
-class BigquerySelectFunction : public TableFunction {
+class BigqueryQueryFunction : public TableFunction {
 public:
-    BigquerySelectFunction();
+    BigqueryQueryFunction();
 };
 
 } // namespace bigquery
