@@ -414,7 +414,7 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
 void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
                                               map<string, CreateTableInfo> &table_infos) {
     const auto info_schema_query =
-        BigquerySQL::ColumnsFromInformationSchema(dataset_ref.project_id, dataset_ref.dataset_id);
+        BigquerySQL::ColumnsFromInformationSchemaQuery(dataset_ref.project_id, dataset_ref.dataset_id);
 
     auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
     auto rows = query_response.rows();
@@ -456,6 +456,38 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
     }
 }
 
+void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
+                                    ColumnList &res_columns,
+                                    vector<unique_ptr<Constraint>> &res_constraints) {
+    for (const google::cloud::bigquery::v2::TableFieldSchema &field : schema.fields()) {
+        // Create the ColumnDefinition
+        auto column_type = BigqueryUtils::FieldSchemaToLogicalType(field);
+
+        ColumnDefinition column(field.name(), std::move(column_type));
+        // column.SetComment(std::move(field.description));
+
+        const auto &default_value_expr = field.default_value_expression();
+        const auto &default_value = default_value_expr.value();
+        if (!default_value.empty() && default_value != "\"\"") {
+            auto expressions = Parser::ParseExpressionList(default_value);
+            if (expressions.empty()) {
+                throw InternalException("Expression list is empty");
+            }
+            column.SetDefaultValue(std::move(expressions[0]));
+        }
+        res_columns.AddColumn(std::move(column));
+
+        // The field mode. Possible values include NULLABLE, REQUIRED and REPEATED.
+        // The default value is NULLABLE.
+        const auto &mode = field.mode();
+        if (mode == "REQUIRED") {
+            auto field_name = field.name();
+            auto field_index = res_columns.GetColumnIndex(field_name);
+            res_constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+        }
+    }
+}
+
 void BigqueryClient::GetTableInfo(const string &dataset_id,
                                   const string &table_id,
                                   ColumnList &res_columns,
@@ -479,34 +511,18 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
     }
 
     auto table = response.value();
-    for (const google::cloud::bigquery::v2::TableFieldSchema &field : table.schema().fields()) {
-        // Create the ColumnDefinition
-        auto column_type = BigqueryUtils::FieldSchemaToLogicalType(field);
+    MapTableSchema(table.schema(), res_columns, res_constraints);
+}
 
-        ColumnDefinition column(field.name(), std::move(column_type));
-        // column.SetComment(std::move(field.description));
-
-        const auto &default_value_expr = field.default_value_expression();
-        const auto &default_value = default_value_expr.value();
-        if (!default_value.empty() && default_value != "\"\"") {
-            auto expressions = Parser::ParseExpressionList(default_value);
-            if (expressions.empty()) {
-                throw InternalException("Expression list is empty");
-            }
-            column.SetDefaultValue(std::move(expressions[0]));
-        }
-        res_columns.AddColumn(std::move(column));
-
-
-        // The field mode. Possible values include NULLABLE, REQUIRED and REPEATED.
-        // The default value is NULLABLE.
-        const auto &mode = field.mode();
-        if (mode == "REQUIRED") {
-            auto field_name = field.name();
-            auto field_index = res_columns.GetColumnIndex(field_name);
-            res_constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
-        }
-    }
+void BigqueryClient::GetTableInfoForQuery(const string &query,
+                                          ColumnList &res_columns,
+                                          vector<unique_ptr<Constraint>> &res_constraints) {
+    auto query_response = ExecuteQuery(query, "", true);
+	if (!query_response.has_schema()){
+		throw BinderException("Query response does not contain a result schema.");
+	}
+    auto schema = query_response.schema();
+    MapTableSchema(schema, res_columns, res_constraints);
 }
 
 shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &dataset_id,
@@ -568,16 +584,18 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 }
 
 
-google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query, const string &location) {
+google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query,
+                                                                        const string &location,
+                                                                        const bool &dry_run) {
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response = PostQueryJob(client, query, location);
+    auto response = PostQueryJob(client, query, location, dry_run);
     if (!response) {
         throw BinderException("Query execution failed: " + response.status().message());
     }
 
-    if (!config.is_dev_env()) {
+    if (!dry_run && !config.is_dev_env()) {
         int delay = 1;
         int max_retries = 3;
         for (int i = 0; i < max_retries; i++) {
@@ -599,10 +617,11 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
     return *response;
 }
 
-google::cloud::bigquery::v2::Job BigqueryClient::GetJob(google::cloud::bigquery::v2::QueryResponse &query_response) 
-{
-    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
-    auto job = GetJob(client, query_response.job_reference().job_id(), query_response.job_reference().location().value());
+google::cloud::bigquery::v2::Job BigqueryClient::GetJob(google::cloud::bigquery::v2::QueryResponse &query_response) {
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+    auto job =
+        GetJob(client, query_response.job_reference().job_id(), query_response.job_reference().location().value());
     return job.value();
 }
 
@@ -638,7 +657,8 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
 google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClient::PostQueryJob(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const string &query,
-    const string &location) {
+    const string &location,
+    const bool &dry_run) {
 
     if (BigquerySettings::DebugQueryPrint()) {
         std::cout << "query: " << query << std::endl;
@@ -654,6 +674,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     *query_request.mutable_default_dataset() = dataset_ref;
     query_request.set_dry_run(false);
     query_request.mutable_use_legacy_sql()->set_value(false);
+    query_request.set_dry_run(dry_run);
 
     // query_request.mutable_set_preserve_nulls()->set_value(true);
     if (!location.empty()) {

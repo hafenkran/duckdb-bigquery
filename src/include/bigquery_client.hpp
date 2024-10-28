@@ -25,7 +25,7 @@ namespace duckdb {
 namespace bigquery {
 
 struct ListJobsParams {
-	std::optional<std::string> job_id;
+    std::optional<std::string> job_id;
     std::optional<bool> all_users;
     std::optional<int> max_results;
     std::optional<timestamp_t> min_creation_time;
@@ -63,11 +63,12 @@ public:
                       const string &table_id,
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
+	void GetTableInfoForQuery(const string &query, ColumnList &res_columns, vector<unique_ptr<Constraint>> &res_constraints);
 
     vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
-	google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
+    google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
 
-    google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "");
+    google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query, const string &location = "", const bool &dry_run = false);
     google::cloud::bigquery::v2::Job GetJob(google::cloud::bigquery::v2::QueryResponse &query_response);
 
     shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,
@@ -94,10 +95,15 @@ private:
     google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> PostQueryJob(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const string &query,
-        const string &location = "");
+        const string &location = "",
+        const bool &dry_run = false);
 
     google::cloud::Options OptionsAPI();
     google::cloud::Options OptionsGRPC();
+
+	void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
+						ColumnList &res_columns,
+						vector<unique_ptr<Constraint>> &res_constraints);
 
 private:
     BigqueryConfig config;
