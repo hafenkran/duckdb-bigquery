@@ -518,9 +518,9 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
                                           ColumnList &res_columns,
                                           vector<unique_ptr<Constraint>> &res_constraints) {
     auto query_response = ExecuteQuery(query, "", true);
-	if (!query_response.has_schema()){
-		throw BinderException("Query response does not contain a result schema.");
-	}
+    if (!query_response.has_schema()) {
+        throw BinderException("Query response does not contain a result schema.");
+    }
     auto schema = query_response.schema();
     MapTableSchema(schema, res_columns, res_constraints);
 }
@@ -590,7 +590,7 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response = PostQueryJob(client, query, location, dry_run);
+    auto response = PostQueryJobInternal(client, query, location, dry_run);
     if (!response) {
         throw BinderException("Query execution failed: " + response.status().message());
     }
@@ -600,7 +600,7 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
         int max_retries = 3;
         for (int i = 0; i < max_retries; i++) {
             auto job_status =
-                GetJob(client, response->job_reference().job_id(), response->job_reference().location().value());
+                GetJobInternal(client, response->job_reference().job_id(), response->job_reference().location().value());
             if (job_status.ok() && job_status->status().state() == "DONE") {
                 if (!job_status->status().error_result().reason().empty()) {
                     throw BinderException(job_status->status().error_result().message());
@@ -617,15 +617,7 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
     return *response;
 }
 
-google::cloud::bigquery::v2::Job BigqueryClient::GetJob(google::cloud::bigquery::v2::QueryResponse &query_response) {
-    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
-    auto job =
-        GetJob(client, query_response.job_reference().job_id(), query_response.job_reference().location().value());
-    return job.value();
-}
-
-google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob(
+google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJobInternal(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const string &job_id,
     const string &location) {
@@ -654,7 +646,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
     return job;
 }
 
-google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClient::PostQueryJob(
+google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClient::PostQueryJobInternal(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const string &query,
     const string &location,
