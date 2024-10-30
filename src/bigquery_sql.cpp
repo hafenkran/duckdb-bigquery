@@ -425,7 +425,7 @@ string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector
     return str.str();
 }
 
-string BigquerySQL::ColumnsFromInformationSchema(const string &project_id, const string &dataset_id) {
+string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, const string &dataset_id) {
 	const auto table_string =
         BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.COLUMNS");
 

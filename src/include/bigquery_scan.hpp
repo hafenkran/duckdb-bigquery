@@ -13,6 +13,7 @@ class BigqueryClient;
 struct BigqueryBindData : public TableFunctionData {
 	BigqueryConfig config;
 	BigqueryTableRef table_ref;
+	string query;
 
     shared_ptr<BigqueryClient> bq_client;
 
@@ -27,6 +28,10 @@ struct BigqueryBindData : public TableFunctionData {
     string TableString() const {
         return BigqueryUtils::FormatTableString(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
     }
+
+	bool RequiresQueryExec() const {
+		return !query.empty();
+	}
 };
 
 // struct BigqueryGlobalTableFunctionState : public GlobalTableFunctionState {
