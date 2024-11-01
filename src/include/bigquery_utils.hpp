@@ -22,56 +22,76 @@ struct BigqueryUtils;
 struct BigqueryConfig {
 public:
 	BigqueryConfig() = default;
-    explicit BigqueryConfig(const std::string &project_id,
-                            const std::string &dataset_id = "",
-                            const std::string &billing_project_id = "",
-                            const std::string &api_endpoint = "",
-                            const std::string &grpc_endpoint = "")
-        : project_id(project_id),                 //
-          dataset_id(dataset_id),                 //
-          billing_project_id(billing_project_id), //
-          api_endpoint(api_endpoint),             //
-          grpc_endpoint(grpc_endpoint) {
-        if (project_id.empty()) {
-            throw std::invalid_argument("Project ID is required and cannot be empty.");
-        }
-    }
+
+	explicit BigqueryConfig(const string &project_id) : project_id(project_id) {
+		if (project_id.empty()) {
+			throw std::invalid_argument("Project ID is required and cannot be empty.");
+		}
+	}
 
     BigqueryConfig(const BigqueryConfig &other) = default;
     BigqueryConfig &operator=(const BigqueryConfig &other) = default;
-
     ~BigqueryConfig() = default;
 
-    const bool has_project_id() const {
+    BigqueryConfig& SetProjectId(const std::string &project_id) {
+        if (project_id.empty()) {
+            throw std::invalid_argument("Project ID is required and cannot be empty.");
+        }
+        this->project_id = project_id;
+        return *this;
+    }
+
+    BigqueryConfig& SetDatasetId(const std::string &dataset_id) {
+        this->dataset_id = dataset_id;
+        return *this;
+    }
+
+    BigqueryConfig& SetBillingProjectId(const std::string &billing_project_id) {
+        this->billing_project_id = billing_project_id;
+        return *this;
+    }
+
+    BigqueryConfig& SetApiEndpoint(const std::string &api_endpoint) {
+        this->api_endpoint = api_endpoint;
+        return *this;
+    }
+
+    BigqueryConfig& SetGrpcEndpoint(const std::string &grpc_endpoint) {
+        this->grpc_endpoint = grpc_endpoint;
+        return *this;
+    }
+
+    bool HasProjectId() const {
         return !project_id.empty();
     }
 
-    const bool has_dataset_id() const {
+    bool HasDatasetId() const {
         return !dataset_id.empty();
     }
 
-    const bool has_billing_project_id() const {
+    bool HasBillingProjectId() const {
         return !billing_project_id.empty();
     }
 
-    const bool has_api_endpoint() const {
+    bool HasApiEndpoint() const {
         return !api_endpoint.empty();
     }
 
-    const bool has_grpc_endpoint() const {
+    bool HasGrpcEndpoint() const {
         return !grpc_endpoint.empty();
     }
 
-    const bool is_dev_env() const {
+    // Hilfsmethoden
+    bool IsDevEnv() const {
         return api_endpoint.find("localhost") != std::string::npos ||
                api_endpoint.find("127.0.0.1") != std::string::npos;
     }
 
-    const string billing_project() const {
-        return has_billing_project_id() ? billing_project_id : project_id;
+    std::string BillingProject() const {
+        return HasBillingProjectId() ? billing_project_id : project_id;
     }
 
-    static BigqueryConfig FromDSN(const string &connection_string);
+    static BigqueryConfig FromDSN(const std::string &connection_string);
 
 public:
     string project_id;
