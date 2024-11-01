@@ -146,8 +146,11 @@ static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
 
     auto result = make_uniq<BigqueryBindData>();
     result->table_ref = table_ref;
-    result->config =
-        BigqueryConfig(table_ref.project_id, table_ref.dataset_id, billing_project_id, api_endpoint, grpc_endpoint);
+    result->config = BigqueryConfig(table_ref.project_id)
+                         .SetDatasetId(table_ref.dataset_id)
+                         .SetBillingProjectId(billing_project_id)
+                         .SetApiEndpoint(api_endpoint)
+                         .SetGrpcEndpoint(grpc_endpoint);
     result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
 
     ColumnList columns;
@@ -205,7 +208,10 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         bind_data->bq_client = transaction.GetBigqueryClient();
     } else {
         // Use the provided project_id of the gcp project
-        auto bq_config = BigqueryConfig(dbname_or_project_id, "", billing_project_id, api_endpoint, grpc_endpoint);
+        auto bq_config = BigqueryConfig(dbname_or_project_id)
+                             .SetBillingProjectId(billing_project_id)
+                             .SetApiEndpoint(api_endpoint)
+                             .SetGrpcEndpoint(api_endpoint);
         auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
 
         bind_data->config = bq_config;
