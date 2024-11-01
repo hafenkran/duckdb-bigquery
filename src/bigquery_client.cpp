@@ -521,7 +521,7 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
-    auto schema = query_response.schema();
+ 	auto schema = query_response.schema();
     MapTableSchema(schema, res_columns, res_constraints);
 }
 
@@ -599,8 +599,8 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
         int delay = 1;
         int max_retries = 3;
         for (int i = 0; i < max_retries; i++) {
-            auto job_status =
-                GetJobInternal(client, response->job_reference().job_id(), response->job_reference().location().value());
+            auto job_ref = response->job_reference();
+            auto job_status = GetJobInternal(client, job_ref.job_id(), job_ref.location().value());
             if (job_status.ok() && job_status->status().state() == "DONE") {
                 if (!job_status->status().error_result().reason().empty()) {
                     throw BinderException(job_status->status().error_result().message());
@@ -664,8 +664,8 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     *query_request.mutable_query() = query;
     *query_request.mutable_request_id() = GenerateJobId();
     *query_request.mutable_default_dataset() = dataset_ref;
-    query_request.set_dry_run(false);
     query_request.mutable_use_legacy_sql()->set_value(false);
+    query_request.mutable_max_results()->set_value(0);
     query_request.set_dry_run(dry_run);
 
     // query_request.mutable_set_preserve_nulls()->set_value(true);

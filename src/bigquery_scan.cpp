@@ -4,6 +4,7 @@
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
 #include "storage/bigquery_catalog.hpp"
+#include "storage/bigquery_transaction.hpp"
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
@@ -175,19 +176,45 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                                   TableFunctionBindInput &input,
                                                   vector<LogicalType> &return_types,
                                                   vector<string> &names) {
-
-    auto project_id = input.inputs[0].GetValue<string>();
+    auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
     string billing_project_id, api_endpoint, grpc_endpoint;
     SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint);
 
-    auto bq_config = BigqueryConfig(project_id, "", billing_project_id, api_endpoint, grpc_endpoint);
-    auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+    auto bind_data = make_uniq<BigqueryBindData>();
+    bind_data->query = query_string;
+    bind_data->estimated_row_count = 1;
+
+    auto &database_manager = DatabaseManager::Get(context);
+    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    if (database) {
+        // Use attached database for this operation
+        auto &catalog = database->GetCatalog();
+        if (catalog.GetCatalogType() != "bigquery") {
+            throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
+        }
+        if (!billing_project_id.empty() || !api_endpoint.empty() || !grpc_endpoint.empty()) {
+            throw BinderException("Named parameters are not supported for attached databases");
+        }
+
+        auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
+        auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
+
+        bind_data->config = bigquery_catalog.config;
+        bind_data->bq_client = transaction.GetBigqueryClient();
+    } else {
+        // Use the provided project_id of the gcp project
+        auto bq_config = BigqueryConfig(dbname_or_project_id, "", billing_project_id, api_endpoint, grpc_endpoint);
+        auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+
+        bind_data->config = bq_config;
+        bind_data->bq_client = bq_client;
+    }
 
     ColumnList columns;
     vector<unique_ptr<Constraint>> constraints;
-    bq_client->GetTableInfoForQuery(query_string, columns, constraints);
+    bind_data->bq_client->GetTableInfoForQuery(query_string, columns, constraints);
 
     for (auto &column : columns.Logical()) {
         names.push_back(column.GetName());
@@ -197,15 +224,9 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         throw std::runtime_error("no columns for query: " + query_string);
     }
 
-    auto result = make_uniq<BigqueryBindData>();
-	result->query = query_string;
-    result->config = bq_config;
-    result->bq_client = bq_client;
-    result->estimated_row_count = 1;
-    result->names = names;
-    result->types = return_types;
-
-    return std::move(result);
+    bind_data->names = names;
+    bind_data->types = return_types;
+    return std::move(bind_data);
 }
 
 static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContext &context,
