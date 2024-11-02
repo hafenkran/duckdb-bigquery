@@ -9,6 +9,10 @@
 namespace duckdb {
 namespace bigquery {
 
+struct BigqueryClearCacheFunctionData : public TableFunctionData {
+    bool finished = false;
+};
+
 static unique_ptr<FunctionData> BigQueryClearCacheBind(ClientContext &context,
                                                        TableFunctionBindInput &input,
                                                        vector<LogicalType> &return_types,
@@ -27,6 +31,7 @@ static void ClearBigqueryCaches(ClientContext &context) {
         if (catalog.GetCatalogType() != "bigquery") {
             continue;
         }
+		std::cout << "Clearing BigQuery Cache for Database: " << db.GetName() << std::endl;
         catalog.Cast<BigqueryCatalog>().ClearCache();
     }
 }

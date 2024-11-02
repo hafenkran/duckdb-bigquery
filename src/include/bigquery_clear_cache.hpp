@@ -5,10 +5,6 @@
 namespace duckdb {
 namespace bigquery {
 
-struct BigqueryClearCacheFunctionData : public TableFunctionData {
-    bool finished = false;
-};
-
 class BigqueryClearCacheFunction : public TableFunction {
 public:
     BigqueryClearCacheFunction();
