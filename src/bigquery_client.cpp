@@ -112,7 +112,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto options = google::cloud::Options{};
     if (!config.grpc_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.grpc_endpoint);
-        if (config.is_dev_env()) {
+        if (config.IsDevEnv()) {
             options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
         }
     }
@@ -545,7 +545,7 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                     .clone());
 
     return make_shared_ptr<BigqueryArrowReader>(BigqueryTableRef(config.project_id, dataset_id, table_id),
-                                                config.billing_project(),
+                                                config.BillingProject(),
                                                 num_streams,
                                                 options,
                                                 column_ids,
@@ -595,7 +595,7 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
         throw BinderException("Query execution failed: " + response.status().message());
     }
 
-    if (!dry_run && !config.is_dev_env()) {
+    if (!dry_run && !config.IsDevEnv()) {
         int delay = 1;
         int max_retries = 3;
         for (int i = 0; i < max_retries; i++) {
@@ -631,7 +631,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetJobRequest();
-    request.set_project_id(config.billing_project());
+    request.set_project_id(config.BillingProject());
     request.set_job_id(job_id);
     if (!location.empty()) {
         request.set_location(location);
@@ -674,7 +674,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     }
 
     auto request = google::cloud::bigquery::v2::PostQueryRequest();
-    request.set_project_id(config.billing_project());
+    request.set_project_id(config.BillingProject());
     *request.mutable_query_request() = query_request;
 
     return job_client.Query(request);

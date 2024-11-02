@@ -15,12 +15,12 @@ namespace duckdb {
 namespace bigquery {
 
 struct ListJobsBindData : public TableFunctionData {
-    explicit ListJobsBindData(BigqueryCatalog &bq_catalog, ListJobsParams &params)
-        : bq_catalog(bq_catalog), params(std::move(params)) {
+    explicit ListJobsBindData(shared_ptr<BigqueryClient> bq_client, ListJobsParams &params)
+        : bq_client(bq_client), params(std::move(params)) {
     }
 
 public:
-    BigqueryCatalog &bq_catalog;
+    shared_ptr<BigqueryClient> bq_client;
     ListJobsParams params;
     bool finished = false;
     mutable mutex lock;
@@ -202,20 +202,10 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
                                                      TableFunctionBindInput &input,
                                                      vector<LogicalType> &return_types,
                                                      vector<string> &names) {
-    auto database_name = input.inputs[0].GetValue<string>();
-    auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, database_name);
-    if (!database) {
-        throw BinderException("Failed to find attached database " + database_name);
-    }
+    auto dbname_or_project_id = input.inputs[0].GetValue<string>();
 
-    auto &catalog = database->GetCatalog();
-    if (catalog.GetCatalogType() != "bigquery") {
-        throw BinderException("Database " + database_name + " is not a BigQuery database");
-    }
-    auto &bq_catalog = catalog.Cast<BigqueryCatalog>();
-
-    ListJobsParams params;
+	string api_endpoint;
+	ListJobsParams params;
     params.projection = "full"; // Full projection by default
     std::map<std::string, std::function<void(const Value &)>> param_map = {
         {"jobId", [&](const Value &val) { params.job_id = val.GetValue<string>(); }},
@@ -225,6 +215,7 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
         {"maxCreationTime", [&](const Value &val) { params.max_creation_time = val.GetValue<timestamp_t>(); }},
         {"stateFilter", [&](const Value &val) { params.state_filter = val.GetValue<string>(); }},
         {"parentJobId", [&](const Value &val) { params.parent_job_id = val.GetValue<string>(); }},
+		{"api_endpoint", [&](const Value &val) { api_endpoint = val.GetValue<string>(); }},
     };
     for (auto &param : input.named_parameters) {
         auto it = param_map.find(param.first);
@@ -232,38 +223,56 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
             it->second(param.second);
         }
     }
-
-    if (params.projection.has_value() && params.projection != "full" && params.projection != "minimal") {
+	if (params.projection.has_value() && params.projection != "full" && params.projection != "minimal") {
         throw BinderException("Invalid value for projection parameter: " + params.projection.value());
     }
 
-    // Initialize the names and return types
+	unique_ptr<ListJobsBindData> bind_data = nullptr;
+	auto &database_manager = DatabaseManager::Get(context);
+	auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+	if (database) {
+		// Use attached database for this operation
+		auto &catalog = database->GetCatalog();
+		if (catalog.GetCatalogType() != "bigquery") {
+			throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
+		}
+		if (!api_endpoint.empty()) {
+			throw BinderException("'api_endpoint' named parameter is not supported for attached databases");
+		}
+
+		auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
+		auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
+
+		bind_data = make_uniq<ListJobsBindData>(transaction.GetBigqueryClient(), params);
+	} else {
+		// Use the provided project_id of the gcp project
+		auto bq_config = BigqueryConfig(dbname_or_project_id).SetApiEndpoint(api_endpoint);
+		auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+		bind_data = make_uniq<ListJobsBindData>(bq_client, params);
+	}
+
+	// Initialize the names and return types
     InitializeNamesAndReturnTypes(return_types, names);
 
-    return make_uniq<ListJobsBindData>(bq_catalog, params);
+    return bind_data;
 }
 
 static unique_ptr<GlobalTableFunctionState> BigQueryListJobsInitGlobalState(ClientContext &context,
                                                                             TableFunctionInitInput &input) {
     auto &data = input.bind_data->CastNoConst<ListJobsBindData>();
-    auto &transaction = BigqueryTransaction::Get(context, data.bq_catalog);
-    auto bq_client = transaction.GetBigqueryClient();
-
     auto state = make_uniq<ListJobsGlobalFunctionState>();
     if (data.params.job_id.has_value()) {
-        auto job = bq_client->GetJob(data.params.job_id.value());
+        auto job = data.bq_client->GetJob(data.params.job_id.value());
         state->single_job = true;
         state->job_by_id = job;
-        std::cout << "Job ID: " << job.job_reference().job_id() << std::endl;
     } else {
-        auto jobs = bq_client->ListJobs(data.params);
+        auto jobs = data.bq_client->ListJobs(data.params);
         state->jobs_list = jobs;
     }
     return state;
 }
 
 static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-    std::cout << "BigQueryListJobsFunc" << std::endl;
     auto &bind_data = data_p.bind_data->CastNoConst<ListJobsBindData>();
     auto &gstate = data_p.global_state->Cast<ListJobsGlobalFunctionState>();
 
@@ -280,7 +289,6 @@ static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &dat
         out_idx++;
         output.SetCardinality(out_idx);
         bind_data.finished = true;
-        std::cout << "Finished" << std::endl;
     } else {
         while (out_idx < STANDARD_VECTOR_SIZE && job_idx < gstate.jobs_list.size()) {
             const auto &job = gstate.jobs_list[job_idx];
@@ -311,6 +319,7 @@ BigQueryListJobsFunction::BigQueryListJobsFunction()
     named_parameters["maxCreationTime"] = LogicalType::VARCHAR;
     named_parameters["stateFilter"] = LogicalType::VARCHAR;
     named_parameters["parentJobId"] = LogicalType::VARCHAR;
+	named_parameters["api_endpoint"] = LogicalType::VARCHAR;
 }
 
 

@@ -17,7 +17,7 @@ BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const BigqueryConfig &c
 
 BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const string &dsn, BigqueryOptions options_p)
     : BigqueryCatalog(db_p, BigqueryConfig::FromDSN(dsn), options_p) {
-    if (!config.has_project_id()) {
+    if (!config.HasProjectId()) {
         throw BinderException("Invalid connection string: %s", dsn);
     }
 }
