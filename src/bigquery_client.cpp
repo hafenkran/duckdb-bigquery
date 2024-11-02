@@ -665,7 +665,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     *query_request.mutable_request_id() = GenerateJobId();
     *query_request.mutable_default_dataset() = dataset_ref;
     query_request.mutable_use_legacy_sql()->set_value(false);
-    query_request.mutable_max_results()->set_value(0);
+    // query_request.mutable_max_results()->set_value(0);
     query_request.set_dry_run(dry_run);
 
     // query_request.mutable_set_preserve_nulls()->set_value(true);
