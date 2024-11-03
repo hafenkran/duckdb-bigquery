@@ -69,7 +69,11 @@ BigqueryConfig BigqueryConfig::FromDSN(const std::string &connection_string) {
         }
     }
 
-    return BigqueryConfig(project_id, dataset_id, billing_project_id, api_endpoint, grpc_endpoint);
+    return BigqueryConfig(project_id)
+        .SetDatasetId(dataset_id)
+        .SetBillingProjectId(billing_project_id)
+        .SetApiEndpoint(api_endpoint)
+        .SetGrpcEndpoint(grpc_endpoint);
 }
 
 BigqueryTableRef BigqueryUtils::ParseTableString(const string &table_string) {
@@ -653,13 +657,13 @@ vector<string> BigqueryUtils::SplitStructFields(const string &struct_field_str) 
 }
 
 string BigqueryUtils::StructRemoveWhitespaces(const string &struct_str) {
-	string result;
-	for (size_t i = 0; i < struct_str.size(); i++) {
-		if (struct_str[i] != ' ') {
-			result += struct_str[i];
-		}
-	}
-	return result;
+    string result;
+    for (size_t i = 0; i < struct_str.size(); i++) {
+        if (struct_str[i] != ' ') {
+            result += struct_str[i];
+        }
+    }
+    return result;
 }
 
 uint64_t Iso8601ToMillis(const std::string &iso8601) {

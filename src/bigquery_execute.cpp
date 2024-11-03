@@ -11,52 +11,80 @@ namespace duckdb {
 namespace bigquery {
 
 struct BigQueryExecuteBindData : public TableFunctionData {
-public:
-    explicit BigQueryExecuteBindData(BigqueryCatalog &bq_catalog, string query)
-        : bq_catalog(bq_catalog), query(std::move(query)) {
-    }
-
-public:
-    BigqueryCatalog &bq_catalog;
+    BigqueryConfig config;
+    shared_ptr<BigqueryClient> bq_client;
     string query;
     bool finished = false;
 };
 
+static void SetFromNamedParameters(const TableFunctionBindInput &input, string &api_endpoint, string &grpc_endpoint) {
+    for (auto &kv : input.named_parameters) {
+        auto loption = StringUtil::Lower(kv.first);
+        if (loption == "api_endpoint") {
+            api_endpoint = kv.second.GetValue<string>();
+        } else if (loption == "grpc_endpoint") {
+            grpc_endpoint = kv.second.GetValue<string>();
+        }
+    }
+}
 
 static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &context,
                                                             TableFunctionBindInput &input,
                                                             vector<LogicalType> &return_types,
                                                             vector<string> &names) {
+    auto dbname_or_project_id = input.inputs[0].GetValue<string>();
+    auto query_string = input.inputs[1].GetValue<string>();
+
+    string api_endpoint, grpc_endpoint;
+    SetFromNamedParameters(input, api_endpoint, grpc_endpoint);
+
+    auto result = make_uniq<BigQueryExecuteBindData>();
+    result->query = query_string;
+
+    auto &database_manager = DatabaseManager::Get(context);
+    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    if (database) {
+        // Use attached database for this operation
+        auto &catalog = database->GetCatalog();
+        if (catalog.GetCatalogType() != "bigquery") {
+            throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
+        }
+        if (!api_endpoint.empty() || !grpc_endpoint.empty()) {
+            throw BinderException("Named parameters are not supported for attached databases");
+        }
+
+        auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
+        auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
+        if (transaction.GetAccessMode() == AccessMode::READ_ONLY) {
+            throw BinderException("Cannot execute BigQuery query in read-only transaction");
+        }
+
+        result->config = bigquery_catalog.config;
+        result->bq_client = transaction.GetBigqueryClient();
+    } else {
+        // Use the provided project_id of the gcp project
+        result->config = BigqueryConfig(dbname_or_project_id) //
+                             .SetApiEndpoint(api_endpoint)
+                             .SetGrpcEndpoint(grpc_endpoint);
+        result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
+    }
+
     return_types.emplace_back(LogicalTypeId::BOOLEAN);
     names.emplace_back("success");
-	return_types.emplace_back(LogicalTypeId::VARCHAR);
-	names.emplace_back("job_id");
-	return_types.emplace_back(LogicalTypeId::VARCHAR);
-	names.emplace_back("project_id");
-	return_types.emplace_back(LogicalTypeId::VARCHAR);
-	names.emplace_back("location");
-	return_types.emplace_back(LogicalTypeId::UBIGINT);
-	names.emplace_back("total_rows");
-	return_types.emplace_back(LogicalTypeId::BIGINT);
-	names.emplace_back("total_bytes_processed");
-	return_types.emplace_back(LogicalTypeId::VARCHAR);
-	names.emplace_back("num_dml_affected_rows");
+    return_types.emplace_back(LogicalTypeId::VARCHAR);
+    names.emplace_back("job_id");
+    return_types.emplace_back(LogicalTypeId::VARCHAR);
+    names.emplace_back("project_id");
+    return_types.emplace_back(LogicalTypeId::VARCHAR);
+    names.emplace_back("location");
+    return_types.emplace_back(LogicalTypeId::UBIGINT);
+    names.emplace_back("total_rows");
+    return_types.emplace_back(LogicalTypeId::BIGINT);
+    names.emplace_back("total_bytes_processed");
+    return_types.emplace_back(LogicalTypeId::VARCHAR);
+    names.emplace_back("num_dml_affected_rows");
 
-    auto database_name = input.inputs[0].GetValue<string>();
-    auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, database_name);
-    if (!database) {
-        throw BinderException("Failed to find attached database " + database_name);
-    }
-
-    auto &catalog = database->GetCatalog();
-    if (catalog.GetCatalogType() != "bigquery") {
-        throw BinderException("Database " + database_name + " is not a BigQuery database");
-    }
-
-    auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
-    auto query = input.inputs[1].GetValue<string>();
-    return make_uniq<BigQueryExecuteBindData>(bigquery_catalog, query);
+    return result;
 }
 
 static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
@@ -64,23 +92,17 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
     if (data.finished) {
         return;
     }
+    auto response = data.bq_client->ExecuteQuery(data.query);
 
-    auto &transaction = BigqueryTransaction::Get(context, data.bq_catalog);
-    if (transaction.GetAccessMode() == AccessMode::READ_ONLY) {
-        throw BinderException("Cannot execute BigQuery query in read-only transaction");
-    }
-    auto bqclient = transaction.GetBigqueryClient();
-    auto response = bqclient->ExecuteQuery(data.query);
-
-	data.finished = true;
-	output.SetValue(0, 0, true);
-	output.SetValue(1, 0, response.job_reference().job_id());
-	output.SetValue(2, 0, response.job_reference().project_id());
-	output.SetValue(3, 0, response.job_reference().location().value());
-	output.SetValue(4, 0, Value::UBIGINT(response.total_rows().value()));
-	output.SetValue(5, 0, Value::BIGINT(response.total_bytes_processed().value()));
-	output.SetValue(6, 0, Value::BIGINT(response.num_dml_affected_rows().value()));
-	output.SetCardinality(1);
+    data.finished = true;
+    output.SetValue(0, 0, true);
+    output.SetValue(1, 0, response.job_reference().job_id());
+    output.SetValue(2, 0, response.job_reference().project_id());
+    output.SetValue(3, 0, response.job_reference().location().value());
+    output.SetValue(4, 0, Value::UBIGINT(response.total_rows().value()));
+    output.SetValue(5, 0, Value::BIGINT(response.total_bytes_processed().value()));
+    output.SetValue(6, 0, Value::BIGINT(response.num_dml_affected_rows().value()));
+    output.SetCardinality(1);
 }
 
 BigQueryExecuteFunction::BigQueryExecuteFunction()
@@ -88,6 +110,9 @@ BigQueryExecuteFunction::BigQueryExecuteFunction()
                     {LogicalType::VARCHAR, LogicalType::VARCHAR},
                     BigQueryExecuteFunc,
                     BigQueryExecuteBind) {
+
+    named_parameters["api_endpoint"] = LogicalType::VARCHAR;
+    named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
 }
 
 } // namespace bigquery

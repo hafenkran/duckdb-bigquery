@@ -126,7 +126,8 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
 
         switch (column_type.id()) {
         case LogicalTypeId::LIST: {
-            auto &child_type = ListType::GetChildType(column_type);
+			const auto& column_type = column.GetType();
+            const auto& child_type = ListType::GetChildType(column_type);
 
             if (child_type.id() == LogicalTypeId::STRUCT) {
                 auto &child_types = StructType::GetChildTypes(child_type);
@@ -146,7 +147,8 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
             break;
         }
         case LogicalTypeId::ARRAY: {
-            auto &child_type = ArrayType::GetChildType(column.GetType());
+			const auto& column_type = column.GetType();
+            const auto& child_type = ArrayType::GetChildType(column_type);
 
             if (child_type.id() == LogicalTypeId::STRUCT) {
                 auto &child_types = StructType::GetChildTypes(child_type);

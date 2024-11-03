@@ -3,6 +3,8 @@
 #include "bigquery_client.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
+#include "storage/bigquery_catalog.hpp"
+#include "storage/bigquery_transaction.hpp"
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
@@ -15,6 +17,8 @@
 #include <arrow/ipc/writer.h>
 
 #include "duckdb.hpp"
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/database_manager.hpp"
 // #include "duckdb/common/types.hpp"
 
 
@@ -112,10 +116,9 @@ private:
 };
 
 static void SetFromNamedParameters(const TableFunctionBindInput &input,
-                                  string &billing_project_id,
-                                  string &api_endpoint,
-                                  string &grpc_endpoint)
-{
+                                   string &billing_project_id,
+                                   string &api_endpoint,
+                                   string &grpc_endpoint) {
     for (auto &kv : input.named_parameters) {
         auto loption = StringUtil::Lower(kv.first);
         if (loption == "billing_project") {
@@ -128,29 +131,10 @@ static void SetFromNamedParameters(const TableFunctionBindInput &input,
     }
 }
 
-static void ExtractTableInfo(shared_ptr<BigqueryArrowReader> arrow_reader,
-                             vector<string> &names,
-                             vector<LogicalType> &return_types)
-{
-    ColumnList columns;
-    vector<unique_ptr<Constraint>> constraints;
-    arrow_reader->MapTableInfo(columns, constraints);
-
-    for (auto &column : columns.Logical()) {
-        names.push_back(column.GetName());
-        return_types.push_back(column.GetType());
-    }
-
-    if (names.empty()) {
-        auto table_ref = arrow_reader->GetTableRef();
-        throw std::runtime_error("no columns for table " + table_ref.table_id);
-    }
-}
-
-static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
-                                             TableFunctionBindInput &input,
-                                             vector<LogicalType> &return_types,
-                                             vector<string> &names) {
+static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
+                                                 TableFunctionBindInput &input,
+                                                 vector<LogicalType> &return_types,
+                                                 vector<string> &names) {
     auto table_string = input.inputs[0].GetValue<string>();
     auto table_ref = BigqueryUtils::ParseTableString(table_string);
     if (!table_ref.has_dataset_id() || !table_ref.has_table_id()) {
@@ -162,11 +146,26 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
 
     auto result = make_uniq<BigqueryBindData>();
     result->table_ref = table_ref;
-    result->config = BigqueryConfig(table_ref.project_id, table_ref.dataset_id, billing_project_id, api_endpoint, grpc_endpoint);
+    result->config = BigqueryConfig(table_ref.project_id)
+                         .SetDatasetId(table_ref.dataset_id)
+                         .SetBillingProjectId(billing_project_id)
+                         .SetApiEndpoint(api_endpoint)
+                         .SetGrpcEndpoint(grpc_endpoint);
     result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
 
+    ColumnList columns;
+    vector<unique_ptr<Constraint>> constraints;
     auto arrow_reader = result->bq_client->CreateArrowReader(table_ref.dataset_id, table_ref.table_id, 1);
-    ExtractTableInfo(arrow_reader, names, return_types);
+    arrow_reader->MapTableInfo(columns, constraints);
+
+    for (auto &column : columns.Logical()) {
+        names.push_back(column.GetName());
+        return_types.push_back(column.GetType());
+    }
+    if (names.empty()) {
+        auto table_ref = arrow_reader->GetTableRef();
+        throw std::runtime_error("no columns for table " + table_ref.table_id);
+    }
 
     // TODO GetMaxRowId
     result->estimated_row_count = idx_t(arrow_reader->GetEstimatedRowCount());
@@ -177,44 +176,83 @@ static unique_ptr<FunctionData> BigqueryBind(ClientContext &context,
 
 
 static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
-                                                   TableFunctionBindInput &input,
-                                                   vector<LogicalType> &return_types,
-                                                   vector<string> &names)
-{
-    auto project_id = input.inputs[0].GetValue<string>();
+                                                  TableFunctionBindInput &input,
+                                                  vector<LogicalType> &return_types,
+                                                  vector<string> &names) {
+    auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
     string billing_project_id, api_endpoint, grpc_endpoint;
     SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint);
 
-    auto bq_config = BigqueryConfig(project_id, "", billing_project_id, api_endpoint, grpc_endpoint);
-    auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+    auto bind_data = make_uniq<BigqueryBindData>();
+    bind_data->query = query_string;
+    bind_data->estimated_row_count = 1;
 
-    auto query_response = bq_client->ExecuteQuery(query_string);
-    auto job = bq_client->GetJob(query_response);
-    auto destination_table = job.configuration().query().destination_table();
-    auto table_ref = BigqueryTableRef(destination_table.project_id(),
-                                      destination_table.dataset_id(),
-                                      destination_table.table_id());
+    auto &database_manager = DatabaseManager::Get(context);
+    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    if (database) {
+        // Use attached database for this operation
+        auto &catalog = database->GetCatalog();
+        if (catalog.GetCatalogType() != "bigquery") {
+            throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
+        }
+        if (!billing_project_id.empty() || !api_endpoint.empty() || !grpc_endpoint.empty()) {
+            throw BinderException("Named parameters are not supported for attached databases");
+        }
 
-    auto result = make_uniq<BigqueryBindData>();
-    result->config = bq_config;
-    result->bq_client = bq_client;
-    result->table_ref = table_ref;
+        auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
+        auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
 
-    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref.dataset_id, table_ref.table_id, 1);
-    ExtractTableInfo(arrow_reader, names, return_types);
+        bind_data->config = bigquery_catalog.config;
+        bind_data->bq_client = transaction.GetBigqueryClient();
+    } else {
+        // Use the provided project_id of the gcp project
+        auto bq_config = BigqueryConfig(dbname_or_project_id)
+                             .SetBillingProjectId(billing_project_id)
+                             .SetApiEndpoint(api_endpoint)
+                             .SetGrpcEndpoint(api_endpoint);
+        auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
 
-    result->estimated_row_count = idx_t(arrow_reader->GetEstimatedRowCount());
-    result->names = names;
-    result->types = return_types;
+        bind_data->config = bq_config;
+        bind_data->bq_client = bq_client;
+    }
 
-    return std::move(result);
+    ColumnList columns;
+    vector<unique_ptr<Constraint>> constraints;
+    bind_data->bq_client->GetTableInfoForQuery(query_string, columns, constraints);
+
+    for (auto &column : columns.Logical()) {
+        names.push_back(column.GetName());
+        return_types.push_back(column.GetType());
+    }
+    if (names.empty()) {
+        throw std::runtime_error("no columns for query: " + query_string);
+    }
+
+    bind_data->names = names;
+    bind_data->types = return_types;
+    return std::move(bind_data);
 }
 
 static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContext &context,
                                                                     TableFunctionInitInput &input) {
     auto &bind_data = (BigqueryBindData &)*input.bind_data;
+
+    if (bind_data.RequiresQueryExec()) {
+        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query);
+        auto job = bind_data.bq_client->GetJob(query_response.job_reference().job_id(),
+                                               query_response.job_reference().location().value());
+        if (job.status().has_error_result()) {
+            throw BinderException(job.status().error_result().message());
+        }
+
+        auto destination_table = job.configuration().query().destination_table();
+        auto table_ref = BigqueryTableRef(destination_table.project_id(),
+                                          destination_table.dataset_id(),
+                                          destination_table.table_id());
+        bind_data.table_ref = table_ref;
+    }
 
     // selected fields
     vector<string> selected_fields;
@@ -253,7 +291,6 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
     result->max_threads = k_max_read_streams;
     return std::move(result);
 }
-
 
 std::vector<column_t> CalculateRanks(const std::vector<column_t> &nums) {
     size_t n = nums.size();
@@ -324,7 +361,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     : TableFunction("bigquery_scan",
                     {LogicalType::VARCHAR},
                     BigqueryScan,
-                    BigqueryBind,
+                    BigqueryScanBind,
                     BigqueryInitGlobalState,
                     BigqueryInitLocalState) {
     to_string = BigqueryToString;
@@ -344,8 +381,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
                     BigqueryScan,
                     BigqueryQueryBind,
                     BigqueryInitGlobalState,
-                    BigqueryInitLocalState)
-{
+                    BigqueryInitLocalState) {
     to_string = BigqueryToString;
     cardinality = BigqueryScanCardinality;
     table_scan_progress = BigqueryScanProgress;

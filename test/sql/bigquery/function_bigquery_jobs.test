@@ -19,10 +19,15 @@ SELECT state, job_type, status FROM bigquery_jobs('bq', maxResults=10) WHERE job
 ----
 Completed	QUERY	{"state":"DONE"}
 
+query III
+SELECT state, job_type, status FROM bigquery_jobs('${BQ_TEST_PROJECT}', maxResults=10) WHERE job_id=(SELECT job_id FROM job_info);
+----
+Completed	QUERY	{"state":"DONE"}
+
 statement error
 SELECT * FROM bigquery_jobs('bq', jobId='my_non_existing_job_id');
 ----
-Permanent error, with a last message of Not found: Job hafenkran:my_non_existing_job_id
+<REGEX>:Binder Error: Permanent error, with a last message of Not found: Job .+
 
 query IIIIIIIIIIIII
 SELECT state, job_id, project, location, creation_time, start_time, end_time, duration_ms, bytes_processed, total_slot_time_ms, user_email, principal_subject, job_type FROM bigquery_jobs('bq', maxResults=1, minCreationTime='2020-10-03 00:00:00', maxCreationTime='2026-10-03 16:00:00')
