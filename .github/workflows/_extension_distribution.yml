@@ -71,7 +71,7 @@ on:
         type: string
         default: "duckdb/extension-ci-tools"
       # Pass extra toolchains
-      #   available: (rust, fortran, omp)
+      #   available: (parser_tools, rust, fortran, omp, python3)
       extra_toolchains:
         required: false
         type: string
@@ -95,6 +95,11 @@ on:
         required: false
         type: string
         default: ""
+      # If set tot true, skip tests
+      skip_tests:
+        required: false
+        type: boolean
+        default: false
       # DEPRECATED: use extra_toolchains instead
       enable_rust:
         required: false
@@ -193,12 +198,20 @@ jobs:
       DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
     steps:
-      - name: Free up some space
+      - name: Free up some unused space
+        continue-on-error: true
         run: |
           df -h
           sudo rm -rf /opt/hostedtoolcache
           docker system df
-          docker rmi $(docker images -a -q)
+          docker images -a -q > package.list
+          if [ -s package.list ]; then
+              echo "To be deleted"
+              cat package.list
+              echo "---"
+              docker rmi $(cat package.list)
+          fi
+          rm package.list
           df -h
 
       - uses: actions/checkout@v4
@@ -217,10 +230,17 @@ jobs:
           fetch-depth: 0
           submodules: 'true'
 
+      - uses: actions/checkout@v4
+        name: Checkout Extension CI tools
+        with:
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
+          repository: ${{ inputs.override_ci_tools_repository }}
+
       - name: Checkout DuckDB to version
+        if: ${{inputs.duckdb_version != ''}}
         run: |
-          cd duckdb
-          git checkout ${{ inputs.duckdb_version }}
+          DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }} make set_duckdb_version
 
       - name: Tag extension
         if: ${{inputs.extension_tag != ''}}
@@ -230,8 +250,7 @@ jobs:
       - name: Tag DuckDB extension
         if: ${{inputs.duckdb_tag != ''}}
         run: |
-          cd duckdb
-          git tag ${{ inputs.duckdb_tag }}
+          DUCKDB_TAG=${{ inputs.duckdb_tag }} make set_duckdb_tag
 
       - uses: actions/checkout@v4
         name: Checkout Extension CI tools
@@ -292,7 +311,7 @@ jobs:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
 
       - name: Test extension
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && inputs.skip_tests == false }}
         env:
           BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
           BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
@@ -312,6 +331,15 @@ jobs:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: |
             build/release/extension/${{ inputs.extension_name }}/${{ inputs.extension_name }}.duckdb_extension
+
+      - name: Print Rust logs
+        if: ${{ inputs.rust_logs && (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) }}
+        run: |
+          for filename in build/release/rust/src/*/*build-*.log; do
+            echo Printing logs for file $filename
+            cat $filename;
+            echo Done printing logs for $filename
+          done
 
   macos:
     name: MacOS
@@ -365,12 +393,11 @@ jobs:
           path: 'extension-ci-tools'
           ref: ${{ inputs.ci_tools_version }}
           repository: ${{ inputs.override_ci_tools_repository }}
-          fetch-depth: 0
 
       - name: Checkout DuckDB to version
+        if: ${{inputs.duckdb_version != ''}}
         run: |
-          cd duckdb
-          git checkout ${{ inputs.duckdb_version }}
+          DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }} make set_duckdb_version
 
       - name: Tag extension
         if: ${{inputs.extension_tag != ''}}
@@ -380,9 +407,7 @@ jobs:
       - name: Tag DuckDB extension
         if: ${{inputs.duckdb_tag != ''}}
         run: |
-          cd duckdb
-          git tag ${{ inputs.duckdb_tag }}
-
+          DUCKDB_TAG=${{ inputs.duckdb_tag }} make set_duckdb_tag
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11.1
@@ -395,11 +420,11 @@ jobs:
         run: |
           rustup target add x86_64-apple-darwin
 
-      # - name: 'Setup go'
-      #   if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
-      #   uses: actions/setup-go@v4
-      #   with:
-      #     go-version: '1.23'
+      - name: 'Setup go'
+        if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
 
       - name: Install parser tools
         if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;')}}
@@ -445,11 +470,8 @@ jobs:
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
 
-      - name: "Set up Cloud SDK"
-        uses: "google-github-actions/setup-gcloud@v2"
-
       - name: Test Extension
-        if: ${{ matrix.osx_build_arch == 'x86_64'}}
+        if: ${{ matrix.osx_build_arch == 'arm64' && inputs.skip_tests == false }}
         env:
           BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
           BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
@@ -475,13 +497,12 @@ jobs:
 
   windows:
     name: Windows
-    runs-on: windows-latest
+    runs-on: windows-2019
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.windows_matrix != '{}' && needs.generate_matrix.outputs.windows_matrix != '' }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.windows_matrix)}}
     env:
-      GEN: Ninja
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
       BUILD_SHELL: ${{ inputs.build_duckdb_shell && '1' || '0' }}
@@ -514,17 +535,17 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Setup Rust
         if: (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;'))
         uses: dtolnay/rust-toolchain@stable
 
-      # - name: 'Setup go'
-      #   if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
-      #   uses: actions/setup-go@v4
-      #   with:
-      #     go-version: '1.23'
+      - name: 'Setup go'
+        if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
 
       - name: Install parser tools
         if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';parser_tools;')}}
@@ -551,12 +572,13 @@ jobs:
           path: 'extension-ci-tools'
           ref: ${{ inputs.ci_tools_version }}
           repository: ${{ inputs.override_ci_tools_repository }}
-          fetch-depth: 0
 
       - name: Checkout DuckDB to version
+        if: ${{inputs.duckdb_version != ''}}
+        env:
+          DUCKDB_GIT_VERSION: ${{ inputs.duckdb_version }}
         run: |
-          cd duckdb
-          git checkout ${{ inputs.duckdb_version }}
+          make set_duckdb_version
 
       - name: Tag extension
         if: ${{inputs.extension_tag != ''}}
@@ -565,9 +587,10 @@ jobs:
 
       - name: Tag DuckDB extension
         if: ${{inputs.duckdb_tag != ''}}
+        env:
+          DUCKDB_TAG: ${{ inputs.duckdb_tag }}
         run: |
-          cd duckdb
-          git tag ${{ inputs.duckdb_tag }}
+          make set_duckdb_tag
 
       - name: Setup Ccache
         uses: hendrikmuhs/ccache-action@main
@@ -598,9 +621,6 @@ jobs:
         uses: "google-github-actions/auth@v2"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-
-      - name: "Set up Cloud SDK"
-        uses: "google-github-actions/setup-gcloud@v2"
 
       - name: Test Extension
         env:
@@ -640,33 +660,80 @@ jobs:
     env:
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-      GEN: Ninja
       DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        name: Checkout override repository
+        if: ${{inputs.override_repository != ''}}
+        with:
+          repository: ${{ inputs.override_repository }}
+          ref: ${{ inputs.override_ref }}
+          fetch-depth: 0
+          submodules: 'true'
+
+      - uses: actions/checkout@v4
+        name: Checkout current repository
+        if: ${{inputs.override_repository == ''}}
         with:
           fetch-depth: 0
-          submodules: "true"
+          submodules: 'true'
+
+      - uses: actions/checkout@v4
+        name: Checkout Extension CI tools
+        with:
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
+          repository: ${{ inputs.override_ci_tools_repository }}
 
       - name: Checkout DuckDB to version
+        if: ${{inputs.duckdb_version != ''}}
         run: |
-          cd duckdb
-          git checkout ${{ inputs.duckdb_version }}
+          DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }} make set_duckdb_version
+
+      - name: Tag extension
+        if: ${{inputs.extension_tag != ''}}
+        run: |
+          git tag ${{ inputs.extension_tag }}
+
+      - name: Tag DuckDB extension
+        if: ${{inputs.duckdb_tag != ''}}
+        run: |
+          DUCKDB_TAG=${{ inputs.duckdb_tag }} make set_duckdb_tag
 
       - uses: mymindstorm/setup-emsdk@v13
         with:
-          version: "latest"
+          version: 'latest'
+
+      - name: Setup Rust for cross compilation
+        if: ${{ (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;'))}}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-emscripten
+
+      - name: 'Setup go'
+        if: ${{ (inputs.enable_go || contains(format(';{0};', inputs.extra_toolchains), ';go;'))}}
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11.1
         with:
           vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
+          vcpkgGitURL: ${{ inputs.vcpkg_url }}
 
       - name: Setup Ccache
         uses: hendrikmuhs/ccache-action@main
+        continue-on-error: true
         with:
           key: ${{ github.job }}-${{ matrix.duckdb_arch }}
+
+      - name: Run custom toolchain script
+        if: ${{ inputs.custom_toolchain_script }}
+        shell: bash
+        run: |
+          bash scripts/setup-custom-toolchain.sh
 
       - name: Build Wasm module
         run: |
@@ -674,6 +741,17 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
+          if-no-files-found: error
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: |
-            build/${{ matrix.duckdb_arch }}/${{ inputs.extension_name }}.duckdb_extension.wasm
+            build/${{ matrix.duckdb_arch }}/extension/${{ inputs.extension_name }}/${{ inputs.extension_name }}.duckdb_extension.wasm
+
+      - name: Print Rust logs
+        if: ${{ inputs.rust_logs && (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;')) }}
+        shell: bash
+        run: |
+          for filename in build/release/rust/src/*/*build-*.log; do
+            echo Printing logs for file $filename
+            cat $filename;
+            echo Done printing logs for $filename
+          done
