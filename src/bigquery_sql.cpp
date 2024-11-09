@@ -430,7 +430,7 @@ string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, 
         BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.COLUMNS");
 
     std::stringstream query;
-    query << "SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
+    query << "SELECT table_schema, table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
     query << "FROM `" << table_string << "` ";
     query << "WHERE is_system_defined = 'NO' ";  // Adjusted the comparison
     query << "AND ordinal_position IS NOT NULL ";
@@ -438,6 +438,24 @@ string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, 
     return query.str();
 }
 
+string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets) {
+	std::stringstream query;
+	bool is_first = true;
+	for (const auto &dataset : datasets) {
+		if (dataset.empty()) {
+			throw BinderException("Dataset name cannot be empty");
+		}
+		if (is_first) {
+			is_first = false;
+		} else {
+			query << " UNION ALL ";
+		}
+
+		auto dataset_query = ColumnsFromInformationSchemaQuery(project_id, dataset);
+		query << dataset_query;
+	}
+	return query.str();
+}
 
 } // namespace bigquery
 } // namespace duckdb

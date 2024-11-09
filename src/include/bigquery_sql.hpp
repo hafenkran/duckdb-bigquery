@@ -33,6 +33,7 @@ public:
     static string BigqueryColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints);
 
 	static string ColumnsFromInformationSchemaQuery(const string &project_id, const string &dataset);
+	static string ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets);
 };
 
 } // namespace bigquery
