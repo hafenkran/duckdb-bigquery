@@ -59,6 +59,9 @@ public:
     void DropView(const DropInfo &info);
 
     void GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref, map<string, CreateTableInfo> &table_infos);
+    void GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_ref,
+                                   map<string, CreateTableInfo> &table_infos);
+
     void GetTableInfo(const string &dataset_id,
                       const string &table_id,
                       ColumnList &res_columns,
@@ -106,6 +109,10 @@ private:
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
                         ColumnList &res_columns,
                         vector<unique_ptr<Constraint>> &res_constraints);
+
+	void MapInformationSchemaRows(const std::string &project_id,
+								const google::cloud::bigquery::v2::QueryResponse &query_response,
+								std::map<std::string, CreateTableInfo> &table_infos);
 
 private:
     BigqueryConfig config;

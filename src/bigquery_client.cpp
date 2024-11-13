@@ -411,12 +411,9 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
     ExecuteQuery(drop_query);
 }
 
-void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
-                                              map<string, CreateTableInfo> &table_infos) {
-    const auto info_schema_query =
-        BigquerySQL::ColumnsFromInformationSchemaQuery(dataset_ref.project_id, dataset_ref.dataset_id);
-
-    auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
+void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
+                                              const google::cloud::bigquery::v2::QueryResponse &query_response,
+                                              std::map<std::string, CreateTableInfo> &table_infos) {
     auto rows = query_response.rows();
     for (auto &row : rows) {
         const auto &fields = row.fields();
@@ -426,11 +423,12 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
             throw BinderException("Unexpected number of fields in the row.");
         }
 
-        string table_name = field_list[0].struct_value().fields().at("v").string_value();
-        string column_name = field_list[1].struct_value().fields().at("v").string_value();
-        string data_type = field_list[2].struct_value().fields().at("v").string_value();
-        string is_nullable = field_list[3].struct_value().fields().at("v").string_value();
-        string column_default = field_list[4].struct_value().fields().at("v").string_value();
+        string dataset_name = field_list[0].struct_value().fields().at("v").string_value();
+        string table_name = field_list[1].struct_value().fields().at("v").string_value();
+        string column_name = field_list[2].struct_value().fields().at("v").string_value();
+        string data_type = field_list[3].struct_value().fields().at("v").string_value();
+        string is_nullable = field_list[4].struct_value().fields().at("v").string_value();
+        string column_default = field_list[5].struct_value().fields().at("v").string_value();
 
         auto column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
         ColumnDefinition column(column_name, std::move(column_type));
@@ -444,7 +442,7 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
         }
 
         if (table_infos.find(table_name) == table_infos.end()) {
-            table_infos[table_name] = CreateTableInfo(dataset_ref.project_id, dataset_ref.dataset_id, table_name);
+            table_infos[table_name] = CreateTableInfo(project_id, dataset_name, table_name);
         }
 
         table_infos[table_name].columns.AddColumn(std::move(column));
@@ -453,6 +451,41 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
             auto field_index = table_infos[table_name].columns.GetColumnIndex(column_name);
             table_infos[table_name].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
+    }
+}
+
+void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
+                                              std::map<std::string, CreateTableInfo> &table_infos) {
+    const auto info_schema_query =
+        BigquerySQL::ColumnsFromInformationSchemaQuery(dataset_ref.project_id, {dataset_ref.dataset_id});
+    auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
+
+    MapInformationSchemaRows(dataset_ref.project_id, query_response, table_infos);
+}
+
+void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_refs,
+                                               map<string, CreateTableInfo> &table_infos) {
+    if (dataset_refs.empty()) {
+        throw BinderException("No datasets provided.");
+    }
+
+    auto project_id = dataset_refs[0].project_id;
+    std::map<string, vector<string>> datasets_by_location;
+    for (const auto &dataset_ref : dataset_refs) {
+        if (dataset_ref.project_id != project_id) {
+            throw BinderException("Project ID mismatch: %s != %s", dataset_ref.project_id, project_id);
+        }
+        datasets_by_location[dataset_ref.location].push_back(dataset_ref.dataset_id);
+    }
+
+    for (const auto &datasets_in_loc : datasets_by_location) {
+        const auto &location = datasets_in_loc.first;
+        const auto &datasets = datasets_in_loc.second;
+
+        const auto info_schema_query = BigquerySQL::ColumnsFromInformationSchemaQuery(project_id, datasets);
+        auto query_response = ExecuteQuery(info_schema_query, location);
+
+        MapInformationSchemaRows(project_id, query_response, table_infos);
     }
 }
 
@@ -521,7 +554,7 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
- 	auto schema = query_response.schema();
+    auto schema = query_response.schema();
     MapTableSchema(schema, res_columns, res_constraints);
 }
 
