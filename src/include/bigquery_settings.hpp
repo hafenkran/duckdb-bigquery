@@ -21,7 +21,12 @@ inline std::string DetectCAPath() {
         "/etc/ssl/certs/ca-certificates.crt",
         "/etc/pki/tls/certs/ca-bundle.crt",
         "/etc/ssl/ca-bundle.pem",
-        "/etc/ssl/cert.pem" //
+        "/etc/ssl/cert.pem",
+        "/usr/local/share/certs/ca-root-nss.crt",
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+        "/etc/openssl/certs/ca-certificates.crt",
+        "/var/lib/ca-certificates/ca-bundle.pem",
+        "/usr/local/etc/openssl/cert.pem" //
     };
     for (const char *path : ca_paths) {
         if (std::ifstream(path).good()) {
@@ -34,7 +39,10 @@ inline std::string DetectCAPath() {
     }
     const char *mac_ca_paths[] = {
         "/etc/ssl/cert.pem",
-        "/usr/local/etc/openssl/cert.pem" //
+        "/usr/local/etc/openssl/cert.pem",
+        "/usr/local/etc/openssl@1.1/cert.pem",
+        "/opt/homebrew/etc/openssl/cert.pem",
+        "/opt/homebrew/etc/openssl@1.1/cert.pem" //
     };
     for (const char *path : mac_ca_paths) {
         if (std::ifstream(path).good()) {
@@ -80,9 +88,11 @@ public:
         if (curl_ca_bundle_path.empty()) {
             curl_ca_bundle_path = DetectCAPath();
         }
+#if defined(__linux__) || defined(__unix__)
         if (curl_ca_bundle_path.empty()) {
             throw BinderException("Curl CA bundle path not found. Try setting the 'bq_curl_ca_bundle_path' option.");
         }
+#endif
         return curl_ca_bundle_path;
     }
 
