@@ -28,6 +28,19 @@ inline std::string DetectCAPath() {
             return std::string(path);
         }
     }
+#elif defined(__APPLE__)
+    if (const char *ca_path_env = std::getenv("SSL_CERT_FILE"); ca_path_env != nullptr) {
+        return std::string(ca_path_env);
+    }
+    const char *mac_ca_paths[] = {
+        "/etc/ssl/cert.pem",
+        "/usr/local/etc/openssl/cert.pem" //
+    };
+    for (const char *path : mac_ca_paths) {
+        if (std::ifstream(path).good()) {
+            return std::string(path);
+        }
+    }
 #endif
     return ca_path;
 }
@@ -68,8 +81,7 @@ public:
             curl_ca_bundle_path = DetectCAPath();
         }
         if (curl_ca_bundle_path.empty()) {
-            throw BinderException(
-                "Curl CA bundle path not found. Try setting the 'bq_curl_ca_bundle_path' option.");
+            throw BinderException("Curl CA bundle path not found. Try setting the 'bq_curl_ca_bundle_path' option.");
         }
         return curl_ca_bundle_path;
     }
