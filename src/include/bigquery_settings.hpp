@@ -22,10 +22,10 @@ inline std::string DetectCAPath() {
         "/etc/pki/tls/certs/ca-bundle.crt",
         "/etc/ssl/ca-bundle.pem",
         "/etc/ssl/cert.pem",
-        "/usr/local/share/certs/ca-root-nss.crt",
         "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
         "/etc/openssl/certs/ca-certificates.crt",
         "/var/lib/ca-certificates/ca-bundle.pem",
+        "/usr/local/share/certs/ca-root-nss.crt",
         "/usr/local/etc/openssl/cert.pem" //
     };
     for (const char *path : ca_paths) {
@@ -85,25 +85,19 @@ public:
 
     static string &CurlCaBundlePath() {
         static string curl_ca_bundle_path = "";
-        if (curl_ca_bundle_path.empty()) {
-            curl_ca_bundle_path = DetectCAPath();
-        }
-#if defined(__linux__) || defined(__unix__)
-        if (curl_ca_bundle_path.empty()) {
-            throw BinderException("Curl CA bundle path not found. Try setting the 'bq_curl_ca_bundle_path' option.");
-        }
-#endif
         return curl_ca_bundle_path;
     }
 
     static void SetCurlCaBundlePath(ClientContext &context, SetScope scope, Value &parameter) {
         string path = StringValue::Get(parameter);
-        if (path.empty()) {
-            throw InvalidInputException("Curl CA bundle path cannot be empty");
-        } else if (!std::ifstream(path).good()) {
+        if (!path.empty() && !std::ifstream(path).good()) {
             throw InvalidInputException("Curl CA bundle path is not readable");
         }
         CurlCaBundlePath() = path;
+    }
+
+    static void TryDetectCurlCaBundlePath() {
+        CurlCaBundlePath() = DetectCAPath();
     }
 
     static bool &ExperimentalFetchCatalogFromInformationSchema() {

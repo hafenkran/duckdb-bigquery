@@ -6,6 +6,7 @@
 
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_proto_writer.hpp"
+#include "bigquery_settings.hpp"
 #include "bigquery_utils.hpp"
 
 #include "duckdb.hpp"
@@ -107,8 +108,27 @@ private:
                         ColumnList &res_columns,
                         vector<unique_ptr<Constraint>> &res_constraints);
 
+    bool CheckSSLError(const google::cloud::Status &status) {
+        if (status.message().find("Problem with the SSL CA cert") != std::string::npos) {
+            if (!uses_custom_ca_bundle_path && !BigquerySettings::CurlCaBundlePath().empty()) {
+                uses_custom_ca_bundle_path = true;
+                BigquerySettings::TryDetectCurlCaBundlePath();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool CheckInvalidJsonError(const google::cloud::Status &status) {
+        if (status.message().find("Not a valid Json") != std::string::npos) {
+            return true;
+        }
+        return false;
+    }
+
 private:
     BigqueryConfig config;
+    bool uses_custom_ca_bundle_path = false;
 };
 
 } // namespace bigquery

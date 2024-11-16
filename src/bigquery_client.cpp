@@ -120,6 +120,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
 }
 
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
+    std::cout << "BigqueryClient::GetDatasets" << std::endl;
     auto request = google::cloud::bigquery::v2::ListDatasetsRequest();
     request.set_project_id(config.project_id);
 
@@ -131,11 +132,13 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatDataset> const &dataset : datasets) {
         if (!dataset.ok()) {
             // Special case for empty projects. The "empty" result object seems to be unparseable by the lib.
-            if (dataset.status().message() ==
-                "Permanent error, with a last message of Not a valid Json DatasetList object") {
+            if (CheckInvalidJsonError(dataset.status())) {
                 return result;
             }
-            return vector<BigqueryDatasetRef>();
+            if (CheckSSLError(dataset.status())) {
+                return GetDatasets();
+            }
+            throw BinderException(dataset.status().message());
         }
 
         google::cloud::bigquery::v2::ListFormatDataset dataset_val = dataset.value();
@@ -163,9 +166,11 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
     for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatTable> const &table : tables) {
         if (!table.ok()) {
             // Special case for empty datasets. The "empty" result object seems to be unparseable by the lib.
-            if (table.status().message() ==
-                "Permanent error, with a last message of Not a valid Json TableList object") {
+            if (CheckInvalidJsonError(table.status())) {
                 return table_names;
+            }
+            if (CheckSSLError(table.status())) {
+                return GetTables(dataset_id);
             }
             throw InternalException(table.status().message());
         }
@@ -192,6 +197,9 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
 
     auto response = client->GetDataset(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetDataset(dataset_id);
+        }
         throw InternalException(response.status().message());
     }
 
@@ -273,6 +281,9 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     int num_results = 0;
     for (const auto &job : response) {
         if (!job.ok()) {
+            if (CheckSSLError(job.status())) {
+                return ListJobs(params);
+            }
             throw BinderException(job.status().message());
         }
         auto job_val = job.value();
@@ -303,6 +314,9 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, co
 
     auto response = client.GetJob(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetJob(job_id, location);
+        }
         throw BinderException(response.status().message());
     }
 
@@ -321,6 +335,9 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
 
     auto response = client->GetTable(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetTable(dataset_id, table_id);
+        }
         throw InternalException(response.status().message());
     }
 
@@ -503,6 +520,9 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
 
     auto response = client->GetTable(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetTableInfo(dataset_id, table_id, res_columns, res_constraints);
+        }
         if (response.status().code() == google::cloud::StatusCode::kNotFound) {
             auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
             throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
@@ -521,7 +541,7 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
- 	auto schema = query_response.schema();
+    auto schema = query_response.schema();
     MapTableSchema(schema, res_columns, res_constraints);
 }
 
