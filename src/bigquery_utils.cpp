@@ -226,6 +226,8 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     if (repeated) {
         type = LogicalType::LIST(type);
     }
+
+
     return type;
 }
 
@@ -479,11 +481,11 @@ google::protobuf::FieldDescriptorProto::Type BigqueryUtils::LogicalTypeToProtoTy
 LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
     LogicalType result;
 
-    if (type == "STRING") {
+    if (type == "STRING" || type.rfind("STRING(", 0) == 0) {
         result = LogicalType::VARCHAR;
     } else if (type == "JSON") {
         result = LogicalType::VARCHAR;
-    } else if (type == "BYTES") {
+    } else if (type == "BYTES" || type.rfind("BYTES(", 0) == 0) {
         result = LogicalType::BLOB;
     } else if (type == "INTEGER" || type == "INT64") {
         result = LogicalType::BIGINT;
@@ -499,10 +501,10 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
         result = LogicalType::TIMESTAMP;
     } else if (type == "INTERVAL") {
         result = LogicalType::INTERVAL;
-    } else if (type == "NUMERIC") {
+    } else if (type == "NUMERIC" || type.rfind("NUMERIC(", 0) == 0) {
         // Fallback to default NUMERIC precision and scale
         result = LogicalType::DECIMAL(29, 9);
-    } else if (type == "BIGNUMERIC") {
+    } else if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
         // Fallback to default BIGNUMERIC precision and scale
         result = LogicalType::DECIMAL(38, 9);
     } else if (type == "GEOGRAPHY") {
