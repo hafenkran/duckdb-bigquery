@@ -9,11 +9,18 @@
 #include "duckdb.hpp"
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
+#include "duckdb/parser/expression/comparison_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/parameter_expression.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
+#include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/parser.hpp"
+#include "duckdb/parser/transformer.hpp"
+
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
@@ -453,6 +460,21 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
             auto field_index = table_infos[table_name].columns.GetColumnIndex(column_name);
             table_infos[table_name].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
+
+        if (data_type.find("STRING(") != std::string::npos) {
+            std::regex string_length_regex(R"(STRING\((\d+)\))");
+            std::smatch match;
+
+            if (std::regex_match(data_type, match, string_length_regex)) {
+                int max_length = std::stoi(match[1]);
+
+                auto constraint_str = "length(" + column_name + ") <= " + std::to_string(max_length);
+                auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+
+                auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
+                table_infos[table_name].constraints.push_back(std::move(check_constraint));
+            }
+        }
     }
 }
 
@@ -484,6 +506,19 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
             auto field_name = field.name();
             auto field_index = res_columns.GetColumnIndex(field_name);
             res_constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+        }
+
+        std::regex string_length_regex(R"(STRING\((\d+)\))");
+        std::smatch match;
+
+        if (std::regex_match(field.type(), match, string_length_regex)) {
+			int max_length = std::stoi(match[1]);
+
+			auto constraint_str = "length(" + field.name() + ") <= " + std::to_string(max_length);
+			auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+
+			auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
+            res_constraints.push_back(std::move(check_constraint));
         }
     }
 }
@@ -521,7 +556,7 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
- 	auto schema = query_response.schema();
+    auto schema = query_response.schema();
     MapTableSchema(schema, res_columns, res_constraints);
 }
 
