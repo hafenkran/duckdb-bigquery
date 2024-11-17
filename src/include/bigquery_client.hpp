@@ -110,7 +110,7 @@ private:
 
     bool CheckSSLError(const google::cloud::Status &status) {
         if (status.message().find("Problem with the SSL CA cert") != std::string::npos) {
-            if (!uses_custom_ca_bundle_path && !BigquerySettings::CurlCaBundlePath().empty()) {
+            if (!uses_custom_ca_bundle_path && BigquerySettings::CurlCaBundlePath().empty()) {
                 uses_custom_ca_bundle_path = true;
                 BigquerySettings::TryDetectCurlCaBundlePath();
                 return true;

@@ -9,18 +9,12 @@
 #include "duckdb.hpp"
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
-#include "duckdb/parser/expression/comparison_expression.hpp"
-#include "duckdb/parser/expression/constant_expression.hpp"
-#include "duckdb/parser/expression/function_expression.hpp"
-#include "duckdb/parser/expression/parameter_expression.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/parser.hpp"
-#include "duckdb/parser/transformer.hpp"
-
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
@@ -127,7 +121,6 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
 }
 
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
-    std::cout << "BigqueryClient::GetDatasets" << std::endl;
     auto request = google::cloud::bigquery::v2::ListDatasetsRequest();
     request.set_project_id(config.project_id);
 
