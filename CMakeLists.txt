@@ -72,8 +72,8 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 target_link_libraries(
     ${EXTENSION_NAME}
-    # OpenSSL::SSL
-    # OpenSSL::Crypto
+    OpenSSL::SSL
+    OpenSSL::Crypto
     CURL::libcurl
     google-cloud-cpp::common
     google-cloud-cpp::rest_internal
@@ -89,8 +89,8 @@ target_link_libraries(
 
 target_link_libraries(
     ${LOADABLE_EXTENSION_NAME}
-    # OpenSSL::SSL
-    # OpenSSL::Crypto
+    OpenSSL::SSL
+    OpenSSL::Crypto
     CURL::libcurl
     google-cloud-cpp::common
     google-cloud-cpp::rest_internal
