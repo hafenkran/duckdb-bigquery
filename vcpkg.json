@@ -16,13 +16,17 @@
       "name": "curl",
       "platform": "!windows",
       "features": [
-        "ssl"
+        "openssl",
+        "http2",
+        "c-ares"
       ]
     },
     {
       "name": "curl",
       "platform": "windows",
-      "features": [ "schannel" ]
+      "features": [
+        "schannel"
+      ]
     }
   ],
   "builtin-baseline": "e01906b2ba7e645a76ee021a19de616edc98d29f",
