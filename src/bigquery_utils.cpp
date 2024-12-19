@@ -290,19 +290,20 @@ LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::D
         return LogicalType::DECIMAL(precision, scale);
     }
     case arrow::Type::DECIMAL256: {
-        auto decimal_type = std::static_pointer_cast<arrow::Decimal256Type>(arrow_type);
-        int32_t precision = decimal_type->precision();
-        int32_t scale = decimal_type->scale();
+        // auto decimal_type = std::static_pointer_cast<arrow::Decimal256Type>(arrow_type);
+        // int32_t precision = decimal_type->precision();
+        // int32_t scale = decimal_type->scale();
 
-        // DuckDB only supports up to DECIMAL(38,scale). So we need to convert DECIMAL256 to
-        // DECIMAL(38,scale) if precision is greater than 38.
-        if (precision > 38) {
-            precision = 38;
-            // Adjust the scale if necessary, ensuring it remains within practical limits.
-            // This adjustment strategy for the scale is simplistic.
-            scale = std::min(scale, precision - 1);
-        }
-        return LogicalType::DECIMAL(precision, scale);
+        // // DuckDB only supports up to DECIMAL(38,scale). So we need to convert DECIMAL256 to
+        // // DECIMAL(38,scale) if precision is greater than 38.
+        // if (precision > 38) {
+        //     precision = 38;
+        //     // Adjust the scale if necessary, ensuring it remains within practical limits.
+        //     // This adjustment strategy for the scale is simplistic.
+        //     scale = std::min(scale, precision - 1);
+        // }
+        // return LogicalType::DECIMAL(precision, scale);
+        throw InternalException("BIGNUMERIC precision of 76 exceeds the maximum supported precision of 38 in DuckDB.");
     }
     case arrow::Type::LIST: {
         auto list_type = std::static_pointer_cast<arrow::ListType>(arrow_type);
