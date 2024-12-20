@@ -44,10 +44,44 @@ statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
 
 statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.numeric_table (
+	numeric_column DECIMAL(38, 9),
+	numeric_list DECIMAL(38, 9)[]
+);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.numeric_table
+VALUES (
+    CAST(12345.678901234 AS DECIMAL(38, 9)),
+    [
+        CAST(123.45 AS DECIMAL(38, 9)),
+        CAST(6789.01 AS DECIMAL(38, 9)),
+        CAST(234.56 AS DECIMAL(38, 9))
+    ]
+);
+
+query II
+SELECT * FROM bq.${BQ_TEST_DATASET}.numeric_table;
+----
+12345.678901234	[123.450000000, 6789.010000000, 234.560000000]
+
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+
+statement ok
 CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.numeric_table` AS
 SELECT
     CAST(12345.678901234 AS NUMERIC) AS numeric_column,
     [CAST(123.45 AS NUMERIC), CAST(6789.01 AS NUMERIC), CAST(234.56 AS NUMERIC)] AS numeric_list');
+
+statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table` AS
+SELECT
+    CAST(12345.678901234 AS BIGNUMERIC) AS numeric_column');
 
 statement ok
 CALL bigquery_clear_cache();
@@ -57,5 +91,13 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.numeric_table;
 ----
 12345.678901234	[123.450000000, 6789.010000000, 234.560000000]
 
+query I
+SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_DATASET}' AND table_name='bignumeric_table';
+----
+
+
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
