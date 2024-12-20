@@ -179,8 +179,12 @@ public:
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
 	static LogicalType BigquerySQLToLogicalType(const string &type);
+	static LogicalType BigqueryNumericSQLToLogicalType(const string &type);
 
     static string IntervalToBigqueryIntervalString(const interval_t &interval);
+
+	static string DecimalToString(const hugeint_t &value, const LogicalType &type);
+	static pair<int, int> ParseNumericPrecisionAndScale(const string &type);
 
 private:
 	static vector<string> SplitStructFields(const string &struct_field_str);
