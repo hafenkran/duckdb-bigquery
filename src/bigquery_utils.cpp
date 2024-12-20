@@ -20,15 +20,10 @@
 namespace duckdb {
 namespace bigquery {
 
-constexpr int NUMERIC_PRECISION_DEFAULT = 29;
-constexpr int NUMERIC_SCALE_DEFAULT = 9;
-constexpr int NUMERIC_PRECISION_MAX = 38;
-constexpr int NUMERIC_SCALE_MAX = 9;
-
-constexpr int BIGNUMERIC_PRECISION_DEFAULT = 38;
-constexpr int BIGNUMERIC_SCALE_DEFAULT = 9;
-constexpr int BIGNUMERIC_PRECISION_MAX = 76;
-constexpr int BIGNUMERIC_SCALE_MAX = 9;
+constexpr int BQ_NUMERIC_PRECISION_DEFAULT = 38;
+constexpr int BQ_NUMERIC_SCALE_DEFAULT = 9;
+constexpr int BQ_BIGNUMERIC_PRECISION_DEFAULT = 76;
+constexpr int BQ_BIGNUMERIC_SCALE_DEFAULT = 38;
 
 constexpr int DUCKDB_DECIMAL_PRECISION_MAX = 38;
 constexpr int DUCKDB_DECIMAL_SCALE_MAX = 38;
@@ -535,7 +530,7 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
 
         result = LogicalType::STRUCT(std::move(struct_types));
     } else {
-        throw InternalException("Unknown BigQuery Type: " + type);
+        throw BinderException("Unknown BigQuery Type: " + type);
     }
 
     return result;
@@ -546,6 +541,12 @@ LogicalType BigqueryUtils::BigqueryNumericSQLToLogicalType(const string &type) {
     auto precision = precision_and_scale.first;
     auto scale = precision_and_scale.second;
 
+    if (precision == BQ_BIGNUMERIC_PRECISION_DEFAULT) {
+        throw BinderException("DuckDB only supports precision between 1 and " + //
+                              std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
+                              ". BIGNUMERIC fields have a default precision of " +
+                              std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".");
+    }
     if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
         throw BinderException("DuckDB only supports precision between 1 and " +
                               std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + ". Invalid precision '" +
@@ -719,13 +720,13 @@ pair<int, int> BigqueryUtils::ParseNumericPrecisionAndScale(const string &type) 
         return {precision, scale};
     } else if (std::regex_match(type, match, precision_only_pattern)) {
         int precision = std::stoi(match[2]);
-        int scale = (match[1].str() == "NUMERIC") ? NUMERIC_SCALE_DEFAULT : BIGNUMERIC_SCALE_DEFAULT;
+        int scale = (match[1].str() == "NUMERIC") ? BQ_NUMERIC_SCALE_DEFAULT : BQ_BIGNUMERIC_SCALE_DEFAULT;
         return {precision, scale};
     } else if (std::regex_match(type, match, base_pattern)) {
         if (type == "NUMERIC") {
-            return {NUMERIC_PRECISION_DEFAULT, NUMERIC_SCALE_DEFAULT};
+            return {BQ_NUMERIC_PRECISION_DEFAULT, BQ_NUMERIC_SCALE_DEFAULT};
         } else {
-            return {BIGNUMERIC_PRECISION_DEFAULT, BIGNUMERIC_SCALE_DEFAULT};
+            return {BQ_BIGNUMERIC_PRECISION_DEFAULT, BQ_BIGNUMERIC_SCALE_DEFAULT};
         }
     }
 
