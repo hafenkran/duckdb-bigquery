@@ -126,8 +126,8 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
 
         switch (column_type.id()) {
         case LogicalTypeId::LIST: {
-			const auto& column_type = column.GetType();
-            const auto& child_type = ListType::GetChildType(column_type);
+            const auto &column_type = column.GetType();
+            const auto &child_type = ListType::GetChildType(column_type);
 
             if (child_type.id() == LogicalTypeId::STRUCT) {
                 auto &child_types = StructType::GetChildTypes(child_type);
@@ -147,8 +147,8 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
             break;
         }
         case LogicalTypeId::ARRAY: {
-			const auto& column_type = column.GetType();
-            const auto& child_type = ArrayType::GetChildType(column_type);
+            const auto &column_type = column.GetType();
+            const auto &child_type = ArrayType::GetChildType(column_type);
 
             if (child_type.id() == LogicalTypeId::STRUCT) {
                 auto &child_types = StructType::GetChildTypes(child_type);
@@ -374,7 +374,7 @@ void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,
     auto &child_types = StructType::GetChildTypes(col_type);
     auto &child_values = StructValue::GetChildren(val);
 
-	google::protobuf::Message *nested_msg = nullptr;
+    google::protobuf::Message *nested_msg = nullptr;
     if (field->is_repeated()) {
         nested_msg = reflection->AddMessage(msg, field);
     } else {
@@ -457,10 +457,11 @@ void BigqueryProtoWriter::WriteRepeatedField(google::protobuf::Message *msg,
         break;
     }
     case LogicalTypeId::DECIMAL: {
-        //! TODO: set precision and scale
         for (const auto &item : children) {
             if (!item.IsNull()) {
-                reflection->AddDouble(msg, field, item.GetValueUnsafe<double>());
+                const auto &value = item.GetValueUnsafe<hugeint_t>();
+                string decimal_str = BigqueryUtils::DecimalToString(value, child_type);
+                reflection->AddString(msg, field, decimal_str);
             }
         }
         break;
@@ -630,14 +631,13 @@ void BigqueryProtoWriter::WriteRepeatedField(google::protobuf::Message *msg,
         break;
     }
     case LogicalTypeId::STRUCT: {
-		for (auto &item : children) {
+        for (auto &item : children) {
             if (!item.IsNull()) {
                 WriteMessageField(msg, reflection, field, child_type, item);
             }
         }
         break;
     }
-    //! TODO: Struct / Map
     default:
         throw BinderException("Unsupported list type: " + child_type.ToString());
     }
@@ -680,9 +680,9 @@ void BigqueryProtoWriter::WriteField(google::protobuf::Message *msg,
         break;
     }
     case LogicalTypeId::DECIMAL: {
-        //! TODO: set precision and scale
-        auto value = val.GetValueUnsafe<double>();
-        reflection->SetDouble(msg, field, value);
+        auto value = val.GetValueUnsafe<hugeint_t>();
+        std::string decimal_value = BigqueryUtils::DecimalToString(value, col_type);
+        reflection->SetString(msg, field, decimal_value);
         break;
     }
     case LogicalTypeId::DOUBLE: {

@@ -435,6 +435,8 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
 
     auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
     auto rows = query_response.rows();
+
+    vector<string> tables_with_errornous_columns;
     for (auto &row : rows) {
         const auto &fields = row.fields();
         const auto &field_list = fields.at("f").list_value().values();
@@ -449,7 +451,16 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
         string is_nullable = field_list[3].struct_value().fields().at("v").string_value();
         string column_default = field_list[4].struct_value().fields().at("v").string_value();
 
-        auto column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
+        LogicalType column_type;
+        try {
+            column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
+        } catch (std::exception &e) {
+            std::cout << "Failed to map column type for table '" + table_name + "'. Error: " + e.what()
+                      << " - skipping table" << std::endl;
+            tables_with_errornous_columns.push_back(table_name);
+            continue;
+        }
+
         ColumnDefinition column(column_name, std::move(column_type));
 
         if (!column_default.empty() && column_default != "\"\"" && column_default != "NULL") {
@@ -486,6 +497,11 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
             }
         }
     }
+
+	// remove tables with errornous columns
+	for (const auto &table_name : tables_with_errornous_columns) {
+		table_infos.erase(table_name);
+	}
 }
 
 void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
@@ -522,12 +538,12 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
         std::smatch match;
 
         if (std::regex_match(field.type(), match, string_length_regex)) {
-			int max_length = std::stoi(match[1]);
+            int max_length = std::stoi(match[1]);
 
-			auto constraint_str = "length(" + field.name() + ") <= " + std::to_string(max_length);
-			auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+            auto constraint_str = "length(" + field.name() + ") <= " + std::to_string(max_length);
+            auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
 
-			auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
+            auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
             res_constraints.push_back(std::move(check_constraint));
         }
     }

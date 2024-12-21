@@ -21,19 +21,19 @@ struct BigqueryUtils;
 
 struct BigqueryConfig {
 public:
-	BigqueryConfig() = default;
+    BigqueryConfig() = default;
 
-	explicit BigqueryConfig(const string &project_id) : project_id(project_id) {
-		if (project_id.empty()) {
-			throw std::invalid_argument("Project ID is required and cannot be empty.");
-		}
-	}
+    explicit BigqueryConfig(const string &project_id) : project_id(project_id) {
+        if (project_id.empty()) {
+            throw std::invalid_argument("Project ID is required and cannot be empty.");
+        }
+    }
 
     BigqueryConfig(const BigqueryConfig &other) = default;
     BigqueryConfig &operator=(const BigqueryConfig &other) = default;
     ~BigqueryConfig() = default;
 
-    BigqueryConfig& SetProjectId(const std::string &project_id) {
+    BigqueryConfig &SetProjectId(const std::string &project_id) {
         if (project_id.empty()) {
             throw std::invalid_argument("Project ID is required and cannot be empty.");
         }
@@ -41,22 +41,22 @@ public:
         return *this;
     }
 
-    BigqueryConfig& SetDatasetId(const std::string &dataset_id) {
+    BigqueryConfig &SetDatasetId(const std::string &dataset_id) {
         this->dataset_id = dataset_id;
         return *this;
     }
 
-    BigqueryConfig& SetBillingProjectId(const std::string &billing_project_id) {
+    BigqueryConfig &SetBillingProjectId(const std::string &billing_project_id) {
         this->billing_project_id = billing_project_id;
         return *this;
     }
 
-    BigqueryConfig& SetApiEndpoint(const std::string &api_endpoint) {
+    BigqueryConfig &SetApiEndpoint(const std::string &api_endpoint) {
         this->api_endpoint = api_endpoint;
         return *this;
     }
 
-    BigqueryConfig& SetGrpcEndpoint(const std::string &grpc_endpoint) {
+    BigqueryConfig &SetGrpcEndpoint(const std::string &grpc_endpoint) {
         this->grpc_endpoint = grpc_endpoint;
         return *this;
     }
@@ -102,10 +102,10 @@ public:
 };
 
 struct BigqueryDatasetRef {
-	BigqueryDatasetRef() = default;
-	BigqueryDatasetRef(const string &project_id, const string &dataset_id)
-		: project_id(project_id), dataset_id(dataset_id) {
-	}
+    BigqueryDatasetRef() = default;
+    BigqueryDatasetRef(const string &project_id, const string &dataset_id)
+        : project_id(project_id), dataset_id(dataset_id) {
+    }
 
     const bool has_dataset_id() const {
         return dataset_id != "";
@@ -175,16 +175,21 @@ public:
 
     static LogicalType CastToBigqueryType(const LogicalType &type);
     static LogicalType FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
+    static LogicalType FieldSchemaNumericToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
     static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
-	static LogicalType BigquerySQLToLogicalType(const string &type);
+    static LogicalType BigquerySQLToLogicalType(const string &type);
+    static LogicalType BigqueryNumericSQLToLogicalType(const string &type);
 
     static string IntervalToBigqueryIntervalString(const interval_t &interval);
 
+    static string DecimalToString(const hugeint_t &value, const LogicalType &type);
+    static pair<int, int> ParseNumericPrecisionAndScale(const string &type);
+
 private:
-	static vector<string> SplitStructFields(const string &struct_field_str);
-	static string StructRemoveWhitespaces(const string &struct_str);
+    static vector<string> SplitStructFields(const string &struct_field_str);
+    static string StructRemoveWhitespaces(const string &struct_str);
 };
 
 

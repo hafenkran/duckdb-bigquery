@@ -340,6 +340,65 @@ void BigqueryArrowReader::ReadSimpleColumn(const std::shared_ptr<arrow::Array> &
         }
         break;
     }
+    case arrow::Type::DECIMAL128: {
+        auto decimal_array = std::static_pointer_cast<arrow::Decimal128Array>(column);
+        auto decimal_type = std::static_pointer_cast<arrow::Decimal128Type>(column->type());
+
+        auto scale = decimal_type->scale();
+        auto precision = decimal_type->precision();
+
+        for (int64_t row = 0; row < decimal_array->length(); ++row) {
+            if (!decimal_array->IsNull(row)) {
+                auto value_ptr = decimal_array->Value(row);
+                arrow::Decimal128 decimal_value(value_ptr);
+
+                hugeint_t hugeint_value;
+                hugeint_value.upper = static_cast<int64_t>(decimal_value.high_bits());
+                hugeint_value.lower = static_cast<uint64_t>(decimal_value.low_bits());
+
+                out_vec.SetValue(row, Value::DECIMAL(hugeint_value, precision, scale));
+            } else {
+                out_vec.SetValue(row, Value());
+            }
+        }
+        break;
+    }
+    case arrow::Type::DECIMAL256: {
+        auto decimal_array = std::static_pointer_cast<arrow::Decimal256Array>(column);
+        auto decimal_type = std::static_pointer_cast<arrow::Decimal256Type>(column->type());
+
+        auto scale = decimal_type->scale();
+        auto precision = decimal_type->precision();
+
+        if (precision > 38) {
+            throw std::runtime_error("BIGDECIMAL precision of " + std::to_string(precision) +
+                                     " exceeds the maximum supported precision of 38 in DuckDB.");
+        }
+
+        for (int64_t row = 0; row < decimal_array->length(); ++row) {
+            if (!decimal_array->IsNull(row)) {
+                const uint8_t *value_ptr = decimal_array->Value(row);
+
+                uint64_t parts[4] = {0};
+                for (int i = 0; i < 4; i++) {
+                    parts[i] = *reinterpret_cast<const uint64_t *>(value_ptr + i * sizeof(uint64_t));
+                }
+
+                hugeint_t hugeint_value;
+                hugeint_value.lower = parts[0];                       // lower 64 Bits
+                hugeint_value.upper = static_cast<int64_t>(parts[1]); // next 64 Bits
+
+                if (parts[2] != 0 || parts[3] != 0) {
+                    throw std::runtime_error(
+                        "BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
+                }
+
+                out_vec.SetValue(row, Value::DECIMAL(hugeint_value, precision, scale));
+            } else {
+                out_vec.SetValue(row, Value());
+            }
+        }
+    }
     default: {
         throw InternalException("Unsupported Arrow type: " + column->type()->name());
     }
@@ -469,21 +528,44 @@ void BigqueryArrowReader::ReadListColumn(const std::shared_ptr<arrow::ListArray>
             }
             break;
         }
+        case arrow::Type::DECIMAL128: {
+            auto decimal_array = std::static_pointer_cast<arrow::Decimal128Array>(values);
+            auto decimal_type = std::static_pointer_cast<arrow::Decimal128Type>(values->type());
+
+            auto scale = decimal_type->scale();
+            auto precision = decimal_type->precision();
+
+            for (int32_t i = start_offset; i < end_offset; ++i) {
+                if (!decimal_array->IsNull(i)) {
+                    auto value_ptr = decimal_array->Value(i);
+                    arrow::Decimal128 decimal_value(value_ptr);
+
+                    hugeint_t hugeint_value;
+                    hugeint_value.upper = static_cast<int64_t>(decimal_value.high_bits());
+                    hugeint_value.lower = static_cast<uint64_t>(decimal_value.low_bits());
+
+                    list_values.push_back(Value::DECIMAL(hugeint_value, precision, scale));
+                } else {
+                    list_values.push_back(Value());
+                }
+            }
+            break;
+        }
         case arrow::Type::STRUCT: {
-			auto struct_array = std::static_pointer_cast<arrow::StructArray>(values);
+            auto struct_array = std::static_pointer_cast<arrow::StructArray>(values);
 
-			auto struct_type = BigqueryUtils::ArrowTypeToLogicalType(struct_array->type());
-			duckdb::Vector struct_vector(struct_type);
+            auto struct_type = BigqueryUtils::ArrowTypeToLogicalType(struct_array->type());
+            duckdb::Vector struct_vector(struct_type);
 
-			ReadStructColumn(struct_array, struct_vector);
-			for (int32_t i = start_offset; i < end_offset; ++i) {
-				if (!struct_array->IsNull(i)) {
-					list_values.push_back(struct_vector.GetValue(i));
-				} else {
-					list_values.push_back(Value());
-				}
-			}
-			break;
+            ReadStructColumn(struct_array, struct_vector);
+            for (int32_t i = start_offset; i < end_offset; ++i) {
+                if (!struct_array->IsNull(i)) {
+                    list_values.push_back(struct_vector.GetValue(i));
+                } else {
+                    list_values.push_back(Value());
+                }
+            }
+            break;
         }
         default:
             throw InternalException("Unsupported Arrow type: " + values->type()->name());
