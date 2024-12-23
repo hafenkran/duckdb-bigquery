@@ -52,8 +52,8 @@ public:
         return bq_dataset_ref;
     }
 
-    vector<CreateTableInfo> &GetTableInfos() {
-        return table_infos;
+    std::optional<vector<CreateTableInfo>> &GetTableInfos() {
+        return prefetched_table_infos;
     }
 
 private:
@@ -62,7 +62,7 @@ private:
 private:
     BigqueryTableSet tables;
     BigqueryDatasetRef bq_dataset_ref;
-    vector<CreateTableInfo> table_infos;
+    std::optional<vector<CreateTableInfo>> prefetched_table_infos;
 };
 
 

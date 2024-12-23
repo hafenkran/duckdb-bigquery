@@ -73,9 +73,20 @@ void BigqueryTableSet::LoadEntries(ClientContext &context) {
     auto bqclient = transaction.GetBigqueryClient();
 
     if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
-        for (auto &table_info : schema.GetTableInfos()) {
-            auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info);
-            CreateEntry(std::move(table_entry));
+        auto &prefetched_table_infos = schema.GetTableInfos();
+        if (prefetched_table_infos.has_value()) {
+            for (auto &table_info : prefetched_table_infos.value()) {
+                auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info);
+                CreateEntry(std::move(table_entry));
+            }
+        } else {
+            std::map<string, CreateTableInfo> table_infos;
+            bqclient->GetTableInfosFromDataset(schema.GetBigqueryDatasetRef(), table_infos);
+
+            for (auto &table_info : table_infos) {
+                auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info.second);
+                CreateEntry(std::move(table_entry));
+            }
         }
     } else {
         unique_ptr<BigqueryTableInfo> info;
@@ -92,6 +103,11 @@ void BigqueryTableSet::LoadEntries(ClientContext &context) {
             CreateEntry(std::move(table_entry));
         }
     }
+}
+
+void BigqueryTableSet::ClearEntries() {
+    schema.GetTableInfos().reset();
+    BigqueryCatalogSet::ClearEntries();
 }
 
 } // namespace bigquery

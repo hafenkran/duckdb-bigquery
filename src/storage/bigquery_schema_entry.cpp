@@ -20,7 +20,7 @@ BigquerySchemaEntry::BigquerySchemaEntry(Catalog &catalog,
                                          BigqueryDatasetRef &bq_dataset_ref,
                                          vector<CreateTableInfo> &table_infos)
     : BigquerySchemaEntry(catalog, info, bq_dataset_ref) {
-    this->table_infos = std::move(table_infos);
+    this->prefetched_table_infos = std::make_optional(std::move(table_infos));
 }
 
 void BigquerySchemaEntry::TryDropEntry(ClientContext &context, CatalogType type, const string &name) {
