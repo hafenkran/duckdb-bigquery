@@ -20,7 +20,7 @@ statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 query I
-SELECT table_name FROM information_schema.tables WHERE table_name = 'exec_table';
+SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'exec_table';
 ----
 exec_table
 

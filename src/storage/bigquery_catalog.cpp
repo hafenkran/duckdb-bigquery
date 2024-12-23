@@ -44,10 +44,19 @@ void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
             auto bq_transaction = dynamic_cast<BigqueryTransaction *>(GetCatalogTransaction(context).transaction.get());
             auto bq_client = bq_transaction->GetBigqueryClient();
             auto dataset_ref = bq_client->GetDataset(config.dataset_id);
+
+			vector<CreateTableInfo> table_infos_vec;
+			std::map<string, CreateTableInfo> table_infos;
+			bq_client->GetTableInfosFromDataset(dataset_ref, table_infos);
+
+			for (auto &table_info : table_infos) {
+				table_infos_vec.push_back(std::move(table_info.second));
+			}
+
             CreateSchemaInfo info;
             info.catalog = config.project_id;
             info.schema = config.dataset_id;
-            default_dataset = make_uniq<BigquerySchemaEntry>(*this, info, dataset_ref);
+            default_dataset = make_uniq<BigquerySchemaEntry>(*this, info, dataset_ref, table_infos_vec);
         }
         callback(*default_dataset);
         return;
