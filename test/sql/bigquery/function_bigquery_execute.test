@@ -22,7 +22,7 @@ ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigqu
 query I
 SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'exec_table';
 ----
-exec_table
+1
 
 statement ok
 CALL bigquery_execute('bq', 'DROP TABLE ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table;')
