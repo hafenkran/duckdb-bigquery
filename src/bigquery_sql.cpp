@@ -425,36 +425,41 @@ string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector
     return str.str();
 }
 
-string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, const string &dataset_id) {
-	const auto table_string =
+string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets) {
+    std::stringstream query;
+    bool is_first = true;
+    for (const auto &dataset : datasets) {
+        if (dataset.empty()) {
+            throw BinderException("Dataset name cannot be empty");
+        }
+        if (is_first) {
+            is_first = false;
+        } else {
+            query << " UNION ALL ";
+        }
+
+        auto dataset_query = ColumnsFromInformationSchemaQuery(project_id, dataset, false);
+        query << dataset_query;
+    }
+    query << "ORDER BY table_name, ordinal_position";
+    return query.str();
+}
+
+string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id,
+                                                      const string &dataset_id,
+                                                      const bool include_order_by) {
+    const auto table_string =
         BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.COLUMNS");
 
     std::stringstream query;
     query << "SELECT table_schema, table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
     query << "FROM `" << table_string << "` ";
-    query << "WHERE is_system_defined = 'NO' ";  // Adjusted the comparison
+    query << "WHERE is_system_defined = 'NO' "; // Adjusted the comparison
     query << "AND ordinal_position IS NOT NULL ";
-    query << "ORDER BY table_name, ordinal_position";
+    if (include_order_by) {
+        query << "ORDER BY table_name, ordinal_position";
+    }
     return query.str();
-}
-
-string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets) {
-	std::stringstream query;
-	bool is_first = true;
-	for (const auto &dataset : datasets) {
-		if (dataset.empty()) {
-			throw BinderException("Dataset name cannot be empty");
-		}
-		if (is_first) {
-			is_first = false;
-		} else {
-			query << " UNION ALL ";
-		}
-
-		auto dataset_query = ColumnsFromInformationSchemaQuery(project_id, dataset);
-		query << dataset_query;
-	}
-	return query.str();
 }
 
 } // namespace bigquery
