@@ -8,7 +8,6 @@ struct CreateSchemaInfo;
 
 namespace bigquery {
 
-
 class BigquerySchemaSet : public BigqueryCatalogSet {
 public:
     explicit BigquerySchemaSet(Catalog &catalog);

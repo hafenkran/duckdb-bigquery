@@ -73,11 +73,8 @@ void BigqueryTableSet::LoadEntries(ClientContext &context) {
     auto bqclient = transaction.GetBigqueryClient();
 
     if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
-        map<string, CreateTableInfo> table_infos;
-        bqclient->GetTableInfosFromDataset(schema.GetBigqueryDatasetRef(), table_infos);
-
-        for (auto &table_info : table_infos) {
-            auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info.second);
+        for (auto &table_info : schema.GetTableInfos()) {
+            auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info);
             CreateEntry(std::move(table_entry));
         }
     } else {

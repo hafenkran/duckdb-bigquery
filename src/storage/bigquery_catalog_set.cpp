@@ -41,6 +41,7 @@ void BigqueryCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 
 void BigqueryCatalogSet::Scan(ClientContext &context, const std::function<void(CatalogEntry &)> &callback) {
     TryLoadEntries(context);
+
     lock_guard<mutex> lock(entry_lock);
     for (auto &entry : entries) {
         callback(*entry.second);

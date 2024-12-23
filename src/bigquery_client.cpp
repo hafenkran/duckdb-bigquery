@@ -430,6 +430,8 @@ void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
         string is_nullable = field_list[4].struct_value().fields().at("v").string_value();
         string column_default = field_list[5].struct_value().fields().at("v").string_value();
 
+        auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, dataset_name, table_name);
+
         auto column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
         ColumnDefinition column(column_name, std::move(column_type));
 
@@ -441,21 +443,21 @@ void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
             column.SetDefaultValue(std::move(expressions[0]));
         }
 
-        if (table_infos.find(table_name) == table_infos.end()) {
-            table_infos[table_name] = CreateTableInfo(project_id, dataset_name, table_name);
+        if (table_infos.find(table_string) == table_infos.end()) {
+            table_infos[table_string] = CreateTableInfo(project_id, dataset_name, table_name);
         }
 
-        table_infos[table_name].columns.AddColumn(std::move(column));
+        table_infos[table_string].columns.AddColumn(std::move(column));
 
         if (is_nullable == "NO") {
-            auto field_index = table_infos[table_name].columns.GetColumnIndex(column_name);
-            table_infos[table_name].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+            auto field_index = table_infos[table_string].columns.GetColumnIndex(column_name);
+            table_infos[table_string].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
     }
 }
 
 void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
-                                              std::map<std::string, CreateTableInfo> &table_infos) {
+                                              std::map<string, CreateTableInfo> &table_infos) {
     const auto info_schema_query =
         BigquerySQL::ColumnsFromInformationSchemaQuery(dataset_ref.project_id, {dataset_ref.dataset_id});
     auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
@@ -464,7 +466,7 @@ void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_
 }
 
 void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_refs,
-                                               map<string, CreateTableInfo> &table_infos) {
+                                               std::map<string, CreateTableInfo> &table_infos) {
     if (dataset_refs.empty()) {
         throw BinderException("No datasets provided.");
     }

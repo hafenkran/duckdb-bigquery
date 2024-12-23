@@ -15,6 +15,14 @@ BigquerySchemaEntry::BigquerySchemaEntry(Catalog &catalog, CreateSchemaInfo &inf
     : SchemaCatalogEntry(catalog, info), tables(*this), bq_dataset_ref(std::move(bq_dataset_ref)) {
 }
 
+BigquerySchemaEntry::BigquerySchemaEntry(Catalog &catalog,
+                                         CreateSchemaInfo &info,
+                                         BigqueryDatasetRef &bq_dataset_ref,
+                                         vector<CreateTableInfo> &table_infos)
+    : BigquerySchemaEntry(catalog, info, bq_dataset_ref) {
+    this->table_infos = std::move(table_infos);
+}
+
 void BigquerySchemaEntry::TryDropEntry(ClientContext &context, CatalogType type, const string &name) {
 }
 
@@ -105,8 +113,8 @@ void BigquerySchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info)
     if (info.type != AlterType::ALTER_TABLE) {
         throw BinderException("Only altering tables is supported.");
     }
-	auto &alter = info.Cast<AlterTableInfo>();
-	tables.AlterTable(transaction.GetContext(), alter);
+    auto &alter = info.Cast<AlterTableInfo>();
+    tables.AlterTable(transaction.GetContext(), alter);
 }
 
 void BigquerySchemaEntry::Scan(ClientContext &context,

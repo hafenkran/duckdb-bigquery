@@ -14,6 +14,10 @@ class BigQueryTransacation;
 class BigquerySchemaEntry : public SchemaCatalogEntry {
 public:
     BigquerySchemaEntry(Catalog &catalog, CreateSchemaInfo &info, BigqueryDatasetRef &bq_dataset_ref);
+    BigquerySchemaEntry(Catalog &catalog,
+                        CreateSchemaInfo &info,
+                        BigqueryDatasetRef &bq_dataset_ref,
+                        vector<CreateTableInfo> &table_infos);
 
 public:
     optional_ptr<CatalogEntry> CreateTable(CatalogTransaction transaction, BoundCreateTableInfo &info) override;
@@ -44,9 +48,13 @@ public:
         return bq_dataset_ref.location;
     }
 
-	BigqueryDatasetRef &GetBigqueryDatasetRef() {
-		return bq_dataset_ref;
-	}
+    BigqueryDatasetRef &GetBigqueryDatasetRef() {
+        return bq_dataset_ref;
+    }
+
+    vector<CreateTableInfo> &GetTableInfos() {
+        return table_infos;
+    }
 
 private:
     void TryDropEntry(ClientContext &context, CatalogType type, const string &name);
@@ -54,6 +62,7 @@ private:
 private:
     BigqueryTableSet tables;
     BigqueryDatasetRef bq_dataset_ref;
+    vector<CreateTableInfo> table_infos;
 };
 
 
