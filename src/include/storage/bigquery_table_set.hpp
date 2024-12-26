@@ -21,10 +21,11 @@ public:
                                                       BigquerySchemaEntry &schema,
                                                       const string &table_name);
 
-	void AlterTable(ClientContext &context, AlterTableInfo &info);
+    void AlterTable(ClientContext &context, AlterTableInfo &info);
 
 protected:
     void LoadEntries(ClientContext &context) override;
+    void ClearEntries() override;
 };
 
 } // namespace bigquery

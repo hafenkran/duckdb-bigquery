@@ -3,9 +3,9 @@
 #include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 
 #include "bigquery_client.hpp"
+#include "bigquery_settings.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
-#include "bigquery_settings.hpp"
 #include "storage/bigquery_schema_entry.hpp"
 #include "storage/bigquery_table_set.hpp"
 #include "storage/bigquery_transaction.hpp"
@@ -19,14 +19,14 @@ BigqueryTableSet::BigqueryTableSet(BigquerySchemaEntry &schema) : BigqueryInSche
 
 optional_ptr<CatalogEntry> BigqueryTableSet::CreateTable(ClientContext &context, BoundCreateTableInfo &info) {
     auto &transaction = BigqueryTransaction::Get(context, catalog);
-	auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
+    auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
     auto bqclient = transaction.GetBigqueryClient();
-	auto &create_table_info = info.Base();
+    auto &create_table_info = info.Base();
 
-	BigqueryTableRef table_ref;
-	table_ref.project_id = bq_catalog.GetProjectID();
-	table_ref.dataset_id = schema.name;
-	table_ref.table_id = create_table_info.table;
+    BigqueryTableRef table_ref;
+    table_ref.project_id = bq_catalog.GetProjectID();
+    table_ref.dataset_id = schema.name;
+    table_ref.table_id = create_table_info.table;
 
     auto query = BigquerySQL::CreateTableInfoToSQL(bq_catalog.GetProjectID(), create_table_info);
     bqclient->ExecuteQuery(query);
@@ -59,42 +59,55 @@ unique_ptr<BigqueryTableInfo> BigqueryTableSet::GetTableInfo(ClientContext &cont
 }
 
 void BigqueryTableSet::AlterTable(ClientContext &context, AlterTableInfo &info) {
-	auto &transaction = BigqueryTransaction::Get(context, catalog);
-	auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
-	auto bqclient = transaction.GetBigqueryClient();
+    auto &transaction = BigqueryTransaction::Get(context, catalog);
+    auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
+    auto bqclient = transaction.GetBigqueryClient();
 
-	auto query = BigquerySQL::AlterTableInfoToSQL(bq_catalog.GetProjectID(), info);
-	bqclient->ExecuteQuery(query);
-	ClearEntries();
+    auto query = BigquerySQL::AlterTableInfoToSQL(bq_catalog.GetProjectID(), info);
+    bqclient->ExecuteQuery(query);
+    ClearEntries();
 }
 
 void BigqueryTableSet::LoadEntries(ClientContext &context) {
     auto &transaction = BigqueryTransaction::Get(context, catalog);
     auto bqclient = transaction.GetBigqueryClient();
 
-	if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
-		map<string, CreateTableInfo> table_infos;
-		bqclient->GetTableInfosFromDataset(schema.GetBigqueryDatasetRef(), table_infos);
+    if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
+        auto &prefetched_table_infos = schema.GetTableInfos();
+        if (prefetched_table_infos.has_value()) {
+            for (auto &table_info : prefetched_table_infos.value()) {
+                auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info);
+                CreateEntry(std::move(table_entry));
+            }
+        } else {
+            std::map<string, CreateTableInfo> table_infos;
+            bqclient->GetTableInfosFromDataset(schema.GetBigqueryDatasetRef(), table_infos);
 
-		for (auto &table_info : table_infos) {
-			auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info.second);
-			CreateEntry(std::move(table_entry));
-		}
-	} else {
-		unique_ptr<BigqueryTableInfo> info;
-		vector<unique_ptr<BigqueryTableInfo>> table_infos;
+            for (auto &table_info : table_infos) {
+                auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info.second);
+                CreateEntry(std::move(table_entry));
+            }
+        }
+    } else {
+        unique_ptr<BigqueryTableInfo> info;
+        vector<unique_ptr<BigqueryTableInfo>> table_infos;
 
-		vector<BigqueryTableRef> table_refs = bqclient->GetTables(schema.name);
-		for (auto &table_ref : table_refs) {
-			info = make_uniq<BigqueryTableInfo>(table_ref);
-			bqclient->GetTableInfo(table_ref.dataset_id,
-								table_ref.table_id,
-								info->create_info->columns,
-								info->create_info->constraints);
-			auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, *info);
-			CreateEntry(std::move(table_entry));
-		}
-	}
+        vector<BigqueryTableRef> table_refs = bqclient->GetTables(schema.name);
+        for (auto &table_ref : table_refs) {
+            info = make_uniq<BigqueryTableInfo>(table_ref);
+            bqclient->GetTableInfo(table_ref.dataset_id,
+                                   table_ref.table_id,
+                                   info->create_info->columns,
+                                   info->create_info->constraints);
+            auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, *info);
+            CreateEntry(std::move(table_entry));
+        }
+    }
+}
+
+void BigqueryTableSet::ClearEntries() {
+    schema.GetTableInfos().reset();
+    BigqueryCatalogSet::ClearEntries();
 }
 
 } // namespace bigquery
