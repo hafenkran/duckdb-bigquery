@@ -13,6 +13,7 @@
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
+#include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/parser.hpp"
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
@@ -131,11 +132,13 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatDataset> const &dataset : datasets) {
         if (!dataset.ok()) {
             // Special case for empty projects. The "empty" result object seems to be unparseable by the lib.
-            if (dataset.status().message() ==
-                "Permanent error, with a last message of Not a valid Json DatasetList object") {
+            if (CheckInvalidJsonError(dataset.status())) {
                 return result;
             }
-            return vector<BigqueryDatasetRef>();
+            if (CheckSSLError(dataset.status())) {
+                return GetDatasets();
+            }
+            throw BinderException(dataset.status().message());
         }
 
         google::cloud::bigquery::v2::ListFormatDataset dataset_val = dataset.value();
@@ -163,9 +166,11 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
     for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatTable> const &table : tables) {
         if (!table.ok()) {
             // Special case for empty datasets. The "empty" result object seems to be unparseable by the lib.
-            if (table.status().message() ==
-                "Permanent error, with a last message of Not a valid Json TableList object") {
+            if (CheckInvalidJsonError(table.status())) {
                 return table_names;
+            }
+            if (CheckSSLError(table.status())) {
+                return GetTables(dataset_id);
             }
             throw InternalException(table.status().message());
         }
@@ -192,6 +197,9 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
 
     auto response = client->GetDataset(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetDataset(dataset_id);
+        }
         throw InternalException(response.status().message());
     }
 
@@ -273,6 +281,9 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     int num_results = 0;
     for (const auto &job : response) {
         if (!job.ok()) {
+            if (CheckSSLError(job.status())) {
+                return ListJobs(params);
+            }
             throw BinderException(job.status().message());
         }
         auto job_val = job.value();
@@ -303,6 +314,9 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, co
 
     auto response = client.GetJob(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetJob(job_id, location);
+        }
         throw BinderException(response.status().message());
     }
 
@@ -321,6 +335,9 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
 
     auto response = client->GetTable(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetTable(dataset_id, table_id);
+        }
         throw InternalException(response.status().message());
     }
 
@@ -415,6 +432,8 @@ void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
                                               const google::cloud::bigquery::v2::QueryResponse &query_response,
                                               std::map<std::string, CreateTableInfo> &table_infos) {
     auto rows = query_response.rows();
+
+    vector<string> tables_with_errornous_columns;
     for (auto &row : rows) {
         const auto &fields = row.fields();
         const auto &field_list = fields.at("f").list_value().values();
@@ -432,7 +451,16 @@ void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
 
         auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, dataset_name, table_name);
 
-        auto column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
+        LogicalType column_type;
+        try {
+            column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
+        } catch (std::exception &e) {
+            std::cout << "Failed to map column type for table '" + table_name + "'. Error: " + e.what()
+                      << " - skipping table" << std::endl;
+            tables_with_errornous_columns.push_back(table_name);
+            continue;
+        }
+
         ColumnDefinition column(column_name, std::move(column_type));
 
         if (!column_default.empty() && column_default != "\"\"" && column_default != "NULL") {
@@ -453,7 +481,27 @@ void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
             auto field_index = table_infos[table_string].columns.GetColumnIndex(column_name);
             table_infos[table_string].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
+
+        if (data_type.find("STRING(") != std::string::npos) {
+            std::regex string_length_regex(R"(STRING\((\d+)\))");
+            std::smatch match;
+
+            if (std::regex_match(data_type, match, string_length_regex)) {
+                int max_length = std::stoi(match[1]);
+
+                auto constraint_str = "length(" + column_name + ") <= " + std::to_string(max_length);
+                auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+
+                auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
+                table_infos[table_name].constraints.push_back(std::move(check_constraint));
+            }
+        }
     }
+
+	// remove tables with errornous columns
+	for (const auto &table_name : tables_with_errornous_columns) {
+		table_infos.erase(table_name);
+	}
 }
 
 void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
@@ -520,6 +568,19 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
             auto field_index = res_columns.GetColumnIndex(field_name);
             res_constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
+
+        std::regex string_length_regex(R"(STRING\((\d+)\))");
+        std::smatch match;
+
+        if (std::regex_match(field.type(), match, string_length_regex)) {
+            int max_length = std::stoi(match[1]);
+
+            auto constraint_str = "length(" + field.name() + ") <= " + std::to_string(max_length);
+            auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+
+            auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
+            res_constraints.push_back(std::move(check_constraint));
+        }
     }
 }
 
@@ -538,6 +599,9 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
 
     auto response = client->GetTable(request);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetTableInfo(dataset_id, table_id, res_columns, res_constraints);
+        }
         if (response.status().code() == google::cloud::StatusCode::kNotFound) {
             auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
             throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);

@@ -20,6 +20,15 @@
 namespace duckdb {
 namespace bigquery {
 
+constexpr int BQ_NUMERIC_PRECISION_DEFAULT = 38;
+constexpr int BQ_NUMERIC_SCALE_DEFAULT = 9;
+constexpr int BQ_BIGNUMERIC_PRECISION_DEFAULT = 76;
+constexpr int BQ_BIGNUMERIC_SCALE_DEFAULT = 38;
+
+constexpr int DUCKDB_DECIMAL_PRECISION_MAX = 38;
+constexpr int DUCKDB_DECIMAL_SCALE_MAX = 38;
+
+
 BigqueryConfig BigqueryConfig::FromDSN(const std::string &connection_string) {
     std::string billing_project_id, project_id, dataset_id, api_endpoint, grpc_endpoint;
 
@@ -183,35 +192,9 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     } else if (bigquery_type == "INTERVAL") {
         type = LogicalType::INTERVAL;
     } else if (bigquery_type == "NUMERIC") {
-        auto precision = (field.precision() == 0) ? 29 : field.precision();
-        auto scale = (field.scale() == 0) ? 9 : field.scale();
-
-        if (precision < 1 || precision > 29) {
-            throw std::invalid_argument("Precision must be between 1 and 29 for NUMERIC fields.");
-        }
-        if (scale < 0 || scale > 9) {
-            throw std::invalid_argument("Scale must be between 0 and 9 for NUMERIC fields.");
-        }
-        if (precision - scale < 1 || precision - scale > 29) {
-            throw std::invalid_argument(
-                "Difference between precision and scale must be at least 1 and at most 29 for NUMERIC fields.");
-        }
-        type = LogicalType::DECIMAL(precision, scale);
+        type = BigqueryUtils::FieldSchemaNumericToLogicalType(field);
     } else if (bigquery_type == "BIGNUMERIC") {
-        auto precision = (field.precision() == 0) ? 38 : field.precision();
-        auto scale = (field.scale() == 0) ? 9 : field.scale();
-
-        if (precision < 1 || precision > 38) {
-            throw std::invalid_argument("Precision must be between 1 and 38 for BIGNUMERIC fields.");
-        }
-        if (scale < 0 || scale > 38) {
-            throw std::invalid_argument("Scale must be between 0 and 38 for BIGNUMERIC fields.");
-        }
-        if (precision - scale < 1 || precision - scale > 38) {
-            throw std::invalid_argument(
-                "Difference between precision and scale must be at least 1 and at most 38 for BIGNUMERIC fields.");
-        }
-        type = LogicalType::DECIMAL(precision, scale);
+        type = BigqueryUtils::FieldSchemaNumericToLogicalType(field);
     } else if (bigquery_type == "GEOGRAPHY") {
         type = LogicalType::VARCHAR;
     } else if (bigquery_type == "STRUCT" || bigquery_type == "RECORD") {
@@ -226,7 +209,29 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     if (repeated) {
         type = LogicalType::LIST(type);
     }
+
+
     return type;
+}
+
+LogicalType BigqueryUtils::FieldSchemaNumericToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field) {
+    auto precision = field.precision();
+    auto scale = field.scale();
+
+    if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
+        throw BinderException("DuckDB's decimal precision must be between 1 and " +
+                              std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + " for NUMERIC/BIGNUMERIC fields.");
+    }
+    if (scale < 0 || scale > DUCKDB_DECIMAL_SCALE_MAX) {
+        throw BinderException("DuckDB's decimal scale must be between 0 and " +
+                              std::to_string(DUCKDB_DECIMAL_SCALE_MAX) + " for NUMERIC/BIGNUMERIC fields.");
+    }
+    if (precision - scale < 1 || precision - scale > DUCKDB_DECIMAL_PRECISION_MAX) {
+        throw BinderException("Difference between precision and scale must be at least 1 and at most " +
+                              std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + " for NUMERIC/BIGNUMERIC fields.");
+    }
+
+    return LogicalType::DECIMAL(precision, scale);
 }
 
 std::string MapArrowTypeToBigQuery(const std::shared_ptr<arrow::DataType> &arrow_type) {
@@ -292,13 +297,10 @@ LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::D
         int32_t precision = decimal_type->precision();
         int32_t scale = decimal_type->scale();
 
-        // DuckDB only supports up to DECIMAL(38,scale). So we need to convert DECIMAL256 to
-        // DECIMAL(38,scale) if precision is greater than 38.
-        if (precision > 38) {
-            precision = 38;
-            // Adjust the scale if necessary, ensuring it remains within practical limits.
-            // This adjustment strategy for the scale is simplistic.
-            scale = std::min(scale, precision - 1);
+        if (precision > DUCKDB_DECIMAL_PRECISION_MAX) {
+            throw BinderException("Precision exceeds DuckDB's maximum of " +
+                                  std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
+                                  ". Provided: " + std::to_string(precision) + ".");
         }
         return LogicalType::DECIMAL(precision, scale);
     }
@@ -443,7 +445,7 @@ google::protobuf::FieldDescriptorProto::Type BigqueryUtils::LogicalTypeToProtoTy
     case LogicalTypeId::DOUBLE:
         return google::protobuf::FieldDescriptorProto::TYPE_DOUBLE;
     case LogicalTypeId::DECIMAL:
-        return google::protobuf::FieldDescriptorProto::TYPE_INT64;
+        return google::protobuf::FieldDescriptorProto::TYPE_STRING;
     case LogicalTypeId::DATE:
         return google::protobuf::FieldDescriptorProto::TYPE_INT32;
     case LogicalTypeId::TIME:
@@ -479,11 +481,11 @@ google::protobuf::FieldDescriptorProto::Type BigqueryUtils::LogicalTypeToProtoTy
 LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
     LogicalType result;
 
-    if (type == "STRING") {
+    if (type == "STRING" || type.rfind("STRING(", 0) == 0) {
         result = LogicalType::VARCHAR;
     } else if (type == "JSON") {
         result = LogicalType::VARCHAR;
-    } else if (type == "BYTES") {
+    } else if (type == "BYTES" || type.rfind("BYTES(", 0) == 0) {
         result = LogicalType::BLOB;
     } else if (type == "INTEGER" || type == "INT64") {
         result = LogicalType::BIGINT;
@@ -499,12 +501,10 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
         result = LogicalType::TIMESTAMP;
     } else if (type == "INTERVAL") {
         result = LogicalType::INTERVAL;
-    } else if (type == "NUMERIC") {
-        // Fallback to default NUMERIC precision and scale
-        result = LogicalType::DECIMAL(29, 9);
-    } else if (type == "BIGNUMERIC") {
-        // Fallback to default BIGNUMERIC precision and scale
-        result = LogicalType::DECIMAL(38, 9);
+    } else if (type == "NUMERIC" || type.rfind("NUMERIC(", 0) == 0) {
+        result = BigqueryUtils::BigqueryNumericSQLToLogicalType(type);
+    } else if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
+        result = BigqueryUtils::BigqueryNumericSQLToLogicalType(type);
     } else if (type == "GEOGRAPHY") {
         result = LogicalType::VARCHAR;
     } else if (type.find("ARRAY<") == 0) {
@@ -530,10 +530,35 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
 
         result = LogicalType::STRUCT(std::move(struct_types));
     } else {
-        throw InternalException("Unknown BigQuery Type: " + type);
+        throw BinderException("Unknown BigQuery Type: " + type);
     }
 
     return result;
+}
+
+LogicalType BigqueryUtils::BigqueryNumericSQLToLogicalType(const string &type) {
+    auto precision_and_scale = BigqueryUtils::ParseNumericPrecisionAndScale(type);
+    auto precision = precision_and_scale.first;
+    auto scale = precision_and_scale.second;
+
+    if (precision == BQ_BIGNUMERIC_PRECISION_DEFAULT) {
+        throw BinderException("DuckDB only supports precision between 1 and " + //
+                              std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
+                              ". BIGNUMERIC fields have a default precision of " +
+                              std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".");
+    }
+    if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
+        throw BinderException("DuckDB only supports precision between 1 and " +
+                              std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + ". Invalid precision '" +
+                              std::to_string(precision) + "' specified for type '" + type + "'.");
+    }
+    if (scale < 0 || scale > DUCKDB_DECIMAL_SCALE_MAX) {
+        throw BinderException("DuckDB only supports scale between 0 and " +                    //
+                              std::to_string(DUCKDB_DECIMAL_SCALE_MAX) + ". Invalid scale '" + //
+                              std::to_string(scale) + "' specified for type '" + type + "'.");
+    }
+
+    return LogicalType::DECIMAL(precision_and_scale.first, precision_and_scale.second);
 }
 
 string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
@@ -666,7 +691,49 @@ string BigqueryUtils::StructRemoveWhitespaces(const string &struct_str) {
     return result;
 }
 
-uint64_t Iso8601ToMillis(const std::string &iso8601) {
+string BigqueryUtils::DecimalToString(const hugeint_t &value, const LogicalType &type) {
+    if (type.id() != LogicalTypeId::DECIMAL) {
+        throw BinderException("Type is not a DECIMAL type.");
+    }
+
+    string decimal_str = Hugeint::ToString(value);
+    auto scale = DecimalType::GetScale(type);
+    if (scale > 0) {
+        if (decimal_str.length() <= static_cast<size_t>(scale)) {
+            // Add leading zeros if necessary
+            decimal_str = string(scale - decimal_str.length(), '0') + decimal_str;
+        }
+        decimal_str.insert(decimal_str.length() - scale, ".");
+    }
+    return decimal_str;
+}
+
+pair<int, int> BigqueryUtils::ParseNumericPrecisionAndScale(const string &type) {
+    std::regex base_pattern(R"(NUMERIC|BIGNUMERIC)");
+    std::regex precision_only_pattern(R"((NUMERIC|BIGNUMERIC)\((\d+)\))");
+    std::regex full_numeric_pattern(R"((NUMERIC|BIGNUMERIC)\((\d+),\s*(\d+)\))");
+
+    std::smatch match;
+    if (std::regex_match(type, match, full_numeric_pattern)) {
+        int precision = std::stoi(match[2]);
+        int scale = std::stoi(match[3]);
+        return {precision, scale};
+    } else if (std::regex_match(type, match, precision_only_pattern)) {
+        int precision = std::stoi(match[2]);
+        int scale = (match[1].str() == "NUMERIC") ? BQ_NUMERIC_SCALE_DEFAULT : BQ_BIGNUMERIC_SCALE_DEFAULT;
+        return {precision, scale};
+    } else if (std::regex_match(type, match, base_pattern)) {
+        if (type == "NUMERIC") {
+            return {BQ_NUMERIC_PRECISION_DEFAULT, BQ_NUMERIC_SCALE_DEFAULT};
+        } else {
+            return {BQ_BIGNUMERIC_PRECISION_DEFAULT, BQ_BIGNUMERIC_SCALE_DEFAULT};
+        }
+    }
+
+    throw std::invalid_argument("Invalid NUMERIC/BIGNUMERIC type format: " + type);
+}
+
+uint64_t Iso8601ToMillis(const string &iso8601) {
     auto timestamp = Timestamp::FromString(iso8601);
     auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
     return timestamp_ms;
