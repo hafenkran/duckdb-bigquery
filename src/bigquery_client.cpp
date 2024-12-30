@@ -454,10 +454,12 @@ void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
         LogicalType column_type;
         try {
             column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
-        } catch (std::exception &e) {
-            std::cout << "Failed to map column type for table '" + table_name + "'. Error: " + e.what()
-                      << " - skipping table" << std::endl;
-            tables_with_errornous_columns.push_back(table_name);
+        } catch (BinderException &ex) {
+			ErrorData error(ex);
+			std::ostringstream oss;
+			oss << "Failed to map column type for table " << table_string
+				<< ". Error: " << error.RawMessage() << " - skipping table.";
+			std::cout << oss.str() << std::endl;
             continue;
         }
 
