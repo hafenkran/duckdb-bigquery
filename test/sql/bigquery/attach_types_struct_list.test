@@ -43,3 +43,6 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.struct_list_table;
 ----
 item1	[{'name': John, 'age': 25, 'is_employee': true, 'salary': 55000.5, 'start_date': 2020-01-15}, {'name': Jane, 'age': 28, 'is_employee': false, 'salary': 0.0, 'start_date': 2021-05-23}, {'name': Doe, 'age': 22, 'is_employee': true, 'salary': 45000.0, 'start_date': 2019-11-01}]
 item2	[{'name': Alice, 'age': 30, 'is_employee': true, 'salary': 60000.0, 'start_date': 2018-07-09}, {'name': Bob, 'age': 32, 'is_employee': true, 'salary': 62000.75, 'start_date': 2017-10-12}]
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.struct_list_table;
