@@ -44,4 +44,4 @@ SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.multiple_row_groups;
 10000
 
 statement ok
-DROP TABLE IF EXISTS bqq.${BQ_TEST_DATASET}.multiple_row_groups;
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.multiple_row_groups;
