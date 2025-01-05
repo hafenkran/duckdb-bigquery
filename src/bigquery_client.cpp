@@ -104,7 +104,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     }
     auto ca_path = BigquerySettings::CurlCaBundlePath();
     if (!ca_path.empty()) {
-        options.set<google::cloud::v2_27::CARootsFilePathOption>(ca_path);
+        options.set<google::cloud::v2_33::CARootsFilePathOption>(ca_path);
     }
     return options;
 }
@@ -276,7 +276,7 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     }
 
     vector<google::cloud::bigquery::v2::ListFormatJob> result;
-    google::cloud::v2_27::StreamRange<google::cloud::bigquery::v2::ListFormatJob> response = client.ListJobs(request);
+    google::cloud::v2_33::StreamRange<google::cloud::bigquery::v2::ListFormatJob> response = client.ListJobs(request);
 
     int num_results = 0;
     for (const auto &job : response) {
