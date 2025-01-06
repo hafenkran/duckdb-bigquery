@@ -113,7 +113,7 @@ void BigqueryArrowReader::MapTableInfo(ColumnList &res_columns, vector<unique_pt
     }
 }
 
-google::cloud::v2_27::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> BigqueryArrowReader::ReadRows(
+google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> BigqueryArrowReader::ReadRows(
     const string &stream_name,
     int row_offset) {
     return read_client->ReadRows(stream_name, row_offset);
