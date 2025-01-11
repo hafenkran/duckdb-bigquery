@@ -333,10 +333,12 @@ static void BigqueryScan(ClientContext &context, TableFunctionInput &data, DataC
     gstate.position += output.size();
 }
 
-static string BigqueryToString(const FunctionData *bind_data_p) {
-    D_ASSERT(bind_data_p);
-    auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
-    return bind_data.TableString();
+static InsertionOrderPreservingMap<string> BigqueryToString(TableFunctionToStringInput &input) {
+    D_ASSERT(input.bind_data);
+    InsertionOrderPreservingMap<string> result;
+    auto &bind_data = input.bind_data->Cast<BigqueryBindData>();
+    result["Table"] = bind_data.TableString();
+    return result;
 }
 
 unique_ptr<NodeStatistics> BigqueryScanCardinality(ClientContext &context, const FunctionData *bind_data_p) {
