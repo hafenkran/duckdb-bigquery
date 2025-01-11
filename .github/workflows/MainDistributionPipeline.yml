@@ -17,8 +17,8 @@ jobs:
         uses: ./.github/workflows/_extension_distribution.yml
         secrets: inherit
         with:
-            duckdb_version: v1.1.3
-            ci_tools_version: v1.1.3
+            duckdb_version: main
+            ci_tools_version: main
             extension_name: bigquery
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;osx_amd64;linux_arm64"
             vcpkg_commit: "e01906b2ba7e645a76ee021a19de616edc98d29f"
@@ -30,7 +30,7 @@ jobs:
         uses: ./.github/workflows/_extension_deploy.yml
         secrets: inherit
         with:
-            duckdb_version: v1.1.3
+            duckdb_version: main
             # ci_tools_version: v1.1.3
             extension_name: bigquery
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;osx_amd64;linux_arm64"
