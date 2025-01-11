@@ -44,7 +44,7 @@ std::string BigquerySQL::ExtractFilters(PhysicalOperator &child) {
                 table_filters_exp += " AND ";
             }
             auto column_id = table_scan.column_ids[filter.first];
-            auto &column_name = table_scan.names[column_id];
+            auto &column_name = table_scan.names[column_id.GetPrimaryIndex()];
             auto filter_exp = TransformFilter(column_name, *filter.second);
             table_filters_exp += filter_exp;
         }

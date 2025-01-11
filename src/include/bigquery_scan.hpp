@@ -26,7 +26,7 @@ struct BigqueryBindData : public TableFunctionData {
     }
 
     string TableString() const {
-        return BigqueryUtils::FormatTableString(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
+        return BigqueryUtils::FormatTableStringSimple(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
     }
 
 	bool RequiresQueryExec() const {
