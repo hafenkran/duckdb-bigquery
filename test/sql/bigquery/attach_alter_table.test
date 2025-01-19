@@ -4,6 +4,8 @@
 
 require bigquery
 
+require-env SKIP_THIS_TEST
+
 require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
