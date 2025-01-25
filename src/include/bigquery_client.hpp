@@ -77,6 +77,9 @@ public:
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query,
                                                             const string &location = "",
                                                             const bool &dry_run = false);
+    google::cloud::bigquery::v2::GetQueryResultsResponse GetQueryResults(
+        const google::cloud::bigquery::v2::JobReference &job_ref,
+        const string &page_token = "");
 
     shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,
                                                       const string &table_id,
@@ -104,6 +107,11 @@ private:
         const string &location = "",
         const bool &dry_run = false);
 
+    google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> GetQueryResultsInternal(
+        google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+        const google::cloud::bigquery::v2::JobReference &job_ref,
+        const string &page_token = "");
+
     google::cloud::Options OptionsAPI();
     google::cloud::Options OptionsGRPC();
 
@@ -111,10 +119,10 @@ private:
                         ColumnList &res_columns,
                         vector<unique_ptr<Constraint>> &res_constraints);
 
-	  void MapInformationSchemaRows(const std::string &project_id,
-								                  const google::cloud::bigquery::v2::QueryResponse &query_response,
-								                  std::map<std::string, CreateTableInfo> &table_infos);
-  
+    void MapInformationSchemaRows(const std::string &project_id,
+                                  const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
+                                  std::map<std::string, CreateTableInfo> &table_infos);
+
     bool CheckSSLError(const google::cloud::Status &status) {
         if (status.message().find("Problem with the SSL CA cert") != std::string::npos) {
             if (!uses_custom_ca_bundle_path && BigquerySettings::CurlCaBundlePath().empty()) {
