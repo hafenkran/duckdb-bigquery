@@ -428,91 +428,11 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
     ExecuteQuery(drop_query);
 }
 
-void BigqueryClient::MapInformationSchemaRows(const std::string &project_id,
-                                              const google::cloud::bigquery::v2::QueryResponse &query_response,
-                                              std::map<std::string, CreateTableInfo> &table_infos) {
-    auto rows = query_response.rows();
-
-    vector<string> tables_with_errornous_columns;
-    for (auto &row : rows) {
-        const auto &fields = row.fields();
-        const auto &field_list = fields.at("f").list_value().values();
-
-        if (field_list.size() < 6) {
-            throw BinderException("Unexpected number of fields in the row.");
-        }
-
-        string dataset_name = field_list[0].struct_value().fields().at("v").string_value();
-        string table_name = field_list[1].struct_value().fields().at("v").string_value();
-        string column_name = field_list[2].struct_value().fields().at("v").string_value();
-        string data_type = field_list[3].struct_value().fields().at("v").string_value();
-        string is_nullable = field_list[4].struct_value().fields().at("v").string_value();
-        string column_default = field_list[5].struct_value().fields().at("v").string_value();
-
-        auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, dataset_name, table_name);
-
-        LogicalType column_type;
-        try {
-            column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
-        } catch (BinderException &ex) {
-			ErrorData error(ex);
-			std::ostringstream oss;
-			oss << "Failed to map column type for table " << table_string
-				<< ". Error: " << error.RawMessage() << " - skipping table.";
-			std::cout << oss.str() << std::endl;
-            continue;
-        }
-
-        ColumnDefinition column(column_name, std::move(column_type));
-
-        if (!column_default.empty() && column_default != "\"\"" && column_default != "NULL") {
-            auto expressions = Parser::ParseExpressionList(column_default);
-            if (expressions.empty()) {
-                throw InternalException("Expression list is empty");
-            }
-            column.SetDefaultValue(std::move(expressions[0]));
-        }
-
-        if (table_infos.find(table_string) == table_infos.end()) {
-            table_infos[table_string] = CreateTableInfo(project_id, dataset_name, table_name);
-        }
-
-        table_infos[table_string].columns.AddColumn(std::move(column));
-
-        if (is_nullable == "NO") {
-            auto field_index = table_infos[table_string].columns.GetColumnIndex(column_name);
-            table_infos[table_string].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
-        }
-
-        if (data_type.find("STRING(") != std::string::npos) {
-            std::regex string_length_regex(R"(STRING\((\d+)\))");
-            std::smatch match;
-
-            if (std::regex_match(data_type, match, string_length_regex)) {
-                int max_length = std::stoi(match[1]);
-
-                auto constraint_str = "length(" + column_name + ") <= " + std::to_string(max_length);
-                auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
-
-                auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
-                table_infos[table_name].constraints.push_back(std::move(check_constraint));
-            }
-        }
-    }
-
-	// remove tables with errornous columns
-	for (const auto &table_name : tables_with_errornous_columns) {
-		table_infos.erase(table_name);
-	}
-}
 
 void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
                                               std::map<string, CreateTableInfo> &table_infos) {
-    const auto info_schema_query =
-        BigquerySQL::ColumnsFromInformationSchemaQuery(dataset_ref.project_id, {dataset_ref.dataset_id});
-    auto query_response = ExecuteQuery(info_schema_query, dataset_ref.location);
-
-    MapInformationSchemaRows(dataset_ref.project_id, query_response, table_infos);
+    auto dataset_refs = vector<BigqueryDatasetRef>{dataset_ref};
+    GetTableInfosFromDatasets(dataset_refs, table_infos);
 }
 
 void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_refs,
@@ -530,14 +450,28 @@ void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> 
         datasets_by_location[dataset_ref.location].push_back(dataset_ref.dataset_id);
     }
 
+    auto job_client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
     for (const auto &datasets_in_loc : datasets_by_location) {
         const auto &location = datasets_in_loc.first;
         const auto &datasets = datasets_in_loc.second;
 
         const auto info_schema_query = BigquerySQL::ColumnsFromInformationSchemaQuery(project_id, datasets);
-        auto query_response = ExecuteQuery(info_schema_query, location);
 
-        MapInformationSchemaRows(project_id, query_response, table_infos);
+        auto query_response = ExecuteQuery(info_schema_query, location);
+        google::protobuf::RepeatedPtrField<::google::protobuf::Struct> all_rows = query_response.rows();
+
+        string page_token = query_response.page_token();
+        auto job_ref = query_response.job_reference();
+        while (!page_token.empty()) {
+            auto next_page_response = GetQueryResults(job_ref, page_token);
+            const auto &next_rows = next_page_response.rows();
+            all_rows.MergeFrom(next_rows);
+            page_token = next_page_response.page_token();
+        }
+
+        MapInformationSchemaRows(project_id, all_rows, table_infos);
     }
 }
 
@@ -684,7 +618,6 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
     return make_shared_ptr<BigqueryProtoWriter>(entry, options);
 }
 
-
 google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query,
                                                                         const string &location,
                                                                         const bool &dry_run) {
@@ -714,6 +647,19 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
             }
         }
         throw BinderException("Max retries exceeded.");
+    }
+    return *response;
+}
+
+google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryResults(
+    const google::cloud::bigquery::v2::JobReference &job_ref,
+    const string &page_token) {
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto response = GetQueryResultsInternal(client, job_ref, page_token);
+    if (!response) {
+        throw BinderException("GetQueryResults failed: " + response.status().message());
     }
     return *response;
 }
@@ -766,7 +712,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     *query_request.mutable_request_id() = GenerateJobId();
     *query_request.mutable_default_dataset() = dataset_ref;
     query_request.mutable_use_legacy_sql()->set_value(false);
-    // query_request.mutable_max_results()->set_value(0);
+    // query_request.mutable_max_results()->set_value(3);
     query_request.set_dry_run(dry_run);
 
     // query_request.mutable_set_preserve_nulls()->set_value(true);
@@ -781,11 +727,114 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     return job_client.Query(request);
 }
 
+google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> BigqueryClient::GetQueryResultsInternal(
+    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+    const google::cloud::bigquery::v2::JobReference &job_ref,
+    const string &page_token) {
+
+    auto get_results_request = google::cloud::bigquery::v2::GetQueryResultsRequest();
+    get_results_request.set_project_id(job_ref.project_id());
+    get_results_request.set_job_id(job_ref.job_id());
+    // get_results_request.mutable_max_results()->set_value(3);
+
+    if (job_ref.has_location()) {
+        const string &location_value = job_ref.location().value();
+        get_results_request.set_location(location_value);
+    }
+    if (!page_token.empty()) {
+        get_results_request.set_page_token(page_token);
+    }
+
+    auto response = job_client.GetQueryResults(get_results_request);
+    if (!response.ok()) {
+        throw BinderException(response.status().message());
+    }
+    return response;
+}
+
 string BigqueryClient::GenerateJobId(const string &prefix) {
     constexpr char kDefaultJobPrefix[] = "job_duckdb";
     auto rng = google::cloud::internal::MakeDefaultPRNG();
     string id = google::cloud::internal::Sample(rng, 12, "abcdefghijklmnopqrstuvwxyz");
     return kDefaultJobPrefix + (prefix.empty() ? "" : "_" + prefix) + "_" + id;
+}
+
+void BigqueryClient::MapInformationSchemaRows(
+    const std::string &project_id,
+    const ::google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
+    std::map<std::string, CreateTableInfo> &table_infos) {
+    vector<string> tables_with_errornous_columns;
+
+    for (auto &row : rows) {
+        const auto &fields = row.fields();
+        const auto &field_list = fields.at("f").list_value().values();
+
+        if (field_list.size() < 6) {
+            throw BinderException("Unexpected number of fields in the row.");
+        }
+
+        string dataset_name = field_list[0].struct_value().fields().at("v").string_value();
+        string table_name = field_list[1].struct_value().fields().at("v").string_value();
+        string column_name = field_list[2].struct_value().fields().at("v").string_value();
+        string data_type = field_list[3].struct_value().fields().at("v").string_value();
+        string is_nullable = field_list[4].struct_value().fields().at("v").string_value();
+        string column_default = field_list[5].struct_value().fields().at("v").string_value();
+
+        auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, dataset_name, table_name);
+
+        LogicalType column_type;
+        try {
+            column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
+        } catch (BinderException &ex) {
+            ErrorData error(ex);
+            std::ostringstream oss;
+            oss << "Failed to map column type for table " << table_string << ". Error: " << error.RawMessage()
+                << " - skipping table.";
+            std::cout << oss.str() << std::endl;
+            continue;
+        }
+
+        ColumnDefinition column(column_name, std::move(column_type));
+
+        if (!column_default.empty() && column_default != "\"\"" && column_default != "NULL") {
+            auto expressions = Parser::ParseExpressionList(column_default);
+            if (expressions.empty()) {
+                throw InternalException("Expression list is empty");
+            }
+            column.SetDefaultValue(std::move(expressions[0]));
+        }
+
+        if (table_infos.find(table_string) == table_infos.end()) {
+            table_infos[table_string] = CreateTableInfo(project_id, dataset_name, table_name);
+        }
+
+        table_infos[table_string].columns.AddColumn(std::move(column));
+
+        if (is_nullable == "NO") {
+            auto field_index = table_infos[table_string].columns.GetColumnIndex(column_name);
+            table_infos[table_string].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+        }
+
+        if (data_type.find("STRING(") != std::string::npos) {
+            std::regex string_length_regex(R"(STRING\((\d+)\))");
+            std::smatch match;
+
+            if (std::regex_match(data_type, match, string_length_regex)) {
+                int max_length = std::stoi(match[1]);
+
+                auto constraint_str = "length(" + column_name + ") <= " + std::to_string(max_length);
+                auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+
+                auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
+                table_infos[table_name].constraints.push_back(std::move(check_constraint));
+            }
+        }
+    }
+
+    // remove tables with errornous columns
+    for (const auto &table_name : tables_with_errornous_columns) {
+        table_infos.erase(table_name);
+    }
 }
 
 
