@@ -625,7 +625,7 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     auto response = PostQueryJobInternal(client, query, location, dry_run);
-    if (!response) {
+    if (!response.ok()) {
         throw BinderException("Query execution failed: " + response.status().message());
     }
 
