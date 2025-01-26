@@ -12,7 +12,7 @@ namespace duckdb {
 namespace bigquery {
 
 BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const BigqueryConfig &config, BigqueryOptions options_p)
-	: Catalog(db_p), config(config), options(options_p), schemas(*this) {
+    : Catalog(db_p), config(config), options(options_p), schemas(*this) {
 }
 
 BigqueryCatalog::BigqueryCatalog(AttachedDatabase &db_p, const string &dsn, BigqueryOptions options_p)
@@ -45,13 +45,13 @@ void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
             auto bq_client = bq_transaction->GetBigqueryClient();
             auto dataset_ref = bq_client->GetDataset(config.dataset_id);
 
-			vector<CreateTableInfo> table_infos_vec;
-			std::map<string, CreateTableInfo> table_infos;
-			bq_client->GetTableInfosFromDataset(dataset_ref, table_infos);
+            vector<CreateTableInfo> table_infos_vec;
+            std::map<string, CreateTableInfo> table_infos;
+            bq_client->GetTableInfosFromDataset(dataset_ref, table_infos);
 
-			for (auto &table_info : table_infos) {
-				table_infos_vec.push_back(std::move(table_info.second));
-			}
+            for (auto &table_info : table_infos) {
+                table_infos_vec.push_back(std::move(table_info.second));
+            }
 
             CreateSchemaInfo info;
             info.catalog = config.project_id;
@@ -78,21 +78,21 @@ optional_ptr<SchemaCatalogEntry> BigqueryCatalog::GetSchema(CatalogTransaction t
                                                             const string &schema_name,
                                                             OnEntryNotFound if_not_found,
                                                             QueryErrorContext error_context) {
-	if (schema_name == DEFAULT_SCHEMA) {
-		return GetSchema(transaction, GetDefaultDatasetID(), if_not_found, error_context);
-	}
+    if (schema_name == DEFAULT_SCHEMA) {
+        return GetSchema(transaction, GetDefaultDatasetID(), if_not_found, error_context);
+    }
 
-	if (IsInvalidSchema(schema_name)) {
-		// return first dataset as the default
-		auto first_entry = schemas.GetFirstEntry(transaction.GetContext());
-		if (!first_entry) {
-			if (if_not_found != OnEntryNotFound::RETURN_NULL) {
-				throw BinderException("No schema found in catalog");
-			}
-			return nullptr;
-		}
-		return reinterpret_cast<SchemaCatalogEntry *>(first_entry.get());
-	}
+    if (IsInvalidSchema(schema_name)) {
+        // return first dataset as the default
+        auto first_entry = schemas.GetFirstEntry(transaction.GetContext());
+        if (!first_entry) {
+            if (if_not_found != OnEntryNotFound::RETURN_NULL) {
+                throw BinderException("No schema found in catalog");
+            }
+            return nullptr;
+        }
+        return reinterpret_cast<SchemaCatalogEntry *>(first_entry.get());
+    }
 
     auto schema_entry = schemas.GetEntry(transaction.GetContext(), schema_name);
     if (!schema_entry && if_not_found != OnEntryNotFound::RETURN_NULL) {

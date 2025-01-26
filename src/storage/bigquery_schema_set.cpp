@@ -30,14 +30,24 @@ void BigquerySchemaSet::LoadEntries(ClientContext &context) {
     auto bqclient = transaction.GetBigqueryClient();
 
     if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
-        std::map<std::string, CreateTableInfo> table_infos;
-        auto datasets = bqclient->GetDatasets();
+		auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
+
+		vector<BigqueryDatasetRef> datasets;
+		if (bq_catalog.config.HasDatasetId()){
+			auto dataset = bqclient->GetDataset(bq_catalog.config.dataset_id);
+			datasets.push_back(dataset);
+		} else {
+			auto datasets = bqclient->GetDatasets();
+		}
+
+		std::map<std::string, CreateTableInfo> table_infos;
         bqclient->GetTableInfosFromDatasets(datasets, table_infos);
 
         std::map<std::string, vector<CreateTableInfo>> tables_by_schema;
         for (auto &table_info : table_infos) {
             tables_by_schema[table_info.second.schema].push_back(std::move(table_info.second));
         }
+
         for (auto &dataset : datasets) {
             CreateSchemaInfo info;
             info.catalog = dataset.project_id;
