@@ -23,17 +23,12 @@
       "name": "curl",
       "platform": "windows",
       "features": [ "schannel" ]
-    }
-  ],
-  "builtin-baseline": "e01906b2ba7e645a76ee021a19de616edc98d29f",
-  "overrides": [
-    {
-      "name": "abseil",
-      "version": "20230802.1"
     },
     {
-      "name": "re2",
-      "version": "2024-04-01"
+      "name": "google-cloud-cpp",
+      "default-features": false,
+      "features": [ "bigquerycontrol", "bigquery" ]
     }
-  ]
+  ],
+  "builtin-baseline": "57c08a3223a1ec03c3a31986ee38d32e90b6039c"
 }

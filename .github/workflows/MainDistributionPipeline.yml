@@ -21,7 +21,7 @@ jobs:
             ci_tools_version: v1.1.3
             extension_name: bigquery
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;osx_amd64;linux_arm64"
-            vcpkg_commit: "e01906b2ba7e645a76ee021a19de616edc98d29f"
+            vcpkg_commit: "57c08a3223a1ec03c3a31986ee38d32e90b6039c"
             extra_toolchains: "parser_tools"
 
     duckdb-stable-deploy:

@@ -8,44 +8,44 @@ endif()
 set(TARGET_NAME bigquery)
 
 # Compile and install google-cloud-cpp depedencies
-message("Installing google-cloud-cpp dependencies")
-execute_process(
-    COMMAND
-        ${CMAKE_COMMAND}
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
-        # osx options
-        -DOSX_BUILD_ARCH=${OSX_BUILD_ARCH}
-        -DCMAKE_OSX_ARCHITECTURES=${DCMAKE_OSX_ARCHITECTURES}
-        -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
-        # vcpkg options
-        -DVCPKG_MANIFEST_DIR=${VCPKG_MANIFEST_DIR}
-        -DVCPKG_INSTALLED_DIR=${CMAKE_BINARY_DIR}/vcpkg_installed
-        -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
-        -DVCPKG_TARGET_ARCHITECTURE=${VCPKG_TARGET_ARCHITECTURE}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -G ${CMAKE_GENERATOR}
-        -S ${CMAKE_CURRENT_SOURCE_DIR}/external
-        -B ${CMAKE_BINARY_DIR}/external
-    RESULT_VARIABLE DEPENDENCIES_GENERATE_RESULT
-)
+# message("Installing google-cloud-cpp dependencies")
+# execute_process(
+#     COMMAND
+#         ${CMAKE_COMMAND}
+#         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+#         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+#         # osx options
+#         -DOSX_BUILD_ARCH=${OSX_BUILD_ARCH}
+#         -DCMAKE_OSX_ARCHITECTURES=${DCMAKE_OSX_ARCHITECTURES}
+#         -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
+#         # vcpkg options
+#         -DVCPKG_MANIFEST_DIR=${VCPKG_MANIFEST_DIR}
+#         -DVCPKG_INSTALLED_DIR=${CMAKE_BINARY_DIR}/vcpkg_installed
+#         -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
+#         -DVCPKG_TARGET_ARCHITECTURE=${VCPKG_TARGET_ARCHITECTURE}
+#         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+#         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+#         -G ${CMAKE_GENERATOR}
+#         -S ${CMAKE_CURRENT_SOURCE_DIR}/external
+#         -B ${CMAKE_BINARY_DIR}/external
+#     RESULT_VARIABLE DEPENDENCIES_GENERATE_RESULT
+# )
 
-if(NOT DEPENDENCIES_GENERATE_RESULT EQUAL 0)
-    message(FATAL_ERROR "Could not generate dependencies project")
-endif()
+# if(NOT DEPENDENCIES_GENERATE_RESULT EQUAL 0)
+#     message(FATAL_ERROR "Could not generate dependencies project")
+# endif()
 
-execute_process(
-    COMMAND
-        ${CMAKE_COMMAND}
-        --build ${CMAKE_BINARY_DIR}/external
-        --config ${CMAKE_BUILD_TYPE}
-    RESULT_VARIABLE DEPENDENCIES_BUILD_RESULT
-)
+# execute_process(
+#     COMMAND
+#         ${CMAKE_COMMAND}
+#         --build ${CMAKE_BINARY_DIR}/external
+#         --config ${CMAKE_BUILD_TYPE}
+#     RESULT_VARIABLE DEPENDENCIES_BUILD_RESULT
+# )
 
-if(NOT DEPENDENCIES_BUILD_RESULT EQUAL 0)
-    message(FATAL_ERROR "Could not build dependencies project")
-endif()
+# if(NOT DEPENDENCIES_BUILD_RESULT EQUAL 0)
+#     message(FATAL_ERROR "Could not build dependencies project")
+# endif()
 
 set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${CMAKE_BINARY_DIR}/external/local)
 
