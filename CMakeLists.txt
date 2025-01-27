@@ -100,6 +100,18 @@ function(link_libraries_to_extension target_name)
         absl::variant
         "$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>"
     )
+    # This is just hacky....
+    if (VCPKG_TARGET_TRIPLET STREQUAL "x64-linux" OR VCPKG_TARGET_TRIPLET STREQUAL "arm64-linux")
+        message("Linking libraries to extension: ${VCPKG_TARGET_TRIPLET}")
+        string(TOLOWER "${CMAKE_BUILD_TYPE}" build_subdir)
+        target_link_libraries(
+            ${target_name}
+            -Wl,--allow-multiple-definition
+            -Wl,--whole-archive
+            "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/libupb_mini_descriptor_lib.a"
+            -Wl,--no-whole-archive
+        )
+    endif()
 endfunction()
 
 link_libraries_to_extension(${EXTENSION_NAME})
