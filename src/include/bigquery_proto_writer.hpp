@@ -1,6 +1,7 @@
 #pragma once
 
 #include <google/cloud/bigquery/bigquery_write_client.h>
+#undef NO_DATA
 
 #include "google/protobuf/descriptor.h"
 #include "storage/bigquery_table_entry.hpp"
