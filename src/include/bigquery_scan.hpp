@@ -16,6 +16,8 @@ struct BigqueryBindData : public TableFunctionData {
 	string query;
 
     shared_ptr<BigqueryClient> bq_client;
+	optional_ptr<BigqueryCatalog> bq_catalog;
+	optional_ptr<BigqueryTableEntry> bq_table_entry;
 
     vector<string> names;
     vector<LogicalType> types;
@@ -33,11 +35,6 @@ struct BigqueryBindData : public TableFunctionData {
 		return !query.empty();
 	}
 };
-
-// struct BigqueryGlobalTableFunctionState : public GlobalTableFunctionState {
-// public:
-//     idx_t MaxThreads() const override;
-// };
 
 class BigqueryScanFunction : public TableFunction {
 public:
