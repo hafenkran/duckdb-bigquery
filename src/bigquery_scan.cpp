@@ -360,10 +360,10 @@ double BigqueryScanProgress(ClientContext &context,
 }
 
 static BindInfo BigqueryGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
-	auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
-	BindInfo info(ScanType::EXTERNAL);
-	info.table = bind_data.bq_table_entry.get();
-	return info;
+    auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
+    BindInfo info(ScanType::EXTERNAL);
+    info.table = bind_data.bq_table_entry.get_mutable();
+    return info;
 }
 
 BigqueryScanFunction::BigqueryScanFunction()
@@ -376,7 +376,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     to_string = BigqueryToString;
     cardinality = BigqueryScanCardinality;
     table_scan_progress = BigqueryScanProgress;
-	get_bind_info = BigqueryGetBindInfo;
+    get_bind_info = BigqueryGetBindInfo;
 
     projection_pushdown = true;
     filter_pushdown = true;
@@ -396,7 +396,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     to_string = BigqueryToString;
     cardinality = BigqueryScanCardinality;
     table_scan_progress = BigqueryScanProgress;
-	get_bind_info = BigqueryGetBindInfo;
+    get_bind_info = BigqueryGetBindInfo;
 
     projection_pushdown = true;
     filter_pushdown = true;

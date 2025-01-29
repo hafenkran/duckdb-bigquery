@@ -4,6 +4,7 @@
 
 #include "bigquery_client.hpp"
 #include "bigquery_utils.hpp"
+#include "storage/bigquery_catalog.hpp"
 
 namespace duckdb {
 namespace bigquery {
