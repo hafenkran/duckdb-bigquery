@@ -362,7 +362,9 @@ double BigqueryScanProgress(ClientContext &context,
 static BindInfo BigqueryGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
     auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
     BindInfo info(ScanType::EXTERNAL);
-    info.table = bind_data.bq_table_entry.get_mutable();
+    if (bind_data.bq_table_entry) {
+        info.table = bind_data.bq_table_entry.get_mutable();
+    }
     return info;
 }
 
