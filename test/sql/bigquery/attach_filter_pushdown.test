@@ -38,5 +38,13 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i>5000 AND i<=5006;
 5005
 5006
 
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i IN (2222, 3333, 4444, 5555);
+----
+2222
+3333
+4444
+5555
+
 statement ok
 DROP TABLE bq.${BQ_TEST_DATASET}.filter_pushdown;

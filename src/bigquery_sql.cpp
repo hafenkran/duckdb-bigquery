@@ -10,7 +10,9 @@
 
 #include "duckdb/planner/filter/conjunction_filter.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
+#include "duckdb/planner/filter/in_filter.hpp"
 #include "duckdb/planner/filter/null_filter.hpp"
+#include "duckdb/planner/filter/optional_filter.hpp"
 #include "duckdb/planner/filter/struct_filter.hpp"
 
 #include "bigquery_sql.hpp"
@@ -66,7 +68,6 @@ string BigquerySQL::CreateExpression(const string &column_name,
 }
 
 string BigquerySQL::TransformFilter(const string &column_name, TableFilter &filter) {
-    // string quoted_column_name = "`" + column_name + "`";
     switch (filter.filter_type) {
     case TableFilterType::CONSTANT_COMPARISON: {
         auto &constant_filter = dynamic_cast<ConstantFilter &>(filter);
@@ -110,6 +111,22 @@ string BigquerySQL::TransformFilter(const string &column_name, TableFilter &filt
         auto child_name = KeywordHelper::WriteQuoted(struct_filter.child_name, '`');
         auto new_column_name = "`" + column_name + "`." + child_name;
         return TransformFilter(new_column_name, *struct_filter.child_filter);
+    }
+    case TableFilterType::OPTIONAL_FILTER: {
+        auto &optional_filter = filter.Cast<OptionalFilter>();
+        return TransformFilter(column_name, *optional_filter.child_filter);
+    }
+    case TableFilterType::IN_FILTER: {
+        auto &in_filter = dynamic_cast<InFilter &>(filter);
+        vector<string> in_values;
+        for (auto &value : in_filter.values) {
+            if (BigqueryUtils::IsValueQuotable(value)) {
+                in_values.push_back(KeywordHelper::WriteQuoted(value.ToString()));
+            } else {
+                in_values.push_back(value.ToString());
+            }
+        }
+        return "`" + column_name + "` IN (" + StringUtil::Join(in_values, ", ") + ")";
     }
     default:
         throw InternalException("Unsupported filter type");
