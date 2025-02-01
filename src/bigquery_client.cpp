@@ -105,6 +105,8 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     auto ca_path = BigquerySettings::CurlCaBundlePath();
     if (!ca_path.empty()) {
         options.set<google::cloud::v2_33::CARootsFilePathOption>(ca_path);
+        options.set<google::cloud::v2_33::UnifiedCredentialsOption>(
+            google::cloud::MakeGoogleDefaultCredentials(options));
     }
     return options;
 }
