@@ -37,7 +37,7 @@ void BigquerySchemaSet::LoadEntries(ClientContext &context) {
 			auto dataset = bqclient->GetDataset(bq_catalog.config.dataset_id);
 			datasets.push_back(dataset);
 		} else {
-			auto datasets = bqclient->GetDatasets();
+			datasets = bqclient->GetDatasets();
 		}
 
 		std::map<std::string, CreateTableInfo> table_infos;
