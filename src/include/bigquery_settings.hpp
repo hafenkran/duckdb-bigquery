@@ -90,14 +90,24 @@ public:
 
     static void SetCurlCaBundlePath(ClientContext &context, SetScope scope, Value &parameter) {
         string path = StringValue::Get(parameter);
-        if (!path.empty() && !std::ifstream(path).good()) {
+        if (path.empty()) {
+            throw InvalidInputException("Failed to detect Curl CA bundle path");
+        }
+        if (!std::ifstream(path).good()) {
             throw InvalidInputException("Curl CA bundle path is not readable");
         }
         CurlCaBundlePath() = path;
     }
 
     static void TryDetectCurlCaBundlePath() {
-        CurlCaBundlePath() = DetectCAPath();
+        string path = DetectCAPath();
+        if (path.empty()) {
+            throw InvalidInputException("Failed to detect Curl CA bundle path");
+        }
+        if (!std::ifstream(path).good()) {
+            throw InvalidInputException("Curl CA bundle path is not readable");
+        }
+        CurlCaBundlePath() = path;
     }
 
     static bool &ExperimentalFetchCatalogFromInformationSchema() {

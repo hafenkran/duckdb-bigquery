@@ -326,7 +326,7 @@ jobs:
             -v `pwd`/ccache_dir:/ccache_dir \
             duckdb/${{ matrix.duckdb_arch }} make test
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: |
@@ -479,7 +479,7 @@ jobs:
         run: |
           make test
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
@@ -633,7 +633,7 @@ jobs:
           export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem
           make test GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
@@ -739,7 +739,7 @@ jobs:
         run: |
           make ${{ matrix.duckdb_arch }}
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}

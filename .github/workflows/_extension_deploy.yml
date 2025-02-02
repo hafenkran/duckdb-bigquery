@@ -59,7 +59,7 @@ jobs:
         outputs:
             deploy_matrix: ${{ steps.parse-matrices.outputs.deploy_matrix }}
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
                   submodules: 'true'
@@ -103,7 +103,7 @@ jobs:
                   cd duckdb
                   git checkout ${{ inputs.duckdb_version }}
 
-            - uses: actions/download-artifact@v3
+            - uses: actions/download-artifact@v4
               with:
                   name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}${{startsWith(matrix.duckdb, 'wasm') && '.wasm' || ''}}
                   path: |
