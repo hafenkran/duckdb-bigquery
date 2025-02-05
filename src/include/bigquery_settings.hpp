@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <iostream>
 
 namespace duckdb {
 namespace bigquery {
@@ -119,6 +120,25 @@ public:
                                                                  SetScope scope,
                                                                  Value &parameter) {
         ExperimentalFetchCatalogFromInformationSchema() = BooleanValue::Get(parameter);
+    }
+
+    static int &QueryTimeoutMs() {
+        static int bigquery_query_timeout_ms = 60000;
+        return bigquery_query_timeout_ms;
+    }
+
+    static void SetQueryTimeoutMs(ClientContext &context, SetScope scope, Value &parameter) {
+        int timeout = IntegerValue::Get(parameter);
+        if (timeout < 0) {
+            throw InvalidInputException("Query timeout must be non-negative");
+        } else if (timeout > 200000) {
+            std::cout << "Warning: Query timeout is set to a very high value. The BigQuery documentation states that "
+                         "the call is not guaranteed to wait for the specified timeout and returns typically after "
+                         "around 200 seconds even if the query is not complete (see "
+                         "https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query#QueryRequest)"
+                      << std::endl;
+        }
+        QueryTimeoutMs() = timeout;
     }
 };
 

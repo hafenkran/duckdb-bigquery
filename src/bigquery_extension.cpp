@@ -14,12 +14,12 @@
 #include "bigquery_attach.hpp"
 #include "bigquery_clear_cache.hpp"
 #include "bigquery_client.hpp"
-#include "bigquery_settings.hpp"
 #include "bigquery_execute.hpp"
 #include "bigquery_extension.hpp"
-#include "bigquery_scan.hpp"
-#include "bigquery_storage.hpp"
 #include "bigquery_jobs.hpp"
+#include "bigquery_scan.hpp"
+#include "bigquery_settings.hpp"
+#include "bigquery_storage.hpp"
 
 namespace duckdb {
 
@@ -40,22 +40,33 @@ static void LoadInternal(DatabaseInstance &instance) {
     bigquery::BigQueryExecuteFunction bigquery_execute_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_execute_function);
 
-	bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
-	ExtensionUtil::RegisterFunction(instance, bigquery_list_jobs_function);
+    bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
+    ExtensionUtil::RegisterFunction(instance, bigquery_list_jobs_function);
 
     auto &config = DBConfig::GetConfig(instance);
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
 
+    config.AddExtensionOption("bq_default_location",
+                              "Default location for BigQuery queries",
+                              LogicalType::VARCHAR,
+                              Value(bigquery::BigquerySettings::DefaultLocation()),
+                              bigquery::BigquerySettings::SetDefaultLocation);
+    config.AddExtensionOption("bq_query_timeout_ms",
+                              "Timeout for BigQuery queries in milliseconds",
+                              LogicalType::BIGINT,
+                              Value(bigquery::BigquerySettings::QueryTimeoutMs()),
+                              bigquery::BigquerySettings::SetQueryTimeoutMs);
     config.AddExtensionOption("bq_experimental_filter_pushdown",
                               "Whether to use filter pushdown (currently experimental)",
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::ExperimentalFilterPushdown()),
                               bigquery::BigquerySettings::SetExperimentalFilterPushdown);
-	config.AddExtensionOption("bq_experimental_use_info_schema",
-							  "Whether to fetch table infos from BQ information schema (currently experimental). Can be significantly faster than fetching from REST API.",
-							  LogicalType::BOOLEAN,
-							  Value(bigquery::BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()),
-							  bigquery::BigquerySettings::SetExperimentalFetchCatalogFromInformationSchema);
+    config.AddExtensionOption("bq_experimental_use_info_schema",
+                              "Whether to fetch table infos from BQ information schema (currently experimental). Can "
+                              "be significantly faster than fetching from REST API.",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()),
+                              bigquery::BigquerySettings::SetExperimentalFetchCatalogFromInformationSchema);
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,
