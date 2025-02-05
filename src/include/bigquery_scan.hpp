@@ -4,6 +4,7 @@
 
 #include "bigquery_client.hpp"
 #include "bigquery_utils.hpp"
+#include "storage/bigquery_catalog.hpp"
 
 namespace duckdb {
 namespace bigquery {
@@ -16,6 +17,8 @@ struct BigqueryBindData : public TableFunctionData {
 	string query;
 
     shared_ptr<BigqueryClient> bq_client;
+	optional_ptr<BigqueryCatalog> bq_catalog;
+	optional_ptr<BigqueryTableEntry> bq_table_entry;
 
     vector<string> names;
     vector<LogicalType> types;
@@ -26,18 +29,13 @@ struct BigqueryBindData : public TableFunctionData {
     }
 
     string TableString() const {
-        return BigqueryUtils::FormatTableString(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
+        return BigqueryUtils::FormatTableStringSimple(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
     }
 
 	bool RequiresQueryExec() const {
 		return !query.empty();
 	}
 };
-
-// struct BigqueryGlobalTableFunctionState : public GlobalTableFunctionState {
-// public:
-//     idx_t MaxThreads() const override;
-// };
 
 class BigqueryScanFunction : public TableFunction {
 public:

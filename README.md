@@ -4,7 +4,7 @@ This repository contains the [DuckDB](https://duckdb.org) BigQuery Extension. Th
 
 Please note that this extension is in a early release. While it covers most of the essentials, you might run into some limitations, issues, or bugs.
 
-> This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `osx_arm64`, and `windows_amd64`.
+> This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `linux_amd64_musl`, `osx_arm64`, and `windows_amd64`.
 
 ## Preliminaries
 

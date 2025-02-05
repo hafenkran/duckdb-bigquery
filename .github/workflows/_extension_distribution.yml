@@ -44,12 +44,12 @@ on:
       vcpkg_commit:
         required: false
         type: string
-        default: "a1a1cbc975abf909a6c8985a6a2b8fe20bbd9bd6"
+        default: "5e5d0e1cd7785623065e77eff011afdeec1a3574"
       # Override the default script producing the matrices. Allows specifying custom matrices.
       matrix_parse_script:
         required: false
         type: string
-        default: "./duckdb/scripts/modify_distribution_matrix.py"
+        default: "./extension-ci-tools/scripts/modify_distribution_matrix.py"
       # Enable building the DuckDB Shell
       build_duckdb_shell:
         required: false
@@ -76,11 +76,6 @@ on:
         required: false
         type: string
         default: ""
-      # If set, the setup will look for a script in `./scripts/custom-toolchain-script.sh` to run
-      custom_toolchain_script:
-        required: false
-        type: boolean
-        default: false
       rust_logs:
         required: false
         type: boolean
@@ -117,69 +112,41 @@ jobs:
       wasm_matrix: ${{ steps.set-matrix-wasm.outputs.wasm_matrix }}
     steps:
       - uses: actions/checkout@v4
-        name: Checkout override repository
-        if: ${{inputs.override_repository != ''}}
+        name: Checkout Extension CI tools
         with:
-          repository: ${{ inputs.override_repository }}
-          ref: ${{ inputs.override_ref }}
-          fetch-depth: 0
-          submodules: "true"
-
-      - uses: actions/checkout@v4
-        name: Checkout current repository
-        if: ${{inputs.override_repository == ''}}
-        with:
-          fetch-depth: 0
-          submodules: "true"
-
-      - name: Checkout DuckDB to version
-        run: |
-          cd duckdb
-          git checkout ${{ inputs.duckdb_version }}
-      - name: Tag extension
-        if: ${{inputs.extension_tag != ''}}
-        run: |
-          git tag ${{ inputs.extension_tag }}
-
-      - name: Tag DuckDB extension
-        if: ${{inputs.duckdb_tag != '' && (inputs.duckdb_version == 'main' || inputs.duckdb_version[0] == 'v') }}
-        run: |
-          echo "When duckdb_tag is provied an explcit git ref is expected" && exit 1
-
-      - name: Tag DuckDB extension
-        if: ${{inputs.duckdb_tag != ''}}
-        run: |
-          cd duckdb
-          git tag ${{ inputs.duckdb_tag }}
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
+          repository: ${{ inputs.override_ci_tools_repository }}
 
       - id: parse-matrices
         run: |
-          python3 ${{ inputs.matrix_parse_script }} --input ./duckdb/.github/config/distribution_matrix.json --select_os linux --output linux_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
-          python3 ${{ inputs.matrix_parse_script }} --input ./duckdb/.github/config/distribution_matrix.json --select_os osx --output osx_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
-          python3 ${{ inputs.matrix_parse_script }} --input ./duckdb/.github/config/distribution_matrix.json --select_os windows --output windows_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
-          python3 ${{ inputs.matrix_parse_script }} --input ./duckdb/.github/config/distribution_matrix.json --select_os wasm --output wasm_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
+          mkdir build
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os linux --output build/linux_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os osx --output build/osx_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os windows --output build/windows_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os wasm --output build/wasm_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
 
       - id: set-matrix-linux
         run: |
-          linux_matrix="`cat linux_matrix.json`"
+          linux_matrix="`cat build/linux_matrix.json`"
           echo linux_matrix=$linux_matrix >> $GITHUB_OUTPUT
           echo `cat $GITHUB_OUTPUT`
 
       - id: set-matrix-osx
         run: |
-          osx_matrix="`cat osx_matrix.json`"
+          osx_matrix="`cat build/osx_matrix.json`"
           echo osx_matrix=$osx_matrix >> $GITHUB_OUTPUT
           echo `cat $GITHUB_OUTPUT`
 
       - id: set-matrix-windows
         run: |
-          windows_matrix="`cat windows_matrix.json`"
+          windows_matrix="`cat build/windows_matrix.json`"
           echo windows_matrix=$windows_matrix >> $GITHUB_OUTPUT
           echo `cat $GITHUB_OUTPUT`
 
       - id: set-matrix-wasm
         run: |
-          wasm_matrix="`cat wasm_matrix.json`"
+          wasm_matrix="`cat build/wasm_matrix.json`"
           echo wasm_matrix=$wasm_matrix >> $GITHUB_OUTPUT
           echo `cat $GITHUB_OUTPUT`
 
@@ -279,6 +246,8 @@ jobs:
           echo "OPENSSL_DIR=/duckdb_build_dir/build/release/vcpkg_installed/${{ matrix.vcpkg_triplet }}" >> docker_env.txt
           echo "OPENSSL_USE_STATIC_LIBS=true" >> docker_env.txt
           echo "DUCKDB_PLATFORM=${{ matrix.duckdb_arch }}" >> docker_env.txt
+          echo "DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }}" >> docker_env.txt
+          echo "LINUX_CI_IN_DOCKER=1" >> docker_env.txt
           echo "TOOLCHAIN_FLAGS=${{ matrix.duckdb_arch == 'linux_arm64' && '-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_Fortran_COMPILER=aarch64-linux-gnu-gfortran' || '' }}" >> docker_env.txt
 
       - name: Generate timestamp for Ccache entry
@@ -300,7 +269,20 @@ jobs:
           restore-keys: |
             ccache-extension-distribution-${{ matrix.duckdb_arch }}-
 
-      - name: Build extension
+      - name: Run configure (outside Docker)
+        shell: bash
+        env:
+          DUCKDB_GIT_VERSION: ${{ inputs.duckdb_version }}
+          LINUX_CI_IN_DOCKER: 0
+        run: |
+          make configure_ci
+
+      - name: Run configure (inside Docker)
+        shell: bash
+        run: |
+          docker run --env-file=docker_env.txt -v `pwd`:/duckdb_build_dir -v `pwd`/ccache_dir:/ccache_dir duckdb/${{ matrix.duckdb_arch }} make configure_ci
+
+      - name: Build extension (inside Docker)
         run: |
           docker run --env-file=docker_env.txt -v `pwd`:/duckdb_build_dir -v `pwd`/ccache_dir:/ccache_dir duckdb/${{ matrix.duckdb_arch }} make release
 
@@ -324,7 +306,7 @@ jobs:
             -v $GOOGLE_APPLICATION_CREDENTIALS:/auth/gcloud-service-key.json \
             -v `pwd`:/duckdb_build_dir \
             -v `pwd`/ccache_dir:/ccache_dir \
-            duckdb/${{ matrix.duckdb_arch }} make test
+            duckdb/${{ matrix.duckdb_arch }} make test_release
 
       - uses: actions/upload-artifact@v4
         with:
@@ -375,7 +357,7 @@ jobs:
 
       - name: Install Ninja
         run: |
-          brew install ninja autoconf make libtool pkg-config automake autoconf-archive
+          brew install ninja autoconf make libtool automake autoconf-archive
 
       - name: Setup Ccache
         uses: hendrikmuhs/ccache-action@main
@@ -452,16 +434,15 @@ jobs:
           echo "CPPFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
           echo "CXXFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
 
-      - name: Run custom toolchain script
-        if: ${{ inputs.custom_toolchain_script }}
+      - name: Run configure
         shell: bash
+        env:
+          DUCKDB_GIT_VERSION: ${{ inputs.duckdb_version }}
         run: |
-          bash scripts/setup-custom-toolchain.sh
+          make configure_ci
 
       - name: Build extension
         shell: bash
-        env:
-          DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
         run: |
           make release
 
@@ -477,7 +458,7 @@ jobs:
           BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
         shell: bash
         run: |
-          make test
+          make test_release
 
       - uses: actions/upload-artifact@v4
         with:
@@ -507,8 +488,8 @@ jobs:
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
       BUILD_SHELL: ${{ inputs.build_duckdb_shell && '1' || '0' }}
       DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
-      CC: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'gcc' || '' }}
-      CXX: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 'g++' || '' }}
+      CC: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 'gcc' || '' }}
+      CXX: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 'g++' || '' }}
 
     steps:
       - name: Keep \n line endings
@@ -535,7 +516,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Setup Rust
         if: (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;'))
@@ -553,14 +534,14 @@ jobs:
           choco install winflexbison3
 
       - uses: r-lib/actions/setup-r@v2
-        if: matrix.duckdb_arch == 'windows_amd64_rtools'
+        if:  matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw'
         with:
           r-version: 'devel'
           update-rtools: true
           rtools-version: '42' # linker bug in 43
 
       - name: setup rtools gcc for vcpkg
-        if: matrix.duckdb_arch == 'windows_amd64_rtools'
+        if:  matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw'
         run: |
           cp C:/rtools42/x86_64-w64-mingw32.static.posix/bin/gcc.exe C:/rtools42/x86_64-w64-mingw32.static.posix/bin/x86_64-w64-mingw32-gcc.exe
           cp C:/rtools42/x86_64-w64-mingw32.static.posix/bin/g++.exe C:/rtools42/x86_64-w64-mingw32.static.posix/bin/x86_64-w64-mingw32-g++.exe
@@ -604,16 +585,19 @@ jobs:
           vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
           vcpkgGitURL: ${{ inputs.vcpkg_url }}
 
-      - name: Run custom toolchain script
-        if: ${{ inputs.custom_toolchain_script }}
+      - name: Run configure
         shell: bash
+        env:
+          DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+          DUCKDB_PLATFORM_RTOOLS: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 1 || 0 }}
+          DUCKDB_GIT_VERSION: ${{ inputs.duckdb_version }}
         run: |
-          bash scripts/setup-custom-toolchain.sh
+          make configure_ci
 
       - name: Build extension
         env:
           DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
-          DUCKDB_PLATFORM_RTOOLS: ${{ matrix.duckdb_arch == 'windows_amd64_rtools' && 1 || 0 }}
+          DUCKDB_PLATFORM_RTOOLS: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 1 || 0 }}
         run: |
           make release
 
@@ -631,7 +615,7 @@ jobs:
         run: |
           curl -o D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem -L https://pki.google.com/roots.pem
           export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem
-          make test GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem
+          make test_release GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=D:/a/duckdb-bigquery/duckdb-bigquery/roots.pem
 
       - uses: actions/upload-artifact@v4
         with:
@@ -729,11 +713,12 @@ jobs:
         with:
           key: ${{ github.job }}-${{ matrix.duckdb_arch }}
 
-      - name: Run custom toolchain script
-        if: ${{ inputs.custom_toolchain_script }}
+      - name: Run configure
         shell: bash
+        env:
+          DUCKDB_GIT_VERSION: ${{ inputs.duckdb_version }}
         run: |
-          bash scripts/setup-custom-toolchain.sh
+          make configure_ci
 
       - name: Build Wasm module
         run: |

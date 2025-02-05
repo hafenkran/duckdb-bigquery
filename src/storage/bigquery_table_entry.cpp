@@ -34,13 +34,14 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     auto result = make_uniq<BigqueryBindData>();
 	result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
     result->bq_client = bigquery_transaction->GetBigqueryClient();
+	result->bq_catalog = &bigquery_catalog;
+	result->bq_table_entry = *this;
 
     for (auto &column : columns.Logical()) {
         result->names.push_back(column.GetName());
         result->types.push_back(column.GetType());
     }
     bind_data = std::move(result);
-    // result->bq_client->CreateArrowReader(result->dataset_id, result->table_id, 1);
 
     auto function = BigqueryScanFunction();
     Value filter_pushdown;

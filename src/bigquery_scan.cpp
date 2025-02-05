@@ -333,10 +333,12 @@ static void BigqueryScan(ClientContext &context, TableFunctionInput &data, DataC
     gstate.position += output.size();
 }
 
-static string BigqueryToString(const FunctionData *bind_data_p) {
-    D_ASSERT(bind_data_p);
-    auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
-    return bind_data.TableString();
+static InsertionOrderPreservingMap<string> BigqueryToString(TableFunctionToStringInput &input) {
+    D_ASSERT(input.bind_data);
+    InsertionOrderPreservingMap<string> result;
+    auto &bind_data = input.bind_data->Cast<BigqueryBindData>();
+    result["Table"] = bind_data.TableString();
+    return result;
 }
 
 unique_ptr<NodeStatistics> BigqueryScanCardinality(ClientContext &context, const FunctionData *bind_data_p) {
@@ -357,6 +359,15 @@ double BigqueryScanProgress(ClientContext &context,
     return MinValue<double>(100, progress);
 }
 
+static BindInfo BigqueryGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+    auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
+    BindInfo info(ScanType::EXTERNAL);
+    if (bind_data.bq_table_entry) {
+        info.table = bind_data.bq_table_entry.get_mutable();
+    }
+    return info;
+}
+
 BigqueryScanFunction::BigqueryScanFunction()
     : TableFunction("bigquery_scan",
                     {LogicalType::VARCHAR},
@@ -367,6 +378,8 @@ BigqueryScanFunction::BigqueryScanFunction()
     to_string = BigqueryToString;
     cardinality = BigqueryScanCardinality;
     table_scan_progress = BigqueryScanProgress;
+    get_bind_info = BigqueryGetBindInfo;
+
     projection_pushdown = true;
     filter_pushdown = true;
 
@@ -385,6 +398,8 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     to_string = BigqueryToString;
     cardinality = BigqueryScanCardinality;
     table_scan_progress = BigqueryScanProgress;
+    get_bind_info = BigqueryGetBindInfo;
+
     projection_pushdown = true;
     filter_pushdown = true;
 
