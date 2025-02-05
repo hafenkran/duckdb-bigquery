@@ -715,11 +715,6 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
 
     if (!location.empty()) {
         *query_request.mutable_location() = location;
-    } else {
-        auto default_location = BigquerySettings::DefaultLocation();
-        if (!default_location.empty()) {
-            *query_request.mutable_location() = default_location;
-        }
     }
 
     auto request = google::cloud::bigquery::v2::PostQueryRequest();
