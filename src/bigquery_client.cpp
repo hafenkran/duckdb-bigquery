@@ -628,14 +628,17 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
 
     auto response = PostQueryJobInternal(client, query, location, dry_run);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return ExecuteQuery(query, location, dry_run);
+        }
         throw BinderException("Query execution failed: " + response.status().message());
     }
 
-	auto complete = response->job_complete().value();
-	if (!complete){
-		auto job_id = response->job_reference().job_id();
-		throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
-	}
+    auto complete = response->job_complete().value();
+    if (!complete) {
+        auto job_id = response->job_reference().job_id();
+        throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
+    }
 
     return *response;
 }
@@ -648,6 +651,9 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
 
     auto response = GetQueryResultsInternal(client, job_ref, page_token);
     if (!response) {
+        if (CheckSSLError(response.status())) {
+            return GetQueryResults(job_ref, page_token);
+        }
         throw BinderException("GetQueryResults failed: " + response.status().message());
     }
     return *response;
@@ -688,7 +694,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     const string &location,
     const bool &dry_run) {
 
-    if (BigquerySettings::DebugQueryPrint()) {
+    if (!dry_run && BigquerySettings::DebugQueryPrint()) {
         std::cout << "query: " << query << std::endl;
     }
 
@@ -704,11 +710,16 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     // query_request.mutable_max_results()->set_value(3);
     query_request.set_dry_run(dry_run);
 
-	int timeout_ms = BigquerySettings::QueryTimeoutMs();
-	query_request.mutable_timeout_ms()->set_value(timeout_ms);
+    int timeout_ms = BigquerySettings::QueryTimeoutMs();
+    query_request.mutable_timeout_ms()->set_value(timeout_ms);
 
     if (!location.empty()) {
         *query_request.mutable_location() = location;
+    } else {
+        auto default_location = BigquerySettings::DefaultLocation();
+        if (!default_location.empty()) {
+            *query_request.mutable_location() = default_location;
+        }
     }
 
     auto request = google::cloud::bigquery::v2::PostQueryRequest();
