@@ -123,7 +123,7 @@ public:
     }
 
     static int &QueryTimeoutMs() {
-        static int bigquery_query_timeout_ms = 60000;
+        static int bigquery_query_timeout_ms = 90000;
         return bigquery_query_timeout_ms;
     }
 
