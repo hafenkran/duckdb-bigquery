@@ -628,28 +628,18 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
 
     auto response = PostQueryJobInternal(client, query, location, dry_run);
     if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return ExecuteQuery(query, location, dry_run);
+        }
         throw BinderException("Query execution failed: " + response.status().message());
     }
 
-    if (!dry_run && !config.IsDevEnv()) {
-        int delay = 1;
-        int max_retries = 3;
-        for (int i = 0; i < max_retries; i++) {
-            auto job_ref = response->job_reference();
-            auto job_status = GetJobInternal(client, job_ref.job_id(), job_ref.location().value());
-            if (job_status.ok() && job_status->status().state() == "DONE") {
-                if (!job_status->status().error_result().reason().empty()) {
-                    throw BinderException(job_status->status().error_result().message());
-                }
-                return *response;
-            }
-            if (i < max_retries) {
-                std::this_thread::sleep_for(std::chrono::seconds(delay));
-                delay *= 2;
-            }
-        }
-        throw BinderException("Max retries exceeded.");
+    auto complete = response->job_complete().value();
+    if (!complete) {
+        auto job_id = response->job_reference().job_id();
+        throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
     }
+
     return *response;
 }
 
@@ -661,6 +651,9 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
 
     auto response = GetQueryResultsInternal(client, job_ref, page_token);
     if (!response) {
+        if (CheckSSLError(response.status())) {
+            return GetQueryResults(job_ref, page_token);
+        }
         throw BinderException("GetQueryResults failed: " + response.status().message());
     }
     return *response;
@@ -701,7 +694,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     const string &location,
     const bool &dry_run) {
 
-    if (BigquerySettings::DebugQueryPrint()) {
+    if (!dry_run && BigquerySettings::DebugQueryPrint()) {
         std::cout << "query: " << query << std::endl;
     }
 
@@ -717,7 +710,9 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     // query_request.mutable_max_results()->set_value(3);
     query_request.set_dry_run(dry_run);
 
-    // query_request.mutable_set_preserve_nulls()->set_value(true);
+    int timeout_ms = BigquerySettings::QueryTimeoutMs();
+    query_request.mutable_timeout_ms()->set_value(timeout_ms);
+
     if (!location.empty()) {
         *query_request.mutable_location() = location;
     }
