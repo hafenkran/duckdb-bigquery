@@ -257,7 +257,6 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 | Setting                           | Description                                                                                              | Default |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------- | ------- |
-| `bq_default_location`             | Default location for BigQuery datasets and queries.                                                      | `US`    |
 | `bq_query_timeout_ms`             | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting. | `90000` |
 | `bq_debug_show_queries`           | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                        | `false` |
 | `bq_experimental_filter_pushdown` | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                   | `true`  |
