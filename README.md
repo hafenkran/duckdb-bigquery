@@ -2,8 +2,6 @@
 
 This repository contains the [DuckDB](https://duckdb.org) BigQuery Extension. This extension lets DuckDB integrate with Google BigQuery, allowing users to directly access, manage, and manipulate their BigQuery datasets/tables using standard SQL statements. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel.
 
-Please note that this extension is in a early release. While it covers most of the essentials, you might run into some limitations, issues, or bugs.
-
 > This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `linux_amd64_musl`, `osx_arm64`, and `windows_amd64`.
 
 ## Preliminaries
@@ -347,7 +345,7 @@ docker run \
     -it \
     -v /path/to/my/service-account-credentials.json:/creds \
     -e GOOGLE_APPLICATION_CREDENTIALS=/creds/service-account-credentials.json \
-    duckdb-bigquery:v1.1.3
+    duckdb-bigquery:v1.2.0
 ```
 
 ## Important Notes on Using Google BigQuery
