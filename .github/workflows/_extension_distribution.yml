@@ -316,7 +316,7 @@ jobs:
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
 
-      - name: Test extension
+      - name: Test extension (inside docker)
         if: ${{ matrix.duckdb_arch != 'linux_arm64' && inputs.skip_tests == false }}
         env:
           BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
