@@ -3,7 +3,6 @@
 #include "duckdb.hpp"
 
 namespace duckdb {
-
 class BigqueryExtension : public Extension {
 public:
     std::string Name() override {
