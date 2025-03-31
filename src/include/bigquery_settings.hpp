@@ -122,6 +122,15 @@ public:
         ExperimentalFetchCatalogFromInformationSchema() = BooleanValue::Get(parameter);
     }
 
+    static bool &ExperimentalEnableBigqueryOptions() {
+        static bool bigquery_experimental_enable_bigquery_options = false;
+        return bigquery_experimental_enable_bigquery_options;
+    }
+
+    static void SetExperimentalEnableBigqueryOptions(ClientContext &context, SetScope scope, Value &parameter) {
+        ExperimentalEnableBigqueryOptions() = BooleanValue::Get(parameter);
+    }
+
     static int &QueryTimeoutMs() {
         static int bigquery_query_timeout_ms = 90000;
         return bigquery_query_timeout_ms;
