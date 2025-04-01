@@ -15,6 +15,7 @@
 #include "duckdb/planner/filter/optional_filter.hpp"
 #include "duckdb/planner/filter/struct_filter.hpp"
 
+#include "bigquery_info.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
 
@@ -222,10 +223,17 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
 }
 
 string BigquerySQL::CreateSchemaInfoToSQL(const string &project_id, const CreateSchemaInfo &info) {
+    const auto &schema_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema);
     std::stringstream query;
     query << "CREATE SCHEMA ";
-    query << project_id << "." << info.schema;
-    // Options?
+    query << BigqueryUtils::WriteQuotedIdentifier(schema_string);
+
+    if (auto *bq_info = dynamic_cast<const BigqueryCreateSchemaInfo *>(&info)) {
+        auto options_str = BigquerySQL::BigqueryOptionsToSQL(bq_info->options);
+        if (!options_str.empty()) {
+            query << " " << options_str;
+        }
+    }
     return query.str();
 }
 
@@ -246,6 +254,14 @@ string BigquerySQL::CreateTableInfoToSQL(const string &project_id, const CreateT
     auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.table);
     stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
     stmt << BigqueryColumnsToSQL(info.columns, info.constraints);
+
+    if (auto *bq_info = dynamic_cast<const BigqueryCreateTableInfo *>(&info)) {
+        auto options_str = BigquerySQL::BigqueryOptionsToSQL(bq_info->options);
+        if (!options_str.empty()) {
+            stmt << " " << options_str;
+        }
+    }
+
     return stmt.str();
 }
 
@@ -476,6 +492,25 @@ string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id,
     if (include_order_by) {
         query << "ORDER BY table_name, ordinal_position";
     }
+    return query.str();
+}
+
+string BigquerySQL::BigqueryOptionsToSQL(const unordered_map<string, string> &options) {
+    std::stringstream query;
+    if (options.empty()) {
+        return "";
+    }
+    query << "OPTIONS (";
+    bool is_first = true;
+    for (const auto &option : options) {
+        if (is_first) {
+            is_first = false;
+        } else {
+            query << ", ";
+        }
+        query << option.first << " = '" << option.second << "'";
+    }
+    query << ")";
     return query.str();
 }
 
