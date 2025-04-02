@@ -6,7 +6,6 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/extension_util.hpp"
-#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
 // OpenSSL linked through vcpkg
 #include <openssl/opensslv.h>
@@ -17,9 +16,12 @@
 #include "bigquery_execute.hpp"
 #include "bigquery_extension.hpp"
 #include "bigquery_jobs.hpp"
+#include "bigquery_parser.hpp"
 #include "bigquery_scan.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
+
+#include <iostream>
 
 namespace duckdb {
 
@@ -45,6 +47,13 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     auto &config = DBConfig::GetConfig(instance);
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
+
+
+    bigquery::BigqueryParserExtension bigquery_parser_extension;
+    config.parser_extensions.push_back(bigquery_parser_extension);
+
+    auto operator_extension = make_uniq<bigquery::BigqueryOperatorExtension>();
+    config.operator_extensions.push_back(move(operator_extension));
 
     config.AddExtensionOption("bq_bignumeric_as_varchar",
                               "Read BigQuery BIGNUMERIC data type as VARCHAR",
@@ -72,6 +81,11 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()),
                               bigquery::BigquerySettings::SetExperimentalFetchCatalogFromInformationSchema);
+    config.AddExtensionOption("bq_experimental_enable_bigquery_options",
+                              "Whether to enable BigQuery OPTIONS in CREATE statements",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::ExperimentalEnableBigqueryOptions()),
+                              bigquery::BigquerySettings::SetExperimentalEnableBigqueryOptions);
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,

@@ -3,6 +3,8 @@
 #include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 
 #include "bigquery_client.hpp"
+#include "bigquery_info.hpp"
+#include "bigquery_parser.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
@@ -28,9 +30,7 @@ optional_ptr<CatalogEntry> BigqueryTableSet::CreateTable(ClientContext &context,
     table_ref.dataset_id = schema.name;
     table_ref.table_id = create_table_info.table;
 
-    auto query = BigquerySQL::CreateTableInfoToSQL(bq_catalog.GetProjectID(), create_table_info);
-    bqclient->ExecuteQuery(query);
-
+    bqclient->CreateTable(create_table_info, table_ref);
     auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, info.Base());
     return CreateEntry(std::move(table_entry));
 }
