@@ -271,6 +271,8 @@ There are some limitations that arise from the combination of DuckDB and BigQuer
 
 * **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
 
+* [BIGNUMERIC](https://cloud.google.com/php/docs/reference/cloud-bigquery/latest/BigNumeric) type is unsupported. This is a Decimal field with maximum width of 76. An example use is in `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.transactions`.
+
 ## Install Latest Updates from Custom Repository
 
 Updates may not always be immediately available in the Community Extension repository. However, they can be obtained from a custom repository. To get the latest updates, start DuckDB with [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Use the `allow_unsigned_extensions` flag for client connections, or start the CLI with `-unsigned` as follows:
