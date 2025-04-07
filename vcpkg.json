@@ -35,5 +35,10 @@
       "name": "re2",
       "version": "2024-04-01"
     }
-  ]
+  ],
+  "vcpkg-configuration": {
+    "overlay-ports": [
+      "./extension-ci-tools/vcpkg_ports"
+    ]
+  }
 }
