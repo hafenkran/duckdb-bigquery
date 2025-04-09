@@ -125,15 +125,22 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
         const auto &column_type = column.GetType();
 
         switch (column_type.id()) {
-        case LogicalTypeId::LIST: {
-            const auto &column_type = column.GetType();
-            const auto &child_type = ListType::GetChildType(column_type);
+        case LogicalTypeId::LIST:
+        case LogicalTypeId::ARRAY: {
+            const auto &child_type = column_type.id() == LogicalTypeId::LIST //
+                                         ? ListType::GetChildType(column_type)
+                                         : ArrayType::GetChildType(column_type);
 
             if (child_type.id() == LogicalTypeId::STRUCT) {
                 auto &child_types = StructType::GetChildTypes(child_type);
-                CreateNestedMessage(desc_proto, column.GetName(), child_types);
-                desc_proto->mutable_field(desc_proto->field_size() - 1)
-                    ->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
+                auto nested_type_name = CreateNestedMessage(desc_proto, column.GetName(), child_types);
+
+                auto *field_desc_proto = desc_proto->add_field();
+                field_desc_proto->set_name(column.GetName());
+                field_desc_proto->set_number(num++);
+                field_desc_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
+                field_desc_proto->set_type_name(nested_type_name);
+                field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
             } else {
                 // For other types within a LIST, handle normally
                 // Set the field as a repeated message for the LIST of STRUCTS
@@ -146,30 +153,17 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
             }
             break;
         }
-        case LogicalTypeId::ARRAY: {
-            const auto &column_type = column.GetType();
-            const auto &child_type = ArrayType::GetChildType(column_type);
-
-            if (child_type.id() == LogicalTypeId::STRUCT) {
-                auto &child_types = StructType::GetChildTypes(child_type);
-                CreateNestedMessage(desc_proto, column.GetName(), child_types);
-                desc_proto->mutable_field(desc_proto->field_size() - 1)
-                    ->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
-            } else {
-                // For other types within an ARRAY, handle normally
-                // Set the field as a repeated message for the ARRAY of STRUCTS
-                auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child_type);
-                auto *field_desc_proto = desc_proto->add_field();
-                field_desc_proto->set_name(column.GetName());
-                field_desc_proto->set_number(num++);
-                field_desc_proto->set_type(proto_type);
-                field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
-            }
-            break;
-        }
         case LogicalTypeId::STRUCT: {
             auto &child_types = StructType::GetChildTypes(column_type);
-            CreateNestedMessage(desc_proto, column.GetName(), child_types);
+            auto nested_type_name = CreateNestedMessage(desc_proto, column.GetName(), child_types);
+
+            auto *field_desc_proto = desc_proto->add_field();
+            field_desc_proto->set_name(column.GetName());
+            field_desc_proto->set_number(num++);
+            field_desc_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
+            field_desc_proto->set_type_name(nested_type_name);
+            field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
+
             break;
         }
         default: {
@@ -179,6 +173,7 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
             field_desc_proto->set_number(num++);
             field_desc_proto->set_type(proto_type);
             field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
+
             if (column.HasDefaultValue()) {
                 const auto &default_expr = column.DefaultValue();
                 auto default_value = default_expr.ToString();
@@ -192,6 +187,7 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
         }
     }
 
+    // std::cout << "Raw Descriptor:\n" << file_desc_proto.DebugString() << std::endl;
     auto *file_desc = pool.BuildFile(file_desc_proto);
     if (file_desc == nullptr) {
         throw BinderException("Cannot get file descriptor from file descriptor proto");
@@ -202,29 +198,37 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     }
 }
 
-void BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProto *desc_proto,
-                                              const string &name,
-                                              const vector<pair<string, LogicalType>> &child_types) {
-    auto *nested_desc_proto = desc_proto->add_nested_type();
-    auto nested_type_name = name + "Msg";
+string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProto *parent_proto,
+                                                const std::string &field_name,
+                                                const std::vector<std::pair<std::string, LogicalType>> &child_types) {
+    std::string nested_type_name = field_name + "Msg";
     nested_type_name[0] = std::toupper(nested_type_name[0]);
-    nested_desc_proto->set_name(nested_type_name);
 
-    int nested_num = 1;
+    auto *nested_desc = parent_proto->add_nested_type();
+    nested_desc->set_name(nested_type_name);
+
+    int nested_field_num = 1;
     for (const auto &child : child_types) {
-        auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child.second);
-        auto *child_field_desc_proto = nested_desc_proto->add_field();
-        child_field_desc_proto->set_name(child.first);
-        child_field_desc_proto->set_number(nested_num++);
-        child_field_desc_proto->set_type(proto_type);
-        child_field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
+        const std::string &child_name = child.first;
+        const LogicalType &child_type = child.second;
+
+        auto *child_field = nested_desc->add_field();
+        child_field->set_name(child_name);
+        child_field->set_number(nested_field_num++);
+
+        if (child_type.id() == LogicalTypeId::STRUCT) {
+            auto &grandchildren = StructType::GetChildTypes(child_type);
+            std::string nested_child_type = CreateNestedMessage(nested_desc, child_name, grandchildren);
+            child_field->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
+            child_field->set_type_name(nested_child_type);
+        } else {
+            child_field->set_type(BigqueryUtils::LogicalTypeToProtoType(child_type));
+        }
+
+        child_field->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
     }
 
-    auto *field_desc_proto = desc_proto->add_field();
-    field_desc_proto->set_name(name);
-    field_desc_proto->set_number(desc_proto->field_size() + 1);
-    field_desc_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
-    field_desc_proto->set_type_name(nested_type_name);
+    return nested_type_name; // damit der Aufrufer das Feld korrekt setzen kann
 }
 
 void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs) {
@@ -389,8 +393,18 @@ void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,
         if (child_value.IsNull()) {
             continue;
         }
+
         const auto *nested_field = nested_msg->GetDescriptor()->field(j);
-        WriteField(nested_msg, nested_reflection, nested_field, child_type, child_value);
+        if (child_type.id() == LogicalTypeId::STRUCT) {
+            // Handle nested STRUCT types
+            WriteMessageField(nested_msg,
+                              nested_reflection,
+                              nested_field,
+                              child_type,
+                              const_cast<duckdb::Value &>(child_value));
+        } else {
+            WriteField(nested_msg, nested_reflection, nested_field, child_type, child_value);
+        }
     }
 }
 

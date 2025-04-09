@@ -14,9 +14,9 @@ public:
     ~BigqueryProtoWriter();
 
     void InitMessageDescriptor(BigqueryTableEntry *entry);
-    void CreateNestedMessage(google::protobuf::DescriptorProto *desc_proto,
-                             const string &name,
-                             const vector<pair<string, LogicalType>> &child_types);
+    string CreateNestedMessage(google::protobuf::DescriptorProto *desc_proto,
+                               const string &field_name,
+                               const std::vector<std::pair<std::string, LogicalType>> &child_types);
 
     void WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs);
     void WriteMessageField(google::protobuf::Message *msg,
@@ -48,7 +48,9 @@ private:
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;
-    std::unique_ptr<google::cloud::AsyncStreamingReadWriteRpc<google::cloud::bigquery::storage::v1::AppendRowsRequest, google::cloud::bigquery::storage::v1::AppendRowsResponse>> grpc_stream;
+    std::unique_ptr<google::cloud::AsyncStreamingReadWriteRpc<google::cloud::bigquery::storage::v1::AppendRowsRequest,
+                                                              google::cloud::bigquery::storage::v1::AppendRowsResponse>>
+        grpc_stream;
     // google::cloud::bigquery::storage::v1::AppendRowsRequest append_request;
 };
 
