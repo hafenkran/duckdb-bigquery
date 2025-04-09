@@ -47,6 +47,7 @@ private:
     void ReadSimpleColumn(const std::shared_ptr<arrow::Array> &column, Vector &out_vec);
     void ReadListColumn(const std::shared_ptr<arrow::ListArray> &list_array, Vector &out_vec);
     void ReadStructColumn(const std::shared_ptr<arrow::StructArray> &struct_array, Vector &out_vec);
+	Value ReadStructRow(const std::shared_ptr<arrow::StructArray> &struct_array, int64_t row);
 
 	BigqueryTableRef table_ref;
 	string billing_project_id;
