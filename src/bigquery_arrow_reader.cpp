@@ -585,137 +585,165 @@ void BigqueryArrowReader::ReadStructColumn(const std::shared_ptr<arrow::StructAr
             out_vec.SetValue(row, Value());
             continue;
         }
-        // Access the schema of the StructArray to get field names
-        auto field_arrays = struct_array->fields();
-        auto struct_fields = struct_array->type()->fields();
 
-        // Iterate over each field in the struct
-        child_list_t<Value> struct_values;
-        for (size_t i = 0; i < field_arrays.size(); ++i) {
-            auto field_name = struct_fields[i]->name();
-            auto field_array = field_arrays[i];
-            auto field_type = field_array->type();
-
-            // Process each field based on its type
-            switch (field_type->id()) {
-            case arrow::Type::BOOL: {
-                auto bool_array = std::static_pointer_cast<arrow::BooleanArray>(field_array);
-                if (!bool_array->IsNull(row)) {
-                    struct_values.push_back(make_pair(field_name, Value(bool_array->Value(row))));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::BINARY: {
-                auto binary_array = std::static_pointer_cast<arrow::BinaryArray>(field_array);
-                if (!binary_array->IsNull(row)) {
-                    int32_t length;
-                    const uint8_t *value = binary_array->GetValue(row, &length);
-                    struct_values.push_back(make_pair(field_name, Value::BLOB(value, length)));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::DATE32: {
-                auto date32_array = std::static_pointer_cast<arrow::Date32Array>(field_array);
-                if (!date32_array->IsNull(row)) {
-                    int32_t days_since_epoch = date32_array->Value(row);
-                    struct_values.push_back(
-                        make_pair(field_name, Value::DATE(Date::EpochDaysToDate(days_since_epoch))));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::TIME64: {
-                auto time64_array = std::static_pointer_cast<arrow::Time64Array>(field_array);
-                if (!time64_array->IsNull(row)) {
-                    int64_t time_value = time64_array->Value(row);
-                    auto time_unit = std::static_pointer_cast<arrow::Time64Type>(field_array->type())->unit();
-                    Value value;
-                    switch (time_unit) {
-                    case arrow::TimeUnit::MICRO:
-                        value = Value::TIME(Time::FromTimeMs(time_value / 1000));
-                        break;
-                    case arrow::TimeUnit::NANO:
-                        value = Value::TIME(Time::FromTimeMs(time_value / 1000 / 1000));
-                        break;
-                    default:
-                        throw InternalException("Unsupported time unit in TIME64 array.");
-                    }
-                    struct_values.push_back(make_pair(field_name, value));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::TIMESTAMP: {
-                auto timestamp_array = std::static_pointer_cast<arrow::TimestampArray>(field_array);
-                if (!timestamp_array->IsNull(row)) {
-                    int64_t seconds_since_epoch = timestamp_array->Value(row);
-                    auto ts_value = Timestamp::FromEpochMicroSeconds(seconds_since_epoch);
-                    struct_values.push_back(make_pair(field_name, Value::TIMESTAMP(ts_value)));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::INTERVAL_MONTH_DAY_NANO: {
-                auto interval_array = std::static_pointer_cast<arrow::MonthDayNanoIntervalArray>(field_array);
-                if (!interval_array->IsNull(row)) {
-                    auto interval = interval_array->Value(row);
-                    struct_values.push_back(
-                        make_pair(field_name,
-                                  Value::INTERVAL(interval.months, interval.days, interval.nanoseconds / 1000)));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::INT64: {
-                auto int64_array = std::static_pointer_cast<arrow::Int64Array>(field_array);
-                if (!int64_array->IsNull(row)) {
-                    struct_values.push_back(make_pair(field_name, Value(int64_array->Value(row))));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::FLOAT: {
-                auto float_array = std::static_pointer_cast<arrow::FloatArray>(field_array);
-                if (!float_array->IsNull(row)) {
-                    struct_values.push_back(make_pair(field_name, Value(float_array->Value(row))));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::DOUBLE: {
-                auto double_array = std::static_pointer_cast<arrow::DoubleArray>(field_array);
-                if (!double_array->IsNull(row)) {
-                    struct_values.push_back(make_pair(field_name, Value(double_array->Value(row))));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            case arrow::Type::STRING: {
-                auto string_array = std::static_pointer_cast<arrow::StringArray>(field_array);
-                if (!string_array->IsNull(row)) {
-                    struct_values.push_back(make_pair(field_name, Value(string_array->GetString(row))));
-                } else {
-                    struct_values.push_back(make_pair(field_name, Value()));
-                }
-                break;
-            }
-            default:
-                throw InternalException("Unsupported Arrow type: " + field_type->name());
-            }
-        }
-        out_vec.SetValue(row, Value::STRUCT(std::move(struct_values)));
+        Value row_value = ReadStructRow(struct_array, row);
+        out_vec.SetValue(row, row_value);
     }
+}
+
+Value BigqueryArrowReader::ReadStructRow(const std::shared_ptr<arrow::StructArray> &struct_array, int64_t row) {
+    child_list_t<Value> struct_values;
+
+    auto field_arrays = struct_array->fields();
+    auto struct_fields = struct_array->type()->fields();
+
+    for (size_t i = 0; i < field_arrays.size(); ++i) {
+        auto field_name = struct_fields[i]->name();
+        auto field_array = field_arrays[i];
+        auto field_type = field_array->type();
+
+        if (field_array->IsNull(row)) {
+            struct_values.push_back(make_pair(field_name, Value()));
+            continue;
+        }
+
+        switch (field_type->id()) {
+        case arrow::Type::BOOL: {
+            auto bool_array = std::static_pointer_cast<arrow::BooleanArray>(field_array);
+            struct_values.push_back(make_pair(field_name, Value(bool_array->Value(row))));
+            break;
+        }
+        case arrow::Type::BINARY: {
+            auto binary_array = std::static_pointer_cast<arrow::BinaryArray>(field_array);
+            int32_t length;
+            const uint8_t *value = binary_array->GetValue(row, &length);
+            struct_values.push_back(make_pair(field_name, Value::BLOB(value, length)));
+            break;
+        }
+        case arrow::Type::DATE32: {
+            auto date32_array = std::static_pointer_cast<arrow::Date32Array>(field_array);
+            int32_t days_since_epoch = date32_array->Value(row);
+            struct_values.push_back(make_pair(field_name, Value::DATE(Date::EpochDaysToDate(days_since_epoch))));
+            break;
+        }
+        case arrow::Type::TIME64: {
+            auto time64_array = std::static_pointer_cast<arrow::Time64Array>(field_array);
+            int64_t time_value = time64_array->Value(row);
+            auto time_unit = std::static_pointer_cast<arrow::Time64Type>(field_array->type())->unit();
+            Value value;
+            switch (time_unit) {
+            case arrow::TimeUnit::MICRO:
+                value = Value::TIME(Time::FromTimeMs(time_value / 1000));
+                break;
+            case arrow::TimeUnit::NANO:
+                value = Value::TIME(Time::FromTimeMs(time_value / 1000 / 1000));
+                break;
+            default:
+                throw InternalException("Unsupported time unit in TIME64 array.");
+            }
+            struct_values.push_back(make_pair(field_name, value));
+            break;
+        }
+        case arrow::Type::TIMESTAMP: {
+            auto timestamp_array = std::static_pointer_cast<arrow::TimestampArray>(field_array);
+            int64_t seconds_since_epoch = timestamp_array->Value(row);
+            auto ts_value = Timestamp::FromEpochMicroSeconds(seconds_since_epoch);
+            struct_values.push_back(make_pair(field_name, Value::TIMESTAMP(ts_value)));
+            break;
+        }
+        case arrow::Type::INTERVAL_MONTH_DAY_NANO: {
+            auto interval_array = std::static_pointer_cast<arrow::MonthDayNanoIntervalArray>(field_array);
+            auto interval = interval_array->Value(row);
+            struct_values.push_back(
+                make_pair(field_name, Value::INTERVAL(interval.months, interval.days, interval.nanoseconds / 1000)));
+            break;
+        }
+        case arrow::Type::INT64: {
+            auto int64_array = std::static_pointer_cast<arrow::Int64Array>(field_array);
+            struct_values.push_back(make_pair(field_name, Value(int64_array->Value(row))));
+            break;
+        }
+        case arrow::Type::FLOAT: {
+            auto float_array = std::static_pointer_cast<arrow::FloatArray>(field_array);
+            struct_values.push_back(make_pair(field_name, Value(float_array->Value(row))));
+            break;
+        }
+        case arrow::Type::DOUBLE: {
+            auto double_array = std::static_pointer_cast<arrow::DoubleArray>(field_array);
+            struct_values.push_back(make_pair(field_name, Value(double_array->Value(row))));
+            break;
+        }
+        case arrow::Type::STRING: {
+            auto string_array = std::static_pointer_cast<arrow::StringArray>(field_array);
+            struct_values.push_back(make_pair(field_name, Value(string_array->GetString(row))));
+            break;
+        }
+        case arrow::Type::DECIMAL128: {
+            auto decimal_array = std::static_pointer_cast<arrow::Decimal128Array>(field_array);
+            auto decimal_type = std::static_pointer_cast<arrow::Decimal128Type>(field_array->type());
+
+            int32_t scale = decimal_type->scale();
+            int32_t precision = decimal_type->precision();
+
+            if (!decimal_array->IsNull(row)) {
+                auto value_ptr = decimal_array->Value(i);
+                arrow::Decimal128 decimal_value(value_ptr);
+                hugeint_t hugeint_value;
+                hugeint_value.upper = static_cast<int64_t>(decimal_value.high_bits());
+                hugeint_value.lower = static_cast<uint64_t>(decimal_value.low_bits());
+                struct_values.push_back(make_pair(field_name, Value::DECIMAL(hugeint_value, precision, scale)));
+            } else {
+                struct_values.push_back(make_pair(field_name, Value()));
+            }
+            break;
+        }
+        case arrow::Type::DECIMAL256: {
+            auto decimal_array = std::static_pointer_cast<arrow::Decimal256Array>(field_array);
+            auto decimal_type = std::static_pointer_cast<arrow::Decimal256Type>(field_array->type());
+
+            int32_t scale = decimal_type->scale();
+            int32_t precision = decimal_type->precision();
+
+            if (precision > 38) {
+                throw std::runtime_error("BIGDECIMAL precision of " + std::to_string(precision) +
+                                         " exceeds the maximum supported precision of 38 in DuckDB.");
+            }
+
+            if (!decimal_array->IsNull(row)) {
+                const uint8_t *value_ptr = decimal_array->Value(row);
+
+                uint64_t parts[4] = {0};
+                for (int i = 0; i < 4; i++) {
+                    parts[i] = *reinterpret_cast<const uint64_t *>(value_ptr + i * sizeof(uint64_t));
+                }
+
+                if (parts[2] != 0 || parts[3] != 0) {
+                    throw std::runtime_error(
+                        "BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
+                }
+
+                hugeint_t hugeint_value;
+                hugeint_value.lower = parts[0];
+                hugeint_value.upper = static_cast<int64_t>(parts[1]);
+
+                struct_values.push_back(make_pair(field_name, Value::DECIMAL(hugeint_value, precision, scale)));
+            } else {
+                struct_values.push_back(make_pair(field_name, Value()));
+            }
+            break;
+        }
+        case arrow::Type::STRUCT: {
+            auto nested_struct_array = std::static_pointer_cast<arrow::StructArray>(field_array);
+            Value nested_value = ReadStructRow(nested_struct_array, row);
+            struct_values.push_back(make_pair(field_name, nested_value));
+            break;
+        }
+        default:
+            throw InternalException("Unsupported Arrow type: " + field_type->name());
+        }
+    }
+
+    return Value::STRUCT(std::move(struct_values));
 }
 
 int64_t BigqueryArrowReader::GetEstimatedRowCount() {
