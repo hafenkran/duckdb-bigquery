@@ -46,6 +46,11 @@ static void LoadInternal(DatabaseInstance &instance) {
     auto &config = DBConfig::GetConfig(instance);
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
 
+    config.AddExtensionOption("bq_bignumeric_as_varchar",
+                              "Read BigQuery BIGNUMERIC data type as VARCHAR",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::BignumericAsVarchar()),
+                              bigquery::BigquerySettings::SetBignumericAsVarchar);
     config.AddExtensionOption("bq_default_location",
                               "Default location for BigQuery queries",
                               LogicalType::VARCHAR,
