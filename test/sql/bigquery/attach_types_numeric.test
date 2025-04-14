@@ -8,6 +8,8 @@ require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
+require-env BQ_SKIP
+
 statement ok
 SET bq_bignumeric_as_varchar=false
 
