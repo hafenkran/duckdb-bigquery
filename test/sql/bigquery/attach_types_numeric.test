@@ -8,18 +8,18 @@ require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
-require-env BQ_SKIP
-
 statement ok
 SET bq_bignumeric_as_varchar=false
 
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
+###########################################
+# test multiple numeric types
+###########################################
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_numerics;
 
-# test multiple types
 statement ok
 CREATE TABLE bq.${BQ_TEST_DATASET}.table_numerics AS
 SELECT
@@ -45,6 +45,28 @@ NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
 statement ok
 DROP TABLE bq.${BQ_TEST_DATASET}.table_numerics;
 
+###########################################
+# HUGEINT, UHUGEINT, UBIGINT (not supported)
+###########################################
+statement error
+CREATE TABLE bq.${BQ_TEST_DATASET}.hugeint_table (h HUGEINT);
+----
+Not implemented Error: HUGEINT not supported in BigQuery.
+
+statement error
+CREATE TABLE bq.${BQ_TEST_DATASET}.uhugeint_table (h UHUGEINT);
+----
+Not implemented Error: UHUGEINT not supported in BigQuery.
+
+statement error
+CREATE TABLE bq.${BQ_TEST_DATASET}.ubigint_table (h UHUGEINT);
+----
+Not implemented Error: UBIGINT not supported in BigQuery.
+
+
+###########################################
+# NUMERIC test
+###########################################
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
 
@@ -70,18 +92,35 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.numeric_table;
 ----
 12345.678901234	[123.450000000, 6789.010000000, 234.560000000]
 
-
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
 
 statement ok
-CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.numeric_table` AS
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.numeric_table2` AS
 SELECT
     CAST(12345.678901234 AS NUMERIC) AS numeric_column,
     [CAST(123.45 AS NUMERIC), CAST(6789.01 AS NUMERIC), CAST(234.56 AS NUMERIC)] AS numeric_list');
+
+statement ok
+CALL bigquery_clear_cache();
+
+query II
+SELECT * FROM bq.${BQ_TEST_DATASET}.numeric_table2;
+----
+12345.678901234	[123.450000000, 6789.010000000, 234.560000000]
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
+
+
+###########################################
+# BIGNUMERIC test
+###########################################
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
 
 statement ok
 CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table` AS
@@ -91,18 +130,20 @@ SELECT
 statement ok
 CALL bigquery_clear_cache();
 
-query II
-SELECT * FROM bq.${BQ_TEST_DATASET}.numeric_table;
-----
-12345.678901234	[123.450000000, 6789.010000000, 234.560000000]
-
 query I
 SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_DATASET}' AND table_name='bignumeric_table';
 ----
 
+statement ok
+CALL bigquery_clear_cache();
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
+SET bq_bignumeric_as_varchar=true
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
+----
+12345.67890123400000000000000000000000000000
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
