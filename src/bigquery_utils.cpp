@@ -587,12 +587,16 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
     case LogicalTypeId::INTEGER:
     case LogicalTypeId::BIGINT:
         return "INT64";
+	case LogicalTypeId::HUGEINT:
+        throw NotImplementedException("HUGEINT not supported in BigQuery.");
     case LogicalTypeId::UTINYINT:
     case LogicalTypeId::USMALLINT:
     case LogicalTypeId::UINTEGER:
         return "INT64"; // BigQuery does not differentiate unsigned types
     case LogicalTypeId::UBIGINT:
-        return "STRING";
+        throw NotImplementedException("UBIGINT not supported in BigQuery.");
+	case LogicalTypeId::UHUGEINT:
+		throw NotImplementedException("UHUGEINT not supported in BigQuery.");
     case LogicalTypeId::FLOAT:
     case LogicalTypeId::DOUBLE:
         return "FLOAT64";
@@ -602,8 +606,6 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
         return "DATE";
     case LogicalTypeId::DECIMAL:
         return "NUMERIC";
-    case LogicalTypeId::HUGEINT:
-        return "BIGNUMERIC";
     case LogicalTypeId::TIME:
         return "TIME";
     case LogicalTypeId::TIMESTAMP:
