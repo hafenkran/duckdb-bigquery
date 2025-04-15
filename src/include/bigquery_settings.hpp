@@ -140,6 +140,15 @@ public:
         }
         QueryTimeoutMs() = timeout;
     }
+
+	static bool &BignumericAsVarchar() {
+		static bool bigquery_bignumeric_as_varchar = false;
+		return bigquery_bignumeric_as_varchar;
+	}
+
+	static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
+		BignumericAsVarchar() = BooleanValue::Get(parameter);
+	}
 };
 
 

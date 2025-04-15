@@ -20,6 +20,7 @@
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_utils.hpp"
 
+
 namespace duckdb {
 namespace bigquery {
 
@@ -370,9 +371,24 @@ void BigqueryArrowReader::ReadSimpleColumn(const std::shared_ptr<arrow::Array> &
         auto scale = decimal_type->scale();
         auto precision = decimal_type->precision();
 
+        // bq_bignumeric_as_varchar setting
+        if (out_vec.GetType() == LogicalType::VARCHAR) {
+            for (int64_t row = 0; row < decimal_array->length(); ++row) {
+                if (!decimal_array->IsNull(row)) {
+                    auto value_str = decimal_array->FormatValue(row);
+                    out_vec.SetValue(row, Value(value_str));
+                    continue;
+                } else {
+                    out_vec.SetValue(row, Value());
+                }
+            }
+            break;
+        }
+
         if (precision > 38) {
-            throw std::runtime_error("BIGDECIMAL precision of " + std::to_string(precision) +
-                                     " exceeds the maximum supported precision of 38 in DuckDB.");
+            throw BinderException("BIGDECIMAL precision of " + std::to_string(precision) +
+                                  " exceeds the maximum supported precision of 38 in DuckDB. Consider enabling "
+                                  "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
         }
 
         for (int64_t row = 0; row < decimal_array->length(); ++row) {
@@ -389,8 +405,9 @@ void BigqueryArrowReader::ReadSimpleColumn(const std::shared_ptr<arrow::Array> &
                 hugeint_value.upper = static_cast<int64_t>(parts[1]); // next 64 Bits
 
                 if (parts[2] != 0 || parts[3] != 0) {
-                    throw std::runtime_error(
-                        "BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
+                    throw BinderException(
+                        "BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB. Consider enabling "
+                        "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
                 }
 
                 out_vec.SetValue(row, Value::DECIMAL(hugeint_value, precision, scale));
@@ -398,6 +415,7 @@ void BigqueryArrowReader::ReadSimpleColumn(const std::shared_ptr<arrow::Array> &
                 out_vec.SetValue(row, Value());
             }
         }
+        break;
     }
     default: {
         throw InternalException("Unsupported Arrow type: " + column->type()->name());
@@ -550,6 +568,59 @@ void BigqueryArrowReader::ReadListColumn(const std::shared_ptr<arrow::ListArray>
                 }
             }
             break;
+        }
+        case arrow::Type::DECIMAL256: {
+            auto decimal_array = std::static_pointer_cast<arrow::Decimal256Array>(values);
+            auto decimal_type = std::static_pointer_cast<arrow::Decimal256Type>(values->type());
+
+            auto scale = decimal_type->scale();
+            auto precision = decimal_type->precision();
+
+            // bq_bignumeric_as_varchar setting
+            if (out_vec.GetType() == LogicalType::VARCHAR) {
+                for (int32_t i = start_offset; i < end_offset; ++i) {
+                    if (!decimal_array->IsNull(i)) {
+                        auto value_str = decimal_array->FormatValue(i);
+                        list_values.push_back(Value(value_str));
+                        continue;
+                    } else {
+                        list_values.push_back(Value());
+                    }
+                }
+                break;
+            }
+
+            if (precision > 38) {
+                throw BinderException("BIGDECIMAL precision of " + std::to_string(precision) +
+                                      " exceeds the maximum supported precision of 38 in DuckDB. Consider enabling "
+                                      "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+            }
+
+			for (int32_t i = start_offset; i < end_offset; ++i) {
+				if (!decimal_array->IsNull(i)) {
+					const uint8_t *value_ptr = decimal_array->Value(i);
+
+					uint64_t parts[4] = {0};
+					for (int i = 0; i < 4; i++) {
+						parts[i] = *reinterpret_cast<const uint64_t *>(value_ptr + i * sizeof(uint64_t));
+					}
+
+					hugeint_t hugeint_value;
+					hugeint_value.lower = parts[0];                       // lower 64 Bits
+					hugeint_value.upper = static_cast<int64_t>(parts[1]); // next 64 Bits
+
+					if (parts[2] != 0 || parts[3] != 0) {
+						throw BinderException(
+							"BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB. Consider enabling "
+							"'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+					}
+
+					list_values.push_back(Value::DECIMAL(hugeint_value, precision, scale));
+				} else {
+					list_values.push_back(Value());
+				}
+			}
+			break;
         }
         case arrow::Type::STRUCT: {
             auto struct_array = std::static_pointer_cast<arrow::StructArray>(values);

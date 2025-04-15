@@ -253,13 +253,14 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 ### Additional Extension Settings
 
-| Setting                           | Description                                                                                              | Default |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------- | ------- |
-| `bq_query_timeout_ms`             | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting. | `90000` |
-| `bq_debug_show_queries`           | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                        | `false` |
-| `bq_experimental_filter_pushdown` | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                   | `true`  |
-| `bq_experimental_use_info_schema` | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)               | `true`  |
-| `bq_curl_ca_bundle_path`          | Path to the CA certificates used by cURL for SSL certificate verification                                |         |
+| Setting                           | Description                                                                                                       | Default |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------- |
+| `bq_bignumeric_as_varchar`        | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error. | `false` |
+| `bq_query_timeout_ms`             | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.          | `90000` |
+| `bq_debug_show_queries`           | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                 | `false` |
+| `bq_experimental_filter_pushdown` | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                            | `true`  |
+| `bq_experimental_use_info_schema` | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                        | `true`  |
+| `bq_curl_ca_bundle_path`          | Path to the CA certificates used by cURL for SSL certificate verification                                         |         |
 
 ## Limitations
 
