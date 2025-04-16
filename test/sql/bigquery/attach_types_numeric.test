@@ -59,7 +59,7 @@ CREATE TABLE bq.${BQ_TEST_DATASET}.uhugeint_table (h UHUGEINT);
 Not implemented Error: UHUGEINT not supported in BigQuery.
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.ubigint_table (h UHUGEINT);
+CREATE TABLE bq.${BQ_TEST_DATASET}.ubigint_table (h UBIGINT);
 ----
 Not implemented Error: UBIGINT not supported in BigQuery.
 
