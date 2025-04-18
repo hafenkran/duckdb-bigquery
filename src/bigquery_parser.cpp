@@ -107,7 +107,10 @@ BoundStatement bigquery_bind(ClientContext &context,
                 throw BinderException("Bigquery registered state not found");
             }
 
-			auto bigquery_state = (BigqueryState *)lookup.get();
+			auto bigquery_state = dynamic_cast<BigqueryState *>(lookup.get());
+            if (!bigquery_state) {
+                throw BinderException("Bigquery registered state is not of type BigqueryState");
+            }
             auto bigquery_parse_data = dynamic_cast<BigqueryParseData *>(bigquery_state->parse_data.get());
             if (!bigquery_parse_data) {
                 throw BinderException("Bigquery parse data invalid");
