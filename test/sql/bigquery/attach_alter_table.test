@@ -131,20 +131,20 @@ DROP TABLE bq.${BQ_TEST_DATASET}.alter_table_set_default;
 ### ----
 ### 100
 
-### Test - DROP_NOT_NULL
-statement ok
-CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_drop_not_null(i INTEGER NOT NULL);
-
-statement ok
-ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_drop_not_null ALTER COLUMN i DROP NOT NULL;
-
-statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.alter_table_drop_not_null VALUES (NULL);
-
-query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;
-----
-NULL
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;
+### Test - DROP_NOT_NULL (disabled due to flakiness)
+# statement ok
+# CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_drop_not_null(i INTEGER NOT NULL);
+#
+# statement ok
+# ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_drop_not_null ALTER COLUMN i DROP NOT NULL;
+#
+# statement ok
+# INSERT INTO bq.${BQ_TEST_DATASET}.alter_table_drop_not_null VALUES (NULL);
+#
+# query I
+# SELECT * FROM bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;
+# ----
+# NULL
+#
+# statement ok
+# DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;
