@@ -8,31 +8,16 @@ on:
     workflow_dispatch:
 
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+    group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
 
 jobs:
-    skip-push-if-pr-exists:
-        if: github.event_name == 'push'
-        runs-on: ubuntu-latest
-        outputs:
-            should_continue: ${{ steps.check.outputs.should_continue }}
-        steps:
-          - name: Check if push is part of an open PR
-            id: check
-            uses: actions/github-script@v7
-            with:
-                script: |
-                    const prs = await github.rest.pulls.list({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
-                        state: 'open'
-                    });
-                    core.setOutput('should_continue', prs.data.length === 0 ? 'true' : 'false');
-
     duckdb-stable-build:
         name: Build extension binaries
+        if: |
+            github.event_name == 'pull_request' ||
+            (github.event_name == 'push' && github.ref_name == 'main') ||
+            (github.event_name == 'push' && github.ref_type == 'tag')
         uses: ./.github/workflows/_extension_distribution.yml
         secrets: inherit
         with:
@@ -50,7 +35,6 @@ jobs:
         secrets: inherit
         with:
             duckdb_version: v1.2.2
-            # ci_tools_version: v1.1.3
             extension_name: bigquery
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;osx_amd64;linux_arm64"
             deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
