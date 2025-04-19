@@ -1,5 +1,6 @@
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
 
+#include "bigquery_parser.hpp"
 #include "bigquery_settings.hpp"
 #include "storage/bigquery_schema_set.hpp"
 #include "storage/bigquery_transaction.hpp"
