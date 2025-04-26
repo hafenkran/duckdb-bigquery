@@ -219,6 +219,12 @@ LogicalType BigqueryUtils::FieldSchemaNumericToLogicalType(const google::cloud::
     auto precision = field.precision();
     auto scale = field.scale();
 
+	// If no precision and scale are provided, BigQuery assumes default values
+	if (precision == 0 && scale == 0) {
+		precision = BQ_NUMERIC_PRECISION_DEFAULT;
+		scale = BQ_NUMERIC_SCALE_DEFAULT;
+	}
+
     const auto &bigquery_type = field.type();
     if (bigquery_type == "BIGNUMERIC" && BigquerySettings::BignumericAsVarchar()) {
         return LogicalType::VARCHAR;
