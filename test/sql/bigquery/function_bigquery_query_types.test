@@ -108,7 +108,8 @@ SELECT * FROM bigquery_query('bq', '
 				DATE("2024-01-01") AS date_col,
 				TIME(12, 34, 56) AS time_col,
 				TIMESTAMP("2024-01-01 12:34:56 UTC") AS timestamp_col,
-				INTERVAL 1 YEAR + INTERVAL 2 MONTH + INTERVAL 3 DAY + INTERVAL 4 HOUR + INTERVAL 5 MINUTE + INTERVAL 6 SECOND AS interval_col
+				INTERVAL 1 YEAR + INTERVAL 2 MONTH + INTERVAL 3 DAY + INTERVAL 4 HOUR + INTERVAL 5 MINUTE + INTERVAL 6 SECOND AS interval_col,
+				NUMERIC "12345.6789" AS decimal128_col
 			),
 			STRUCT(
 				FALSE AS bool_col,
@@ -120,10 +121,35 @@ SELECT * FROM bigquery_query('bq', '
 				DATE("1999-12-31") AS date_col,
 				TIME(23, 59, 59) AS time_col,
 				TIMESTAMP("1999-12-31 23:59:59 UTC") AS timestamp_col,
-				INTERVAL -1 YEAR AS interval_col
+				INTERVAL -1 YEAR AS interval_col,
+				NUMERIC "-12345.6789" AS decimal128_col
 			)] AS complex_struct_list
 		)
 	])
 ')
 ----
-[{'bool_col': true, 'int32_col': 42, 'int64_col': 9223372036854775807, 'float_col': 3.14, 'double_col': 2.7182817, 'string_col': hello, 'date_col': 2024-01-01, 'time_col': 12:34:56, 'timestamp_col': 2024-01-01 12:34:56, 'interval_col': 1 year 2 months 3 days 04:05:06}, {'bool_col': false, 'int32_col': -100, 'int64_col': -9223372036854775808, 'float_col': -1.23, 'double_col': -4.56, 'string_col': world, 'date_col': 1999-12-31, 'time_col': 23:59:59, 'timestamp_col': 1999-12-31 23:59:59, 'interval_col': -1 year}]
+[{'bool_col': true, 'int32_col': 42, 'int64_col': 9223372036854775807, 'float_col': 3.14, 'double_col': 2.7182817, 'string_col': hello, 'date_col': 2024-01-01, 'time_col': 12:34:56, 'timestamp_col': 2024-01-01 12:34:56, 'interval_col': 1 year 2 months 3 days 04:05:06, 'decimal128_col': 12345.678900000}, {'bool_col': false, 'int32_col': -100, 'int64_col': -9223372036854775808, 'float_col': -1.23, 'double_col': -4.56, 'string_col': world, 'date_col': 1999-12-31, 'time_col': 23:59:59, 'timestamp_col': 1999-12-31 23:59:59, 'interval_col': -1 year, 'decimal128_col': -12345.678900000}]
+
+query IIIIIIIIIII
+SELECT * FROM bigquery_query('bq', '
+	SELECT * FROM UNNEST([
+		STRUCT(
+			[TRUE, FALSE, TRUE] AS bool_list,
+			[1, 2, 3] AS int32_list,
+			[9223372036854775807, -9223372036854775808] AS int64_list,
+			[3.14, 2.71, 1.61] AS float_list,
+			[2.718281828, 3.1415926535] AS double_list,
+			["hello", "world"] AS string_list,
+			[DATE("2024-01-01"), DATE("2023-12-31")] AS date_list,
+			[TIME(12, 0, 0), TIME(13, 30, 30)] AS time_list,
+			[TIMESTAMP("2024-01-01 12:00:00 UTC"), TIMESTAMP("2023-12-31 23:59:59 UTC")] AS timestamp_list,
+			[
+				INTERVAL 1 YEAR + INTERVAL 2 MONTH,
+				INTERVAL 3 DAY + INTERVAL 4 HOUR
+			] AS interval_list,
+			[NUMERIC "123.45", NUMERIC "678.90"] AS decimal128_list
+		)
+	]);
+')
+----
+[true, false, true]	[1, 2, 3]	[9223372036854775807, -9223372036854775808]	[3.14, 2.71, 1.61]	[2.7182817, 3.1415927]	[hello, world]	[2024-01-01, 2023-12-31]	[12:00:00, 13:30:30]	[2024-01-01 12:00:00, 2023-12-31 23:59:59]	[1 year 2 months, 3 days 04:00:00]	[123.450000000, 678.900000000]
