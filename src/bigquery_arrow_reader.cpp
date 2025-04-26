@@ -434,6 +434,28 @@ Value BigqueryArrowReader::ConvertListElementToValue(
             [](int32_t days) { return Value::DATE(Date::EpochDaysToDate(days)); });
         break;
     }
+	case arrow::Type::TIME64: {
+		auto time_array = std::static_pointer_cast<arrow::Time64Array>(values);
+		auto time_unit = std::static_pointer_cast<arrow::Time64Type>(values->type())->unit();
+		for (int32_t i = start_offset; i < end_offset; ++i) {
+			if (time_array->IsNull(i)) {
+				list_values.push_back(Value());
+				continue;
+			}
+			int64_t time_value = time_array->Value(i);
+			switch (time_unit) {
+			case arrow::TimeUnit::MICRO:
+				list_values.push_back(Value::TIME(Time::FromTimeMs(time_value / 1000)));
+				break;
+			case arrow::TimeUnit::NANO:
+				list_values.push_back(Value::TIME(Time::FromTimeMs(time_value / 1000000)));
+				break;
+			default:
+				throw InternalException("Unsupported time unit in TIME64 array.");
+			}
+		}
+		break;
+	}
     case arrow::Type::TIMESTAMP: {
         auto timestamp_array = std::static_pointer_cast<arrow::TimestampArray>(values);
         for (int32_t i = start_offset; i < end_offset; ++i) {
@@ -445,6 +467,18 @@ Value BigqueryArrowReader::ConvertListElementToValue(
         }
         break;
     }
+	case arrow::Type::INTERVAL_MONTH_DAY_NANO: {
+		auto interval_array = std::static_pointer_cast<arrow::MonthDayNanoIntervalArray>(values);
+		for (int32_t i = start_offset; i < end_offset; ++i) {
+			if (interval_array->IsNull(i)) {
+				list_values.push_back(Value());
+			} else {
+				auto interval = interval_array->Value(i);
+				list_values.push_back(Value::INTERVAL(interval.months, interval.days, interval.nanoseconds / 1000));
+			}
+		}
+		break;
+	}
     case arrow::Type::INT32: {
         ReadPrimitiveListElements<arrow::Int32Array>(values, start_offset, end_offset, list_values,
             [](int32_t val) { return Value(val); });
@@ -674,6 +708,10 @@ Value BigqueryArrowReader::ConvertStructFieldToValue(
             std::static_pointer_cast<arrow::MonthDayNanoIntervalArray>(field_array);
         auto interval = interval_array->Value(row);
         return Value::INTERVAL(interval.months, interval.days, interval.nanoseconds / 1000);
+    }
+    case arrow::Type::INT32: {
+        auto int32_array = std::static_pointer_cast<arrow::Int32Array>(field_array);
+        return Value(int32_array->Value(row));
     }
     case arrow::Type::INT64: {
         auto int64_array = std::static_pointer_cast<arrow::Int64Array>(field_array);
