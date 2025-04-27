@@ -128,7 +128,9 @@ BigqueryArrowReader::ReadRows(const string &stream_name, int row_offset) {
 
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::ReadSchema(
     const google::cloud::bigquery::storage::v1::ArrowSchema &schema) {
-    auto buffer_ptr = arrow::Buffer::FromString(schema.serialized_schema());
+    // auto buffer_ptr = arrow::Buffer::FromString(schema.serialized_schema());
+    const auto &serialized = schema.serialized_schema();
+    auto buffer_ptr = arrow::Buffer::Wrap(serialized.data(), serialized.size());
     arrow::io::BufferReader buffer_reader(buffer_ptr);
     auto arrow_schema_res = arrow::ipc::ReadSchema(&buffer_reader, nullptr);
     if (!arrow_schema_res.ok()) {
@@ -226,15 +228,9 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
         break;
     }
     case arrow::Type::DATE32: {
-        auto date32_array = std::static_pointer_cast<arrow::Date32Array>(array);
-        for (int64_t row = 0; row < row_count; ++row) {
-            if (!date32_array->IsNull(row)) {
-                int32_t days_since_epoch = date32_array->Value(row);
-                out_vec.SetValue(row, Value::DATE(Date::EpochDaysToDate(days_since_epoch)));
-            } else {
-                out_vec.SetValue(row, Value());
-            }
-        }
+        ConvertPrimitiveArray<arrow::Date32Array>(array, out_vec, [](int32_t days) {
+            return Value::DATE(Date::EpochDaysToDate(days));
+        });
         break;
     }
     case arrow::Type::TIME64: {
@@ -260,15 +256,9 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
         break;
     }
     case arrow::Type::TIMESTAMP: {
-        auto timestamp_array = std::static_pointer_cast<arrow::TimestampArray>(array);
-        for (int64_t row = 0; row < row_count; ++row) {
-            if (!timestamp_array->IsNull(row)) {
-                int64_t micros = timestamp_array->Value(row);
-                out_vec.SetValue(row, Value::TIMESTAMP(Timestamp::FromEpochMicroSeconds(micros)));
-            } else {
-                out_vec.SetValue(row, Value());
-            }
-        }
+        ConvertPrimitiveArray<arrow::TimestampArray>(array, out_vec, [](int64_t micros) {
+            return Value::TIMESTAMP(Timestamp::FromEpochMicroSeconds(micros));
+        });
         break;
     }
     case arrow::Type::INTERVAL_MONTH_DAY_NANO: {
@@ -399,6 +389,7 @@ Value BigqueryArrowReader::ConvertListElementToValue(
     const std::shared_ptr<arrow::ListArray> &list_array,
     int64_t row,
     const LogicalType &target_type) {
+
     if (list_array->IsNull(row)) {
         return Value();
     }
@@ -638,10 +629,10 @@ Value BigqueryArrowReader::ConvertStructRowToValue(
     int64_t row,
     const vector<LogicalType> &target_types) {
 
-    child_list_t<Value> struct_values;
-
     auto field_arrays = struct_array->fields();
     auto struct_fields = struct_array->type()->fields();
+
+    child_list_t<Value> struct_values(field_arrays.size());
 
     D_ASSERT(field_arrays.size() == struct_fields.size());
     D_ASSERT(field_arrays.size() == target_types.size());
@@ -652,12 +643,11 @@ Value BigqueryArrowReader::ConvertStructRowToValue(
         const auto &logical_type = target_types[i];
 
         if (field_array->IsNull(row)) {
-            struct_values.push_back(make_pair(field_name, Value()));
-            continue;
+            struct_values[i] = make_pair(field_name, Value());
+        } else {
+            struct_values[i] =
+                make_pair(field_name, ConvertStructFieldToValue(field_array, row, logical_type));
         }
-
-        struct_values.push_back(
-            make_pair(field_name, ConvertStructFieldToValue(field_array, row, logical_type)));
     }
 
     return Value::STRUCT(std::move(struct_values));
@@ -763,7 +753,7 @@ Value BigqueryArrowReader::ConvertStructFieldToValue(
 
         const uint8_t *value_ptr = decimal_array->Value(row);
         uint64_t parts[4] = {0};
-        for (int i = 0; i < 4; i++) {
+        for (idx_t i = 0; i < 4; ++i) {
             parts[i] = *reinterpret_cast<const uint64_t *>(value_ptr + i * sizeof(uint64_t));
         }
         if (parts[2] != 0 || parts[3] != 0) {
