@@ -18,6 +18,7 @@
 #include <stdexcept>
 
 #include "bigquery_arrow_reader.hpp"
+#include "bigquery_settings.hpp"
 #include "bigquery_utils.hpp"
 
 
@@ -56,6 +57,9 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
         }
     }
     if (!filter_condition.empty()) {
+        if (BigquerySettings::DebugQueryPrint()) {
+            std::cout << "BigQuery row restrictions: " << filter_condition << std::endl;
+        }
         read_options->set_row_restriction(filter_condition);
     }
 
