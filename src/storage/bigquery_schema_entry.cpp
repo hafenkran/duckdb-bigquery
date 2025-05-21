@@ -140,13 +140,13 @@ void BigquerySchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
     GetCatalogSet(info.type).DropEntry(context, info);
 }
 
-optional_ptr<CatalogEntry> BigquerySchemaEntry::GetEntry(CatalogTransaction transaction,
-                                                         CatalogType type,
-                                                         const string &name) {
+optional_ptr<CatalogEntry> BigquerySchemaEntry::LookupEntry(CatalogTransaction transaction,
+                                                            const EntryLookupInfo &lookup_info) {
+    auto type = lookup_info.GetCatalogType();
     switch (type) {
     case CatalogType::TABLE_ENTRY:
     case CatalogType::VIEW_ENTRY:
-        return tables.GetEntry(transaction.GetContext(), name);
+        return tables.GetEntry(transaction.GetContext(), lookup_info.GetEntryName());
     default:
         // other types do not exist/are not supported.
         return nullptr;

@@ -36,8 +36,8 @@ SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
     auto bq_client = transaction.GetBigqueryClient();
     auto result = bq_client->ExecuteQuery(query);
 
-	auto total_rows = result.total_rows();
-	uint64_t extracted_value = total_rows.value();
+    auto total_rows = result.total_rows();
+    uint64_t extracted_value = total_rows.value();
     gstate.updated_count = extracted_value;
     return SinkFinalizeType::READY;
 }
@@ -61,15 +61,17 @@ InsertionOrderPreservingMap<string> BigqueryUpdate::ParamsToString() const {
     return result;
 }
 
-unique_ptr<PhysicalOperator> BigqueryCatalog::PlanUpdate(ClientContext &context,
-                                                         LogicalUpdate &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
+PhysicalOperator &BigqueryCatalog::PlanUpdate(ClientContext &context,
+                                              PhysicalPlanGenerator &planner,
+                                              LogicalUpdate &op,
+                                              PhysicalOperator &plan) {
     if (op.return_chunk) {
         throw NotImplementedException("RETURNING clause not supported.");
     }
-    auto update_op = make_uniq<BigqueryUpdate>(op, op.table, BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op, *plan));
-    update_op->children.push_back(std::move(plan));
-    return std::move(update_op);
+	auto query = BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op, plan);
+	auto &update = planner.Make<BigqueryUpdate>(op, op.table, query);
+	update.children.push_back(plan);
+	return update;
 }
 
 } // namespace bigquery

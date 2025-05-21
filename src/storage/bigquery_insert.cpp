@@ -120,7 +120,9 @@ SourceResultType BigqueryInsert::GetData(ExecutionContext &context,
 }
 
 // ### FINALIZE
-SinkFinalizeType BigqueryInsert::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
+SinkFinalizeType BigqueryInsert::Finalize(Pipeline &pipeline,
+                                          Event &event,
+                                          ClientContext &context,
                                           OperatorSinkFinalizeInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
     gstate.writer->Finalize();
@@ -139,10 +141,12 @@ InsertionOrderPreservingMap<string> BigqueryInsert::ParamsToString() const {
 }
 
 // ### PLAN
-unique_ptr<PhysicalOperator> AddCastToBigqueryTypes(ClientContext &context, unique_ptr<PhysicalOperator> plan) {
+PhysicalOperator &AddCastToBigqueryTypes(ClientContext &context,
+                                         PhysicalPlanGenerator &planner,
+                                         PhysicalOperator &plan) {
     bool requires_casts = false;
-    auto &types = plan->types;
-    for (auto &type : types) {
+    auto &child_types = plan.GetTypes();
+    for (auto &type : child_types) {
         auto bigquery_type = BigqueryUtils::CastToBigqueryType(type);
         if (type.id() != bigquery_type.id()) {
             requires_casts = true;
@@ -150,49 +154,58 @@ unique_ptr<PhysicalOperator> AddCastToBigqueryTypes(ClientContext &context, uniq
         }
     }
     if (!requires_casts) {
-        vector<LogicalType> bigquery_types;
-        vector<unique_ptr<Expression>> select_list;
-        for (idx_t i = 0; i < types.size(); i++) {
-            auto &type = types[i];
-            unique_ptr<Expression> expr = make_uniq<BoundReferenceExpression>(type, i);
-
-            auto bigquery_type = BigqueryUtils::CastToBigqueryType(type);
-            if (type.id() != bigquery_type.id()) {
-                expr = BoundCastExpression::AddCastToType(context, std::move(expr), bigquery_type);
-            }
-
-            bigquery_types.push_back(std::move(bigquery_type));
-            select_list.push_back(std::move(expr));
-        }
-        auto proj = make_uniq<PhysicalProjection>(types, std::move(select_list), plan->estimated_cardinality);
-        proj->children.push_back(std::move(plan));
-        plan = std::move(proj);
+        return plan;
     }
-    return plan;
+
+    vector<LogicalType> bigquery_types;
+    vector<unique_ptr<Expression>> select_list;
+    for (idx_t i = 0; i < child_types.size(); i++) {
+        auto &type = child_types[i];
+        unique_ptr<Expression> expr = make_uniq<BoundReferenceExpression>(type, i);
+
+
+        auto bigquery_type = BigqueryUtils::CastToBigqueryType(type);
+        if (type != bigquery_type) {
+            expr = BoundCastExpression::AddCastToType(context, std::move(expr), bigquery_type);
+        }
+
+        bigquery_types.push_back(std::move(bigquery_type));
+        select_list.push_back(std::move(expr));
+    }
+
+
+    auto &proj =
+        planner.Make<PhysicalProjection>(std::move(bigquery_types), std::move(select_list), plan.estimated_cardinality);
+    proj.children.push_back(plan);
+    return proj;
 }
 
-unique_ptr<PhysicalOperator> BigqueryCatalog::PlanInsert(ClientContext &context,
-                                                         LogicalInsert &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
+
+PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
+                                              PhysicalPlanGenerator &planner,
+                                              LogicalInsert &op,
+                                              optional_ptr<PhysicalOperator> plan) {
     if (op.return_chunk) {
         throw BinderException("RETURNING clause not supported.");
     }
     if (op.action_type != OnConflictAction::THROW) {
         throw BinderException("ON CONFLCIT clause not supported.");
     }
-    plan = AddCastToBigqueryTypes(context, std::move(plan));
-    auto insert = make_uniq<BigqueryInsert>(op, op.table, op.column_index_map);
-    insert->children.push_back(std::move(plan));
-    return std::move(insert);
+
+    auto &child_plan = AddCastToBigqueryTypes(context, planner, *plan);
+    auto &insert = planner.Make<BigqueryInsert>(op, op.table, op.column_index_map);
+    insert.children.push_back(child_plan);
+    return insert;
 }
 
-unique_ptr<PhysicalOperator> BigqueryCatalog::PlanCreateTableAs(ClientContext &context,
-                                                                LogicalCreateTable &op,
-                                                                unique_ptr<PhysicalOperator> plan) {
-    plan = AddCastToBigqueryTypes(context, std::move(plan));
-    auto insert = make_uniq<BigqueryInsert>(op, op.schema, std::move(op.info));
-    insert->children.push_back(std::move(plan));
-    return std::move(insert);
+PhysicalOperator &BigqueryCatalog::PlanCreateTableAs(ClientContext &context,
+                                                     PhysicalPlanGenerator &planner,
+                                                     LogicalCreateTable &op,
+                                                     PhysicalOperator &plan) {
+    auto &child_plan = AddCastToBigqueryTypes(context, planner, plan); // TODO
+    auto &insert = planner.Make<BigqueryInsert>(op, op.schema, std::move(op.info));
+    insert.children.push_back(child_plan);
+    return insert;
 }
 
 } // namespace bigquery
