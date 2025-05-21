@@ -16,6 +16,10 @@ on:
       extension_name:
         required: true
         type: string
+      # If our extension is an alias extension, the name of the canonical extension
+      extension_canonical:
+        required: false
+        type: string
       # DuckDB version to build against, should in most cases be identical to
       duckdb_version:
         required: true
@@ -208,14 +212,14 @@ jobs:
           repository: ${{ inputs.override_repository }}
           ref: ${{ inputs.override_ref }}
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - uses: actions/checkout@v4
         name: Checkout current repository
         if: ${{inputs.override_repository == ''}}
         with:
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - uses: actions/checkout@v4
         name: Checkout Extension CI tools
@@ -270,6 +274,8 @@ jobs:
           OPENSSL_USE_STATIC_LIBS=true
           DUCKDB_PLATFORM=${{ matrix.duckdb_arch }}
           DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }}
+          EXTENSION_NAME=${{ inputs.extension_name }}
+          EXTENSION_CANONICAL=${{ inputs.extension_canonical }}
           LINUX_CI_IN_DOCKER=1
           TOOLCHAIN_FLAGS=${{ matrix.duckdb_arch == 'linux_arm64' && '-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_Fortran_COMPILER=aarch64-linux-gnu-gfortran' || '' }}
           EOF
@@ -379,14 +385,14 @@ jobs:
           repository: ${{ inputs.override_repository }}
           ref: ${{ inputs.override_ref }}
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - uses: actions/checkout@v4
         name: Checkout current repository
         if: ${{inputs.override_repository == ''}}
         with:
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - name: Install Ninja
         run: |
@@ -477,7 +483,7 @@ jobs:
       - name: Build extension
         shell: bash
         run: |
-          make release
+          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} make release
 
       - id: "auth"
         uses: "google-github-actions/auth@v2"
@@ -535,12 +541,6 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Enable Windows long path support
-        shell: powershell
-        run: |
-          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
-            -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
-
       - name: Keep \n line endings
         shell: bash
         run: |
@@ -554,14 +554,14 @@ jobs:
           repository: ${{ inputs.override_repository }}
           ref: ${{ inputs.override_ref }}
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - uses: actions/checkout@v4
         name: Checkout current repository
         if: ${{inputs.override_repository == ''}}
         with:
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - uses: actions/setup-python@v5
         with:
@@ -650,6 +650,8 @@ jobs:
       - name: Build extension
         env:
           DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+          EXTENSION_NAME: ${{ inputs.extension_name }}
+          EXTENSION_CANONICAL: ${{ inputs.extension_canonical }}
           DUCKDB_PLATFORM_RTOOLS: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 1 || 0 }}
           EXT_FLAGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         shell: cmd
@@ -710,7 +712,8 @@ jobs:
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.wasm_matrix)}}
     env:
-      VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
+      VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_target_triplet }}
+      VCPKG_HOST_TRIPLET: ${{ matrix.vcpkg_host_triplet }}
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
 
@@ -722,14 +725,14 @@ jobs:
           repository: ${{ inputs.override_repository }}
           ref: ${{ inputs.override_ref }}
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - uses: actions/checkout@v4
         name: Checkout current repository
         if: ${{inputs.override_repository == ''}}
         with:
           fetch-depth: 0
-          submodules: 'true'
+          submodules: 'recursive'
 
       - uses: actions/checkout@v4
         name: Checkout Extension CI tools
@@ -755,7 +758,7 @@ jobs:
 
       - uses: mymindstorm/setup-emsdk@v13
         with:
-          version: 'latest'
+          version: 3.1.71
 
       - name: Setup Rust for cross compilation
         if: ${{ (inputs.enable_rust || contains(format(';{0};', inputs.extra_toolchains), ';rust;'))}}
@@ -779,7 +782,7 @@ jobs:
         uses: hendrikmuhs/ccache-action@main
         continue-on-error: true
         with:
-          key: ${{ github.job }}-${{ matrix.duckdb_arch }}
+          key: ${{ github.job }}-${{ matrix.duckdb_arch }}-${{ inputs.duckdb_version }}
 
       - name: Run configure
         shell: bash
@@ -790,7 +793,7 @@ jobs:
 
       - name: Build Wasm module
         run: |
-          make ${{ matrix.duckdb_arch }}
+          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} make ${{ matrix.duckdb_arch }}
 
       - uses: actions/upload-artifact@v4
         with:
