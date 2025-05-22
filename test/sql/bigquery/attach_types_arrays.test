@@ -26,7 +26,7 @@ query III
 SELECT * FROM bq.${BQ_TEST_DATASET}.table_arrays;
 ----
 []	[]	[]
-[42, 999, -42]	[42.0, nan, inf, -inf, -42.0]	[🦆🦆🦆🦆🦆🦆, goose, ]
+[42, 999, -42]	[42.0, nan, inf, -inf, -42.0]	[🦆🦆🦆🦆🦆🦆, goose, '']
 []	[]	[]
 
 statement ok
