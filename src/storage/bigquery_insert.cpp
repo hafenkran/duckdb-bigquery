@@ -163,7 +163,6 @@ PhysicalOperator &AddCastToBigqueryTypes(ClientContext &context,
         auto &type = child_types[i];
         unique_ptr<Expression> expr = make_uniq<BoundReferenceExpression>(type, i);
 
-
         auto bigquery_type = BigqueryUtils::CastToBigqueryType(type);
         if (type != bigquery_type) {
             expr = BoundCastExpression::AddCastToType(context, std::move(expr), bigquery_type);
