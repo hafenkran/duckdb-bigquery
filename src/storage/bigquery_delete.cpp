@@ -57,15 +57,17 @@ InsertionOrderPreservingMap<string> BigqueryDelete::ParamsToString() const {
     return result;
 }
 
-unique_ptr<PhysicalOperator> BigqueryCatalog::PlanDelete(ClientContext &content,
-                                                         LogicalDelete &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
+PhysicalOperator &BigqueryCatalog::PlanDelete(ClientContext &context,
+                                              PhysicalPlanGenerator &planner,
+                                              LogicalDelete &op,
+                                              PhysicalOperator &plan) {
     if (op.return_chunk) {
         throw BinderException("RETURNING clause is not supported.");
     }
-    auto delete_op = make_uniq<BigqueryDelete>(op, op.table, BigquerySQL::LogicalDeleteToSQL(GetProjectID(), op, *plan));
-    delete_op->children.push_back(std::move(plan));
-    return std::move(delete_op);
+	auto query = BigquerySQL::LogicalDeleteToSQL(GetProjectID(), op, plan);
+	auto &delete_op = planner.Make<BigqueryDelete>(op, op.table, query);
+	delete_op.children.push_back(plan);
+    return delete_op;
 }
 
 } // namespace bigquery

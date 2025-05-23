@@ -128,7 +128,7 @@ SELECT * FROM bigquery_query('bq', '
 	])
 ')
 ----
-[{'bool_col': true, 'int32_col': 42, 'int64_col': 9223372036854775807, 'float_col': 3.14, 'double_col': 2.7182817, 'string_col': hello, 'date_col': 2024-01-01, 'time_col': 12:34:56, 'timestamp_col': 2024-01-01 12:34:56, 'interval_col': 1 year 2 months 3 days 04:05:06, 'decimal128_col': 12345.678900000}, {'bool_col': false, 'int32_col': -100, 'int64_col': -9223372036854775808, 'float_col': -1.23, 'double_col': -4.56, 'string_col': world, 'date_col': 1999-12-31, 'time_col': 23:59:59, 'timestamp_col': 1999-12-31 23:59:59, 'interval_col': -1 year, 'decimal128_col': -12345.678900000}]
+[{'bool_col': true, 'int32_col': 42, 'int64_col': 9223372036854775807, 'float_col': 3.14, 'double_col': 2.7182817, 'string_col': hello, 'date_col': 2024-01-01, 'time_col': '12:34:56', 'timestamp_col': '2024-01-01 12:34:56', 'interval_col': '1 year 2 months 3 days 04:05:06', 'decimal128_col': 12345.678900000}, {'bool_col': false, 'int32_col': -100, 'int64_col': -9223372036854775808, 'float_col': -1.23, 'double_col': -4.56, 'string_col': world, 'date_col': 1999-12-31, 'time_col': '23:59:59', 'timestamp_col': '1999-12-31 23:59:59', 'interval_col': -1 year, 'decimal128_col': -12345.678900000}]
 
 query IIIIIIIIIII
 SELECT * FROM bigquery_query('bq', '
@@ -152,4 +152,4 @@ SELECT * FROM bigquery_query('bq', '
 	]);
 ')
 ----
-[true, false, true]	[1, 2, 3]	[9223372036854775807, -9223372036854775808]	[3.14, 2.71, 1.61]	[2.7182817, 3.1415927]	[hello, world]	[2024-01-01, 2023-12-31]	[12:00:00, 13:30:30]	[2024-01-01 12:00:00, 2023-12-31 23:59:59]	[1 year 2 months, 3 days 04:00:00]	[123.450000000, 678.900000000]
+[true, false, true]	[1, 2, 3]	[9223372036854775807, -9223372036854775808]	[3.14, 2.71, 1.61]	[2.7182817, 3.1415927]	[hello, world]	[2024-01-01, 2023-12-31]	['12:00:00', '13:30:30']	['2024-01-01 12:00:00', '2023-12-31 23:59:59']	[1 year 2 months, '3 days 04:00:00']	[123.450000000, 678.900000000]

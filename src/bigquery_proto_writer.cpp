@@ -337,6 +337,10 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         }
 
         if (response && response->has_error()) {
+            for (const auto &error : response->row_errors()) {
+                std::cerr << "Row " << error.index() << " failed: " << error.message() << "\n";
+            }
+
             throw IOException("Failed to write chunk: %s", response->error().message());
         }
 

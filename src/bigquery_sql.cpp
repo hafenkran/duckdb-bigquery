@@ -29,7 +29,7 @@ std::string BigquerySQL::ExtractFilters(PhysicalOperator &child) {
         auto &filter = child.Cast<PhysicalFilter>();
         std::string filter_exp = filter.expression->ToString();
         if (!child.children.empty()) {
-            std::string result = ExtractFilters(*child.children[0]);
+            std::string result = ExtractFilters(child.children[0]);
             if (!result.empty()) {
                 filter_exp += " AND " + result;
             }
@@ -358,7 +358,7 @@ string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &
         sql += proj.select_list[ref.index]->ToString();
     }
 
-    auto filters = ExtractFilters(*child.children[0]);
+    auto filters = ExtractFilters(child.children[0]);
     if (!filters.empty()) {
         sql += " WHERE " + filters;
     } else {

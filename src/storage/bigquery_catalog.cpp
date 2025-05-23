@@ -74,12 +74,12 @@ optional_ptr<CatalogEntry> BigqueryCatalog::CreateSchema(CatalogTransaction tran
     return schemas.CreateSchema(transaction.GetContext(), info);
 }
 
-optional_ptr<SchemaCatalogEntry> BigqueryCatalog::GetSchema(CatalogTransaction transaction,
-                                                            const string &schema_name,
-                                                            OnEntryNotFound if_not_found,
-                                                            QueryErrorContext error_context) {
+optional_ptr<SchemaCatalogEntry> BigqueryCatalog::LookupSchema(CatalogTransaction transaction,
+                                                               const EntryLookupInfo &schema_lookup,
+                                                               OnEntryNotFound if_not_found) {
+    auto schema_name = schema_lookup.GetEntryName();
     if (schema_name == DEFAULT_SCHEMA) {
-        return GetSchema(transaction, GetDefaultDatasetID(), if_not_found, error_context);
+        return GetSchema(transaction, GetDefaultDatasetID(), if_not_found);
     }
 
     if (IsInvalidSchema(schema_name)) {

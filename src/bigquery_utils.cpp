@@ -219,11 +219,11 @@ LogicalType BigqueryUtils::FieldSchemaNumericToLogicalType(const google::cloud::
     auto precision = field.precision();
     auto scale = field.scale();
 
-	// If no precision and scale are provided, BigQuery assumes default values
-	if (precision == 0 && scale == 0) {
-		precision = BQ_NUMERIC_PRECISION_DEFAULT;
-		scale = BQ_NUMERIC_SCALE_DEFAULT;
-	}
+    // If no precision and scale are provided, BigQuery assumes default values
+    if (precision == 0 && scale == 0) {
+        precision = BQ_NUMERIC_PRECISION_DEFAULT;
+        scale = BQ_NUMERIC_SCALE_DEFAULT;
+    }
 
     const auto &bigquery_type = field.type();
     if (bigquery_type == "BIGNUMERIC" && BigquerySettings::BignumericAsVarchar()) {
@@ -382,10 +382,11 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     case LogicalTypeId::UTINYINT:
     case LogicalTypeId::USMALLINT:
     case LogicalTypeId::UINTEGER:
-        return LogicalType::BIGINT; // BigQuery does not differentiate unsigned types
+        return LogicalType::UINTEGER; // BigQuery does not differentiate unsigned types
     case LogicalTypeId::UBIGINT:
         throw NotImplementedException("UBIGINT not supported in BigQuery.");
     case LogicalTypeId::FLOAT:
+        return LogicalType::FLOAT;
     case LogicalTypeId::DOUBLE:
         return LogicalType::DOUBLE;
     case LogicalTypeId::BLOB:
@@ -409,7 +410,7 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
         // return LogicalType::TIMESTAMP;
         throw NotImplementedException("TIMESTAMP WITH TIME ZONE not supported in BigQuery.");
     case LogicalTypeId::INTERVAL:
-        return LogicalType::VARCHAR;
+        return LogicalType::INTERVAL;
     case LogicalTypeId::VARCHAR:
         return LogicalType::VARCHAR;
     case LogicalTypeId::UUID:
@@ -568,7 +569,7 @@ LogicalType BigqueryUtils::BigqueryNumericSQLToLogicalType(const string &type) {
                               std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
                               ". BIGNUMERIC fields have a default precision of " +
                               std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + "." +
-                              "Consider enabling 'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+                              " Consider enabling 'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
     }
     if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
         throw BinderException("DuckDB only supports precision between 1 and " +
@@ -593,7 +594,7 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
     case LogicalTypeId::INTEGER:
     case LogicalTypeId::BIGINT:
         return "INT64";
-	case LogicalTypeId::HUGEINT:
+    case LogicalTypeId::HUGEINT:
         throw NotImplementedException("HUGEINT not supported in BigQuery.");
     case LogicalTypeId::UTINYINT:
     case LogicalTypeId::USMALLINT:
@@ -601,8 +602,8 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
         return "INT64"; // BigQuery does not differentiate unsigned types
     case LogicalTypeId::UBIGINT:
         throw NotImplementedException("UBIGINT not supported in BigQuery.");
-	case LogicalTypeId::UHUGEINT:
-		throw NotImplementedException("UHUGEINT not supported in BigQuery.");
+    case LogicalTypeId::UHUGEINT:
+        throw NotImplementedException("UHUGEINT not supported in BigQuery.");
     case LogicalTypeId::FLOAT:
     case LogicalTypeId::DOUBLE:
         return "FLOAT64";
