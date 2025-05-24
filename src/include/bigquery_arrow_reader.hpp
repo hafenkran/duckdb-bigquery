@@ -32,22 +32,20 @@ public:
     BigqueryTableRef GetTableRef() const;
 
     void MapTableInfo(ColumnList &res_columns, vector<unique_ptr<Constraint>> &res_constraints);
-    shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> NextStream();
-    google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>
-    ReadRows(const string &stream_name, int row_offset);
+    shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> GetStream(idx_t stream_idx);
+    google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
+        const string &stream_name,
+        int row_offset);
 
     void ReadColumn(const std::shared_ptr<arrow::Array> &column, Vector &out_vec);
-    std::shared_ptr<arrow::Schema> ReadSchema(
-        const google::cloud::bigquery::storage::v1::ArrowSchema &schema);
-    std::shared_ptr<arrow::RecordBatch> ReadBatch(
-        const google::cloud::bigquery::storage::v1::ArrowRecordBatch &batch);
+    std::shared_ptr<arrow::Schema> ReadSchema(const google::cloud::bigquery::storage::v1::ArrowSchema &schema);
+    std::shared_ptr<arrow::RecordBatch> ReadBatch(const google::cloud::bigquery::storage::v1::ArrowRecordBatch &batch);
 
 private:
     BigqueryTableRef table_ref;
     string billing_project_id;
 
     idx_t num_streams;
-    idx_t next_stream = 0;
     google::cloud::Options options;
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryReadClient> read_client;
@@ -60,15 +58,13 @@ private:
     void ConvertFlatArrayToVector(const std::shared_ptr<arrow::Array> &column, Vector &out_vec);
 
     // Convert Lists
-    void ConvertListArrayToVector(const std::shared_ptr<arrow::ListArray> &list_array,
-                                  Vector &out_vec);
+    void ConvertListArrayToVector(const std::shared_ptr<arrow::ListArray> &list_array, Vector &out_vec);
     Value ConvertListElementToValue(const std::shared_ptr<arrow::ListArray> &list_array,
                                     int64_t row,
                                     const LogicalType &target_type);
 
     // Convert Structs
-    void ConvertStructArrayToVector(const std::shared_ptr<arrow::StructArray> &struct_array,
-                                    Vector &out_vec);
+    void ConvertStructArrayToVector(const std::shared_ptr<arrow::StructArray> &struct_array, Vector &out_vec);
     Value ConvertStructRowToValue(const std::shared_ptr<arrow::StructArray> &struct_array,
                                   int64_t row,
                                   const vector<LogicalType> &target_types);
@@ -78,14 +74,10 @@ private:
 };
 
 template <class ArrowArrayType, class ValueCreator>
-void ConvertPrimitiveArray(const std::shared_ptr<arrow::Array> &array,
-                           Vector &out_vec,
-                           ValueCreator create_value) {
+void ConvertPrimitiveArray(const std::shared_ptr<arrow::Array> &array, Vector &out_vec, ValueCreator create_value) {
     auto typed_array = std::static_pointer_cast<ArrowArrayType>(array);
     for (int64_t row = 0; row < typed_array->length(); ++row) {
-        out_vec.SetValue(row,
-                         typed_array->IsNull(row) ? Value()
-                                                  : create_value(typed_array->Value(row)));
+        out_vec.SetValue(row, typed_array->IsNull(row) ? Value() : create_value(typed_array->Value(row)));
     }
 }
 
