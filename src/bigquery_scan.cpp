@@ -281,37 +281,31 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
     }
 
     // filters
-	bool enable_filter_pushdown = BigquerySettings::ExperimentalFilterPushdown();
+    bool enable_filter_pushdown = BigquerySettings::ExperimentalFilterPushdown();
     string filter_string;
-	auto filters = input.filters;
-	if (enable_filter_pushdown && filters && !filters->filters.empty()) {
-		for (auto &filter : filters->filters) {
-			if (!filter_string.empty()) {
-				filter_string += " AND ";
-			}
-			string column_name = selected_fields[filter.first];
-			auto &filter_cond = *filter.second;
-			filter_string += BigquerySQL::TransformFilter(column_name, filter_cond);
-		}
-	}
-
-	auto &config = DBConfig::GetConfig(context);
-    bool preserve_insertion_order = config.options.preserve_insertion_order;
-
-    idx_t k_max_read_streams;
-    if (!preserve_insertion_order) {
-        // when preserve_insertion_order is false, we can use multiple streams for parallelization
-		k_max_read_streams = config.options.maximum_threads;
-    } else {
-        // when preserve_insertion_order is true, use only 1 stream as there won't be any parallelization from DuckDB
-        k_max_read_streams = 1;
+    auto filters = input.filters;
+    if (enable_filter_pushdown && filters && !filters->filters.empty()) {
+        for (auto &filter : filters->filters) {
+            if (!filter_string.empty()) {
+                filter_string += " AND ";
+            }
+            string column_name = selected_fields[filter.first];
+            auto &filter_cond = *filter.second;
+            filter_string += BigquerySQL::TransformFilter(column_name, filter_cond);
+        }
     }
 
+    auto &config = DBConfig::GetConfig(context);
+    bool preserve_insertion_order = config.options.preserve_insertion_order;
+
+    // when preserve_insertion_order=FALSE, we can use multiple streams for parallelization; defaults to maximum_threads
+    // when preserve_insertion_order=TRUE, we use only 1 stream as there won't be any parallelization from DuckDB
+    idx_t k_max_read_streams = BigquerySettings::GetMaxReadStreams(context);
     auto arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.table_ref.dataset_id,
-                                                              bind_data.table_ref.table_id,
-                                                              k_max_read_streams,
-                                                              selected_fields,
-                                                              filter_string);
+                                                               bind_data.table_ref.table_id,
+                                                               k_max_read_streams,
+                                                               selected_fields,
+                                                               filter_string);
 
     bind_data.estimated_row_count = idx_t(arrow_reader->GetEstimatedRowCount());
     auto result = make_uniq<BigqueryGlobalFunctionState>(arrow_reader, k_max_read_streams);
