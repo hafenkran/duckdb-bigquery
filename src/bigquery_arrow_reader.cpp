@@ -166,15 +166,17 @@ std::shared_ptr<arrow::RecordBatch> BigqueryArrowReader::ReadBatch(
         }
     } else {
         // Read the Arrow Record Batch from the serialized data
-        auto arrow_buffer = arrow::Buffer::FromString(batch.serialized_record_batch());
+        auto arrow_buffer = arrow::Buffer::Wrap(batch.serialized_record_batch().data(), //
+                                                batch.serialized_record_batch().size());
         arrow::io::BufferReader buffer_reader(arrow_buffer);
 
         auto options = arrow::ipc::IpcReadOptions::Defaults();
+        options.use_threads = true;
+
         arrow::Result<std::shared_ptr<arrow::RecordBatch>> arrow_record_batch_res =
             arrow::ipc::ReadRecordBatch(schema, nullptr, options, &buffer_reader);
         if (!arrow_record_batch_res.ok()) {
-            throw BinderException("Failed to read Arrow RecordBatch: " +
-                                  arrow_record_batch_res.status().message());
+            throw BinderException("Failed to read Arrow RecordBatch: " + arrow_record_batch_res.status().message());
         }
 
         arrow_batch = arrow_record_batch_res.ValueOrDie();
