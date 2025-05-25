@@ -96,6 +96,13 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::VARCHAR,
                               Value(bigquery::BigquerySettings::CurlCaBundlePath()),
                               bigquery::BigquerySettings::SetCurlCaBundlePath);
+    config.AddExtensionOption("bq_max_read_streams",
+                              "Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically "
+                              "match the number of DuckDB threads. `preserve_insertion_order` must be false for "
+							  "parallelization to work.",
+                              LogicalType::BIGINT,
+                              Value(bigquery::BigquerySettings::MaxReadStreams()),
+                              bigquery::BigquerySettings::SetMaxReadStreams);
 }
 
 void BigqueryExtension::Load(DuckDB &db) {

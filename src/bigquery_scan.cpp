@@ -19,19 +19,18 @@
 #include "duckdb.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database_manager.hpp"
-// #include "duckdb/common/types.hpp"
 
 
 namespace duckdb {
 namespace bigquery {
 
 struct BigqueryGlobalFunctionState : public GlobalTableFunctionState {
-    explicit BigqueryGlobalFunctionState(shared_ptr<BigqueryArrowReader> arrow_reader)
-        : arrow_reader(std::move(arrow_reader)) {
+    explicit BigqueryGlobalFunctionState(shared_ptr<BigqueryArrowReader> arrow_reader, idx_t max_threads)
+        : arrow_reader(std::move(arrow_reader)), position(0), max_threads(max_threads) {
     }
 
     mutable mutex lock;
-    atomic<idx_t> position = 0;
+    atomic<idx_t> position;
     idx_t max_threads;
 
     // The index of the next stream to read (i.e., current file + 1)
@@ -40,6 +39,10 @@ struct BigqueryGlobalFunctionState : public GlobalTableFunctionState {
 
     idx_t MaxThreads() const override {
         return max_threads;
+    }
+
+    idx_t NextStreamIndex() {
+        return next_stream.fetch_add(1);
     }
 };
 
@@ -54,11 +57,26 @@ struct BigqueryLocalFunctionState : public LocalTableFunctionState {
     int row_offset;
     bool done;
 
-    void ScanNextChunk(DataChunk &output) {
+    void ScanNextChunk(DataChunk &output, BigqueryGlobalFunctionState &gstate) {
         if (current_batch == nullptr || row_offset >= current_batch->num_rows()) {
-            if (done || !ReadNextBatch()) {
-                done = true;
-                return;
+            if (!ReadNextBatch()) {
+                // Current stream is exhausted, check if we have more streams to read
+                auto streamidx = gstate.NextStreamIndex();
+                read_stream = arrow_reader->GetStream(streamidx);
+                if (read_stream == nullptr) {
+                    done = true;
+                    return;
+                }
+
+                // Reset the row offset for the new stream
+                rows_read = false;
+                row_offset = 0;
+
+                // Try to read from a new stream
+                if (!ReadNextBatch()) {
+                    done = true;
+                    return;
+                }
             }
             row_offset = 0;
         }
@@ -99,7 +117,6 @@ private:
         }
 
         if (read_rows_it == read_rows.end()) {
-            done = true;
             return false;
         }
 
@@ -264,31 +281,31 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
     }
 
     // filters
+    bool enable_filter_pushdown = BigquerySettings::ExperimentalFilterPushdown();
     string filter_string;
     auto filters = input.filters;
-    if (filters && !filters->filters.empty()) {
+    if (enable_filter_pushdown && filters && !filters->filters.empty()) {
         for (auto &filter : filters->filters) {
             if (!filter_string.empty()) {
                 filter_string += " AND ";
             }
             string column_name = selected_fields[filter.first];
-            // auto  = KeywordHelper::WriteQuoted(column_name, '`');
             auto &filter_cond = *filter.second;
-
             filter_string += BigquerySQL::TransformFilter(column_name, filter_cond);
         }
     }
 
-    idx_t k_max_read_streams = 1;
+    // when preserve_insertion_order=FALSE, we can use multiple streams for parallelization; defaults to maximum_threads
+    // when preserve_insertion_order=TRUE, we use only 1 stream as there won't be any parallelization from DuckDB
+    idx_t k_max_read_streams = BigquerySettings::GetMaxReadStreams(context);
     auto arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.table_ref.dataset_id,
                                                                bind_data.table_ref.table_id,
                                                                k_max_read_streams,
                                                                selected_fields,
                                                                filter_string);
+
     bind_data.estimated_row_count = idx_t(arrow_reader->GetEstimatedRowCount());
-    auto result = make_uniq<BigqueryGlobalFunctionState>(arrow_reader);
-    result->position = 0;
-    result->max_threads = k_max_read_streams;
+    auto result = make_uniq<BigqueryGlobalFunctionState>(arrow_reader, k_max_read_streams);
     return std::move(result);
 }
 
@@ -312,9 +329,12 @@ static unique_ptr<LocalTableFunctionState> BigqueryInitLocalState(ExecutionConte
     auto &gstate = global_state->Cast<BigqueryGlobalFunctionState>();
     auto lstate = make_uniq<BigqueryLocalFunctionState>();
     lstate->arrow_reader = gstate.arrow_reader;
-    lstate->read_stream = gstate.arrow_reader->NextStream();
+
     lstate->column_ids = input.column_ids;
     lstate->column_ids_ranked = CalculateRanks(input.column_ids);
+
+    auto streamidx = gstate.NextStreamIndex();
+    lstate->read_stream = gstate.arrow_reader->GetStream(streamidx);
     if (lstate->read_stream == nullptr) {
         lstate->done = true;
     }
@@ -328,7 +348,7 @@ static void BigqueryScan(ClientContext &context, TableFunctionInput &data, DataC
         return;
     }
     output.Reset();
-    lstate.ScanNextChunk(output);
+    lstate.ScanNextChunk(output, gstate);
     lock_guard<mutex> glock(gstate.lock);
     gstate.position += output.size();
 }
@@ -343,7 +363,7 @@ static InsertionOrderPreservingMap<string> BigqueryToString(TableFunctionToStrin
 
 unique_ptr<NodeStatistics> BigqueryScanCardinality(ClientContext &context, const FunctionData *bind_data_p) {
     auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
-    return make_uniq<NodeStatistics>(bind_data.estimated_row_count);
+    return make_uniq<NodeStatistics>(bind_data.estimated_row_count, bind_data.estimated_row_count);
 }
 
 double BigqueryScanProgress(ClientContext &context,

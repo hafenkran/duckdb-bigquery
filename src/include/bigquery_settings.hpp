@@ -150,14 +150,50 @@ public:
         QueryTimeoutMs() = timeout;
     }
 
-	static bool &BignumericAsVarchar() {
-		static bool bigquery_bignumeric_as_varchar = false;
-		return bigquery_bignumeric_as_varchar;
-	}
+    static bool &BignumericAsVarchar() {
+        static bool bigquery_bignumeric_as_varchar = false;
+        return bigquery_bignumeric_as_varchar;
+    }
 
-	static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
-		BignumericAsVarchar() = BooleanValue::Get(parameter);
-	}
+    static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
+        BignumericAsVarchar() = BooleanValue::Get(parameter);
+    }
+
+    static int &MaxReadStreams() {
+        static int bigquery_max_read_streams = 0; // 0 means default DuckDB thread count
+        return bigquery_max_read_streams;
+    }
+
+    static void SetMaxReadStreams(ClientContext &context, SetScope scope, Value &parameter) {
+        int max_streams = IntegerValue::Get(parameter);
+        if (max_streams < 0) {
+            throw InvalidInputException("Max read streams must be non-negative (0 or greater). Use 0 to automatically "
+                                        "match the number of DuckDB threads.");
+        }
+        auto &config = DBConfig::GetConfig(context);
+        if (config.options.preserve_insertion_order && max_streams > 1) {
+            std::cout
+                << "Warning: preserve_insertion_order` is set to true, but `max_read_streams` is set to " << max_streams
+                << ". This will cause the query to run in a single stream, ignoring the `max_read_streams` setting. "
+                << std::endl;
+        }
+        MaxReadStreams() = max_streams;
+    }
+
+    static int GetMaxReadStreams(ClientContext &context) {
+        auto &config = DBConfig::GetConfig(context);
+        auto &preserve_insertion_order = config.options.preserve_insertion_order;
+        if (preserve_insertion_order) {
+            // when preserve_insertion_order is true, we can only use 1 stream
+            return 1;
+        }
+        auto &max_read_streams = MaxReadStreams();
+        if (MaxReadStreams() == 0) {
+            // if max_read_streams is 0, we use the maximum threads from the DuckDB config
+            return config.options.maximum_threads;
+        }
+        return max_read_streams;
+    }
 };
 
 

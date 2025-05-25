@@ -73,17 +73,15 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
         std::move(new_session.value()));
 }
 
-shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> BigqueryArrowReader::NextStream() {
-    if (!read_session) {
-        throw BinderException("Read session is not initialized.");
-    }
-    auto next_stream_idx = next_stream++;
-    if (static_cast<int>(next_stream_idx) >= read_session->streams_size()) {
-        return nullptr;
-    }
-    auto stream = make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>( //
-        read_session->streams(next_stream_idx));
-    return stream;
+shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> BigqueryArrowReader::GetStream(idx_t stream_idx) {
+	if (!read_session) {
+		throw BinderException("Read session is not initialized.");
+	}
+	if (stream_idx >= read_session->streams_size()) {
+		return nullptr;
+	}
+	return make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>(
+		read_session->streams(stream_idx));
 }
 
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::GetSchema() {
