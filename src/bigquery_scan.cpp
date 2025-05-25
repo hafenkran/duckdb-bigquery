@@ -295,9 +295,6 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
         }
     }
 
-    auto &config = DBConfig::GetConfig(context);
-    bool preserve_insertion_order = config.options.preserve_insertion_order;
-
     // when preserve_insertion_order=FALSE, we can use multiple streams for parallelization; defaults to maximum_threads
     // when preserve_insertion_order=TRUE, we use only 1 stream as there won't be any parallelization from DuckDB
     idx_t k_max_read_streams = BigquerySettings::GetMaxReadStreams(context);
