@@ -262,6 +262,7 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 | `bq_experimental_use_info_schema`         | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)               | `true`  |
 | `bq_experimental_enable_bigquery_options` | [EXPERIMENTAL] - Whether to enable BigQuery OPTIONS in CREATE statements                                 | `false` |
 | `bq_curl_ca_bundle_path`                  | Path to the CA certificates used by cURL for SSL certificate verification                                |         |
+| `bq_max_read_streams`                     | Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work. | `0`     |
 
 ## Limitations
 
