@@ -12,13 +12,15 @@ namespace bigquery {
 class BigqueryClient;
 
 struct BigqueryBindData : public TableFunctionData {
-	BigqueryConfig config;
-	BigqueryTableRef table_ref;
-	string query;
+    BigqueryConfig config;
+    BigqueryTableRef table_ref;
+
+    string query;
+    string filter_condition;
 
     shared_ptr<BigqueryClient> bq_client;
-	optional_ptr<BigqueryCatalog> bq_catalog;
-	optional_ptr<BigqueryTableEntry> bq_table_entry;
+    optional_ptr<BigqueryCatalog> bq_catalog;
+    optional_ptr<BigqueryTableEntry> bq_table_entry;
 
     vector<string> names;
     vector<LogicalType> types;
@@ -32,9 +34,9 @@ struct BigqueryBindData : public TableFunctionData {
         return BigqueryUtils::FormatTableStringSimple(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
     }
 
-	bool RequiresQueryExec() const {
-		return !query.empty();
-	}
+    bool RequiresQueryExec() const {
+        return !query.empty();
+    }
 };
 
 class BigqueryScanFunction : public TableFunction {

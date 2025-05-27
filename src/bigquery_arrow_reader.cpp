@@ -31,8 +31,8 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
                                          const google::cloud::Options &options,
                                          const vector<string> &selected_columns,
                                          const string &filter_condition)
-    : table_ref(table_ref), billing_project_id(billing_project_id), num_streams(num_streams),
-      options(options), localhost_test_env(false) {
+    : table_ref(table_ref), billing_project_id(billing_project_id), num_streams(num_streams), options(options),
+      localhost_test_env(false) {
 
     if (options.has<google::cloud::EndpointOption>()) {
         localhost_test_env = true; // TODO
@@ -52,6 +52,9 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
 
     auto *read_options = session.mutable_read_options();
     if (!selected_columns.empty()) {
+        if (BigquerySettings::DebugQueryPrint()) {
+            std::cout << "BigQuery selected fields: " << StringUtil::Join(selected_columns, ", ") << std::endl;
+        }
         for (const auto &column : selected_columns) {
             read_options->add_selected_fields(column);
         }
@@ -65,23 +68,20 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
 
     auto new_session = read_client->CreateReadSession(parent, session, num_streams);
     if (!new_session) {
-        throw BinderException("Error while creating read session: " +
-                              new_session.status().message());
+        throw BinderException("Error while creating read session: " + new_session.status().message());
     }
 
-    read_session = make_uniq<google::cloud::bigquery::storage::v1::ReadSession>(
-        std::move(new_session.value()));
+    read_session = make_uniq<google::cloud::bigquery::storage::v1::ReadSession>(std::move(new_session.value()));
 }
 
 shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> BigqueryArrowReader::GetStream(idx_t stream_idx) {
-	if (!read_session) {
-		throw BinderException("Read session is not initialized.");
-	}
-	if (stream_idx >= read_session->streams_size()) {
-		return nullptr;
-	}
-	return make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>(
-		read_session->streams(stream_idx));
+    if (!read_session) {
+        throw BinderException("Read session is not initialized.");
+    }
+    if (stream_idx >= read_session->streams_size()) {
+        return nullptr;
+    }
+    return make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>(read_session->streams(stream_idx));
 }
 
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::GetSchema() {
@@ -94,8 +94,7 @@ std::shared_ptr<arrow::Schema> BigqueryArrowReader::GetSchema() {
     return arrow_schema;
 }
 
-void BigqueryArrowReader::MapTableInfo(ColumnList &res_columns,
-                                       vector<unique_ptr<Constraint>> &res_constraints) {
+void BigqueryArrowReader::MapTableInfo(ColumnList &res_columns, vector<unique_ptr<Constraint>> &res_constraints) {
     // Get the schema of the table
     auto schema = read_session->arrow_schema();
     auto table_schema = GetSchema();
@@ -119,8 +118,9 @@ void BigqueryArrowReader::MapTableInfo(ColumnList &res_columns,
     }
 }
 
-google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>
-BigqueryArrowReader::ReadRows(const string &stream_name, int row_offset) {
+google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> BigqueryArrowReader::ReadRows(
+    const string &stream_name,
+    int row_offset) {
     return read_client->ReadRows(stream_name, row_offset);
 }
 
@@ -155,8 +155,7 @@ std::shared_ptr<arrow::RecordBatch> BigqueryArrowReader::ReadBatch(
             throw BinderException("Failed to create RecordBatchStreamReader: " +
                                   arrow_reader_result.status().ToString());
         }
-        std::shared_ptr<arrow::ipc::RecordBatchStreamReader> arrow_reader =
-            arrow_reader_result.ValueOrDie();
+        std::shared_ptr<arrow::ipc::RecordBatchStreamReader> arrow_reader = arrow_reader_result.ValueOrDie();
 
         // Step 3: Read the RecordBatch
         auto arrow_read_result = arrow_reader->ReadNext(&arrow_batch);
@@ -173,8 +172,7 @@ std::shared_ptr<arrow::RecordBatch> BigqueryArrowReader::ReadBatch(
         arrow::Result<std::shared_ptr<arrow::RecordBatch>> arrow_record_batch_res =
             arrow::ipc::ReadRecordBatch(schema, nullptr, options, &buffer_reader);
         if (!arrow_record_batch_res.ok()) {
-            throw BinderException("Failed to read Arrow RecordBatch: " +
-                                  arrow_record_batch_res.status().message());
+            throw BinderException("Failed to read Arrow RecordBatch: " + arrow_record_batch_res.status().message());
         }
 
         arrow_batch = arrow_record_batch_res.ValueOrDie();
@@ -199,17 +197,14 @@ void BigqueryArrowReader::ReadColumn(const std::shared_ptr<arrow::Array> &column
     }
 }
 
-void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::Array> &array,
-                                                   Vector &out_vec) {
+void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::Array> &array, Vector &out_vec) {
 
     const auto type_id = array->type_id();
     const auto row_count = array->length();
 
     switch (type_id) {
     case arrow::Type::BOOL: {
-        ConvertPrimitiveArray<arrow::BooleanArray>(array, out_vec, [](bool val) {
-            return Value(val);
-        });
+        ConvertPrimitiveArray<arrow::BooleanArray>(array, out_vec, [](bool val) { return Value(val); });
         break;
     }
     case arrow::Type::BINARY: {
@@ -264,9 +259,7 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
         for (int64_t row = 0; row < row_count; ++row) {
             if (!interval_array->IsNull(row)) {
                 auto interval = interval_array->Value(row);
-                out_vec.SetValue(
-                    row,
-                    Value::INTERVAL(interval.months, interval.days, interval.nanoseconds / 1000));
+                out_vec.SetValue(row, Value::INTERVAL(interval.months, interval.days, interval.nanoseconds / 1000));
             } else {
                 out_vec.SetValue(row, Value());
             }
@@ -274,21 +267,15 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
         break;
     }
     case arrow::Type::INT64: {
-        ConvertPrimitiveArray<arrow::Int64Array>(array, out_vec, [](int64_t val) {
-            return Value::BIGINT(val);
-        });
+        ConvertPrimitiveArray<arrow::Int64Array>(array, out_vec, [](int64_t val) { return Value::BIGINT(val); });
         break;
     }
     case arrow::Type::FLOAT: {
-        ConvertPrimitiveArray<arrow::FloatArray>(array, out_vec, [](float val) {
-            return Value(val);
-        });
+        ConvertPrimitiveArray<arrow::FloatArray>(array, out_vec, [](float val) { return Value(val); });
         break;
     }
     case arrow::Type::DOUBLE: {
-        ConvertPrimitiveArray<arrow::DoubleArray>(array, out_vec, [](double val) {
-            return Value(val);
-        });
+        ConvertPrimitiveArray<arrow::DoubleArray>(array, out_vec, [](double val) { return Value(val); });
         break;
     }
     case arrow::Type::STRING: {
@@ -339,10 +326,9 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
         }
 
         if (precision > 38) {
-            throw BinderException(
-                "BIGDECIMAL precision of " + std::to_string(precision) +
-                " exceeds the maximum supported precision of 38 in DuckDB. Consider enabling "
-                "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+            throw BinderException("BIGDECIMAL precision of " + std::to_string(precision) +
+                                  " exceeds the maximum supported precision of 38 in DuckDB. Consider enabling "
+                                  "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
         }
 
         for (int64_t row = 0; row < row_count; ++row) {
@@ -358,8 +344,7 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
             }
 
             if (parts[2] != 0 || parts[3] != 0) {
-                throw BinderException(
-                    "BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
+                throw BinderException("BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
             }
 
             hugeint_t hugeint_value;
@@ -374,19 +359,17 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
     }
 }
 
-void BigqueryArrowReader::ConvertListArrayToVector(
-    const std::shared_ptr<arrow::ListArray> &list_array,
-    Vector &out_vec) {
+void BigqueryArrowReader::ConvertListArrayToVector(const std::shared_ptr<arrow::ListArray> &list_array,
+                                                   Vector &out_vec) {
     for (int64_t row = 0; row < list_array->length(); ++row) {
         auto list_value = ConvertListElementToValue(list_array, row, out_vec.GetType());
         out_vec.SetValue(row, list_value);
     }
 }
 
-Value BigqueryArrowReader::ConvertListElementToValue(
-    const std::shared_ptr<arrow::ListArray> &list_array,
-    int64_t row,
-    const LogicalType &target_type) {
+Value BigqueryArrowReader::ConvertListElementToValue(const std::shared_ptr<arrow::ListArray> &list_array,
+                                                     int64_t row,
+                                                     const LogicalType &target_type) {
 
     if (list_array->IsNull(row)) {
         return Value();
@@ -599,9 +582,8 @@ Value BigqueryArrowReader::ConvertListElementToValue(
 }
 
 
-void BigqueryArrowReader::ConvertStructArrayToVector(
-    const std::shared_ptr<arrow::StructArray> &struct_array,
-    Vector &out_vec) {
+void BigqueryArrowReader::ConvertStructArrayToVector(const std::shared_ptr<arrow::StructArray> &struct_array,
+                                                     Vector &out_vec) {
 
     auto struct_fields = struct_array->type()->fields();
 
@@ -622,10 +604,9 @@ void BigqueryArrowReader::ConvertStructArrayToVector(
     }
 }
 
-Value BigqueryArrowReader::ConvertStructRowToValue(
-    const std::shared_ptr<arrow::StructArray> &struct_array,
-    int64_t row,
-    const vector<LogicalType> &target_types) {
+Value BigqueryArrowReader::ConvertStructRowToValue(const std::shared_ptr<arrow::StructArray> &struct_array,
+                                                   int64_t row,
+                                                   const vector<LogicalType> &target_types) {
 
     auto field_arrays = struct_array->fields();
     auto struct_fields = struct_array->type()->fields();
@@ -643,18 +624,16 @@ Value BigqueryArrowReader::ConvertStructRowToValue(
         if (field_array->IsNull(row)) {
             struct_values[i] = make_pair(field_name, Value());
         } else {
-            struct_values[i] =
-                make_pair(field_name, ConvertStructFieldToValue(field_array, row, logical_type));
+            struct_values[i] = make_pair(field_name, ConvertStructFieldToValue(field_array, row, logical_type));
         }
     }
 
     return Value::STRUCT(std::move(struct_values));
 }
 
-Value BigqueryArrowReader::ConvertStructFieldToValue(
-    const std::shared_ptr<arrow::Array> &field_array,
-    int64_t row,
-    const LogicalType &target_type) {
+Value BigqueryArrowReader::ConvertStructFieldToValue(const std::shared_ptr<arrow::Array> &field_array,
+                                                     int64_t row,
+                                                     const LogicalType &target_type) {
     if (field_array->IsNull(row)) {
         return Value();
     }
@@ -696,8 +675,7 @@ Value BigqueryArrowReader::ConvertStructFieldToValue(
         return Value::TIMESTAMP(Timestamp::FromEpochMicroSeconds(micros));
     }
     case arrow::Type::INTERVAL_MONTH_DAY_NANO: {
-        auto interval_array =
-            std::static_pointer_cast<arrow::MonthDayNanoIntervalArray>(field_array);
+        auto interval_array = std::static_pointer_cast<arrow::MonthDayNanoIntervalArray>(field_array);
         auto interval = interval_array->Value(row);
         return Value::INTERVAL(interval.months, interval.days, interval.nanoseconds / 1000);
     }
@@ -755,8 +733,7 @@ Value BigqueryArrowReader::ConvertStructFieldToValue(
             parts[i] = *reinterpret_cast<const uint64_t *>(value_ptr + i * sizeof(uint64_t));
         }
         if (parts[2] != 0 || parts[3] != 0) {
-            throw BinderException(
-                "BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
+            throw BinderException("BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
         }
 
         hugeint_t hugeint_value;
