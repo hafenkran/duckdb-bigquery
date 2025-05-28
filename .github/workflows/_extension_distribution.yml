@@ -398,11 +398,11 @@ jobs:
         run: |
           brew install ninja autoconf make libtool automake autoconf-archive
 
-      - name: Setup Ccache
-        uses: hendrikmuhs/ccache-action@main
-        continue-on-error: true
-        with:
-          key: extension-distribution-${{ matrix.duckdb_arch }}-${{ inputs.duckdb_version }}
+      # - name: Setup Ccache
+      #   uses: hendrikmuhs/ccache-action@main
+      #   continue-on-error: true
+      #   with:
+      #     key: extension-distribution-${{ matrix.duckdb_arch }}-${{ inputs.duckdb_version }}
 
       - uses: actions/setup-python@v5
         with:
