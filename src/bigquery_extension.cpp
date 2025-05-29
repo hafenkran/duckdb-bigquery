@@ -99,10 +99,16 @@ static void LoadInternal(DatabaseInstance &instance) {
     config.AddExtensionOption("bq_max_read_streams",
                               "Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically "
                               "match the number of DuckDB threads. `preserve_insertion_order` must be false for "
-							  "parallelization to work.",
+                              "parallelization to work.",
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::MaxReadStreams()),
                               bigquery::BigquerySettings::SetMaxReadStreams);
+    config.AddExtensionOption("bq_compression",
+                              "Compression codec for BigQuery Storage Read API. Options: UNSPECIFIED, LZ4_FRAME, ZSTD."
+                              "Default is LZ4_FRAME.",
+                              LogicalType::VARCHAR,
+                              Value(bigquery::BigquerySettings::Compression()),
+                              bigquery::BigquerySettings::SetCompression);
 }
 
 void BigqueryExtension::Load(DuckDB &db) {
