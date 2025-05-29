@@ -18,6 +18,7 @@
 #include "bigquery_jobs.hpp"
 #include "bigquery_parser.hpp"
 #include "bigquery_scan.hpp"
+#include "bigquery_arrow_scan.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
 
@@ -32,6 +33,9 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     bigquery::BigqueryScanFunction bigquery_scan_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_scan_function);
+
+	bigquery::BigQueryArrowScanFunction bigquery_arrow_scan_function;
+	ExtensionUtil::RegisterFunction(instance, bigquery_arrow_scan_function);
 
     bigquery::BigqueryQueryFunction bigquery_query_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_query_function);
