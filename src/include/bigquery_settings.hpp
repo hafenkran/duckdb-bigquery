@@ -2,6 +2,8 @@
 
 #include "duckdb.hpp"
 
+#include "google/cloud/bigquery/storage/v1/arrow.pb.h"
+
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -193,6 +195,33 @@ public:
             return config.options.maximum_threads;
         }
         return max_read_streams;
+    }
+
+    static string &Compression() {
+        static string bigquery_compression = "LZ4_FRAME";
+        return bigquery_compression;
+    }
+
+    static void SetCompression(ClientContext &context, SetScope scope, Value &parameter) {
+        string compression = StringValue::Get(parameter);
+        if (compression != "UNSPECIFIED" && compression != "LZ4_FRAME" && compression != "ZSTD") {
+            throw InvalidInputException("Compression must be one of: UNSPECIFIED, LZ4_FRAME, ZSTD");
+        }
+        Compression() = compression;
+    }
+
+    static google::cloud::bigquery::storage::v1::ArrowSerializationOptions::CompressionCodec GetCompressionCodec() {
+        const string &compression = Compression();
+        if (compression == "UNSPECIFIED") {
+            return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::COMPRESSION_UNSPECIFIED;
+        } else if (compression == "LZ4_FRAME") {
+            return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::LZ4_FRAME;
+        } else if (compression == "ZSTD") {
+            return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::ZSTD;
+        } else {
+            // Default fallback
+            return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::LZ4_FRAME;
+        }
     }
 };
 

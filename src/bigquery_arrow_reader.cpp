@@ -51,6 +51,9 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
     session.set_data_format(google::cloud::bigquery::storage::v1::DataFormat::ARROW);
 
     auto *read_options = session.mutable_read_options();
+    auto arrow_options = read_options->mutable_arrow_serialization_options();
+    arrow_options->set_buffer_compression(BigquerySettings::GetCompressionCodec()); // Default: LZ4_FRAME
+
     if (!selected_columns.empty()) {
         if (BigquerySettings::DebugQueryPrint()) {
             std::cout << "BigQuery selected fields: " << StringUtil::Join(selected_columns, ", ") << std::endl;
@@ -165,10 +168,13 @@ std::shared_ptr<arrow::RecordBatch> BigqueryArrowReader::ReadBatch(
         }
     } else {
         // Read the Arrow Record Batch from the serialized data
-        auto arrow_buffer = arrow::Buffer::FromString(batch.serialized_record_batch());
+        auto arrow_buffer = arrow::Buffer::Wrap(batch.serialized_record_batch().data(), //
+                                                batch.serialized_record_batch().size());
         arrow::io::BufferReader buffer_reader(arrow_buffer);
 
         auto options = arrow::ipc::IpcReadOptions::Defaults();
+        options.use_threads = true;
+
         arrow::Result<std::shared_ptr<arrow::RecordBatch>> arrow_record_batch_res =
             arrow::ipc::ReadRecordBatch(schema, nullptr, options, &buffer_reader);
         if (!arrow_record_batch_res.ok()) {
