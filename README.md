@@ -147,14 +147,28 @@ If you would rather query just one table directly instead of attaching all table
 
 ```sql
 D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
-┌───────┬────────────────┐
-│   i   │       s        │
-│ int32 │    varchar     │
-├───────┼────────────────┤
-│    12 │ quack 🦆       │
-│    13 │ quack quack 🦆 │
-└───────┴────────────────┘
+┌───────┬────────────────┬──────────────────────────┐
+│   i   │       s        │        timestamp         │
+│ int32 │    varchar     │        timestamp         │
+├───────┼────────────────┼──────────────────────────┤
+│    12 │ quack 🦆       │ 2024-03-21 08:01:02 UTC  │
+│    13 │ quack quack 🦆 │ 2024-05-19 10:25:44 UTC  │
+└───────┴────────────────┴──────────────────────────┘
 ```
+
+The function supports filter pushdown by accepting [row restriction filter statements](https://cloud.google.com/bigquery/docs/reference/storage/rpc/google.cloud.bigquery.storage.v1#google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions) as an optional argument. These filters are passed directly to BigQuery and restrict which rows are transfered from the source table. For example:
+
+```sql
+D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl', filter='i=13 AND DATE(timestamp)=DATE(2023, 5, 19)'));
+┌───────┬────────────────┬──────────────────────────┐
+│   i   │       s        │        timestamp         │
+│ int32 │    varchar     │        timestamp         │
+├───────┼────────────────┼──────────────────────────┤
+│    13 │ quack quack 🦆 │ 2024-05-19 10:25:44 UTC  │
+└───────┴────────────────┴──────────────────────────┘
+```
+
+The filter syntax follows the same rules as the `row_restriction` field in BigQuery's Storage Read API.
 
 While `bigquery_scan` offers high-speed data retrieval, it does not support reading from views or external tables due to limitations of the Storage Read API. For those cases, consider using the `bigquery_query` function, which allows more complex querying capabilities.
 

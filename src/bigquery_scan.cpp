@@ -135,7 +135,8 @@ private:
 static void SetFromNamedParameters(const TableFunctionBindInput &input,
                                    string &billing_project_id,
                                    string &api_endpoint,
-                                   string &grpc_endpoint) {
+                                   string &grpc_endpoint,
+                                   string &filter_condition) {
     for (auto &kv : input.named_parameters) {
         auto loption = StringUtil::Lower(kv.first);
         if (loption == "billing_project") {
@@ -144,6 +145,8 @@ static void SetFromNamedParameters(const TableFunctionBindInput &input,
             api_endpoint = kv.second.GetValue<string>();
         } else if (loption == "grpc_endpoint") {
             grpc_endpoint = kv.second.GetValue<string>();
+        } else if (loption == "filter") {
+            filter_condition = kv.second.GetValue<string>();
         }
     }
 }
@@ -158,11 +161,12 @@ static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
         throw ParserException("Invalid table string: %s", table_string);
     }
 
-    string billing_project_id, api_endpoint, grpc_endpoint;
-    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint);
+    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
+    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
 
     auto result = make_uniq<BigqueryBindData>();
     result->table_ref = table_ref;
+    result->filter_condition = filter_condition;
     result->config = BigqueryConfig(table_ref.project_id)
                          .SetDatasetId(table_ref.dataset_id)
                          .SetBillingProjectId(billing_project_id)
@@ -172,7 +176,17 @@ static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
 
     ColumnList columns;
     vector<unique_ptr<Constraint>> constraints;
-    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref.dataset_id, table_ref.table_id, 1);
+
+    string filter_cond = "";
+    if (!filter_condition.empty()) {
+        filter_cond = filter_condition;
+    }
+
+    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref.dataset_id,
+                                                             table_ref.table_id,
+                                                             1,
+                                                             std::vector<string>(),
+                                                             filter_cond);
     arrow_reader->MapTableInfo(columns, constraints);
 
     for (auto &column : columns.Logical()) {
@@ -199,8 +213,8 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
-    string billing_project_id, api_endpoint, grpc_endpoint;
-    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint);
+    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
+    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
 
     auto bind_data = make_uniq<BigqueryBindData>();
     bind_data->query = query_string;
@@ -284,7 +298,12 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
     bool enable_filter_pushdown = BigquerySettings::ExperimentalFilterPushdown();
     string filter_string;
     auto filters = input.filters;
-    if (enable_filter_pushdown && filters && !filters->filters.empty()) {
+    if (!bind_data.filter_condition.empty()) {
+        if (!filter_string.empty()) {
+            filter_string += " AND ";
+        }
+        filter_string += bind_data.filter_condition;
+    } else if (enable_filter_pushdown && filters && !filters->filters.empty()) {
         for (auto &filter : filters->filters) {
             if (!filter_string.empty()) {
                 filter_string += " AND ";
@@ -406,6 +425,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     named_parameters["billing_project"] = LogicalType::VARCHAR;
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
+    named_parameters["filter"] = LogicalType::VARCHAR;
 }
 
 BigqueryQueryFunction::BigqueryQueryFunction()

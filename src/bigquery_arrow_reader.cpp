@@ -55,6 +55,9 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
     arrow_options->set_buffer_compression(BigquerySettings::GetCompressionCodec()); // Default: LZ4_FRAME
 
     if (!selected_columns.empty()) {
+        if (BigquerySettings::DebugQueryPrint()) {
+            std::cout << "BigQuery selected fields: " << StringUtil::Join(selected_columns, ", ") << std::endl;
+        }
         for (const auto &column : selected_columns) {
             read_options->add_selected_fields(column);
         }
