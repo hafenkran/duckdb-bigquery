@@ -8,6 +8,7 @@
 #include "duckdb.hpp"
 #include "duckdb/common/enums/catalog_type.hpp"
 #include "duckdb/common/index_map.hpp"
+#include "duckdb/common/types.hpp"
 
 #include "duckdb/planner/filter/conjunction_filter.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
@@ -340,6 +341,77 @@ LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::D
     }
 }
 
+std::shared_ptr<arrow::DataType> BigqueryUtils::LogicalTypeToArrowType(const LogicalType &type) {
+    switch (type.id()) {
+    case LogicalTypeId::BOOLEAN:
+        return arrow::boolean();
+    // BigQuery liefert alle Ganzzahlen als INT64
+    case LogicalTypeId::TINYINT:
+    case LogicalTypeId::SMALLINT:
+    case LogicalTypeId::INTEGER:
+    case LogicalTypeId::BIGINT:
+        return arrow::int64();
+
+    case LogicalTypeId::UTINYINT:
+    case LogicalTypeId::USMALLINT:
+    case LogicalTypeId::UINTEGER:
+    case LogicalTypeId::UBIGINT:
+        return arrow::uint64();
+
+    case LogicalTypeId::FLOAT:
+        return arrow::float32(); // FLOAT32 in BQ
+    case LogicalTypeId::DOUBLE:
+        return arrow::float64();
+
+    case LogicalTypeId::VARCHAR:
+        return arrow::utf8(); // STRING/JSON
+    case LogicalTypeId::BLOB:
+        return arrow::binary(); // BYTES
+    case LogicalTypeId::DATE:
+        return arrow::date32();
+    case LogicalTypeId::TIME:
+        return arrow::time64(arrow::TimeUnit::MICRO);
+    case LogicalTypeId::TIMESTAMP:
+        return arrow::timestamp(arrow::TimeUnit::MICRO);
+    case LogicalTypeId::DECIMAL: {
+        auto prec = DecimalType::GetWidth(type);
+        auto scale = DecimalType::GetScale(type);
+        // für NUMERIC (≤38 Stellen) genügt 128 Bit
+        if (prec <= 38) {
+            return arrow::decimal(prec, scale);
+        }
+        // BIGNUMERIC → 256 Bit
+        return arrow::decimal256(prec, scale);
+    }
+    case LogicalTypeId::LIST:
+        return arrow::list(LogicalTypeToArrowType(ListType::GetChildType(type)));
+    case LogicalTypeId::STRUCT: {
+        arrow::FieldVector fields;
+        for (idx_t i = 0; i < StructType::GetChildCount(type); ++i) {
+            fields.push_back(MakeArrowField(StructType::GetChildName(type, i), StructType::GetChildType(type, i)));
+        }
+        return arrow::struct_(std::move(fields));
+    }
+    default:
+        throw BinderException("LogicalTypeToArrowType: LogicalType '%s' is unsupported", type.ToString());
+    }
+}
+
+std::shared_ptr<arrow::Field> BigqueryUtils::MakeArrowField(const std::string &name,
+                                                            const LogicalType &dtype,
+                                                            bool nullable) {
+    return arrow::field(name, LogicalTypeToArrowType(dtype), nullable);
+}
+
+std::shared_ptr<arrow::Schema> BigqueryUtils::BuildArrowSchema(const ColumnList &cols) {
+    arrow::FieldVector fields;
+    fields.reserve(cols.LogicalColumnCount());
+    for (auto &col : cols.Logical()) {
+        auto arrow_type = BigqueryUtils::LogicalTypeToArrowType(col.GetType());
+        fields.push_back(arrow::field(col.GetName(), std::move(arrow_type), true));
+    }
+    return arrow::schema(std::move(fields));
+}
 
 bool BigqueryUtils::IsValueQuotable(const Value &value) {
     switch (value.type().id()) {

@@ -183,7 +183,7 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
 
     auto *read_options = session.mutable_read_options();
     auto arrow_options = read_options->mutable_arrow_serialization_options();
-    arrow_options->set_buffer_compression(BigquerySettings::GetCompressionCodec()); // Default: LZ4_FRAME
+    arrow_options->set_buffer_compression(BigquerySettings::GetArrowCompressionCodec()); // Default: LZ4_FRAME
 
     if (!selected_columns.empty()) {
         if (BigquerySettings::DebugQueryPrint()) {
@@ -212,7 +212,7 @@ shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> BigqueryArrowReader
     if (!read_session) {
         throw BinderException("Read session is not initialized.");
     }
-    if (stream_idx >= read_session->streams_size()) {
+    if (stream_idx >= static_cast<duckdb::idx_t>(read_session->streams_size())) {
         return nullptr;
     }
     return make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>(read_session->streams(stream_idx));

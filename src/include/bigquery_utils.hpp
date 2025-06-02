@@ -176,7 +176,13 @@ public:
     static LogicalType CastToBigqueryType(const LogicalType &type);
     static LogicalType FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
     static LogicalType FieldSchemaNumericToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
+
     static LogicalType ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type);
+    static std::shared_ptr<arrow::DataType> LogicalTypeToArrowType(const LogicalType &type);
+    static std::shared_ptr<arrow::Field> MakeArrowField(const std::string &name,
+                                                        const LogicalType &dtype,
+                                                        bool nullable = true);
+	static std::shared_ptr<arrow::Schema> BuildArrowSchema(const ColumnList &cols);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
     static LogicalType BigquerySQLToLogicalType(const string &type);
@@ -192,6 +198,22 @@ private:
     static string StructRemoveWhitespaces(const string &struct_str);
 };
 
+
+// Utility function to calculate column rank mapping for proper ordering
+// Maps column IDs to their ranked positions for reordering
+inline std::vector<column_t> CalculateRanks(const std::vector<column_t> &nums) {
+    size_t n = nums.size();
+    std::vector<std::pair<column_t, column_t>> value_index_pairs(n);
+    for (size_t i = 0; i < n; ++i) {
+        value_index_pairs[i] = {nums[i], i};
+    }
+    std::sort(value_index_pairs.begin(), value_index_pairs.end());
+    std::vector<column_t> ranks(n);
+    for (column_t i = 0; i < n; ++i) {
+        ranks[value_index_pairs[i].second] = i;
+    }
+    return ranks;
+}
 
 template <typename FUNC>
 bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
