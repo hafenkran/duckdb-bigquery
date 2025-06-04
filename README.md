@@ -277,7 +277,7 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 | `bq_experimental_enable_bigquery_options` | [EXPERIMENTAL] - Whether to enable BigQuery OPTIONS in CREATE statements                                 | `false`     |
 | `bq_curl_ca_bundle_path`                  | Path to the CA certificates used by cURL for SSL certificate verification                                |             |
 | `bq_max_read_streams`                     | Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work. | `0`         |
-| `bq_compression`                          | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`           | `LZ4_FRAME` |
+| `bq_arrow_compression`                          | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`           | `ZSTD` |
 
 ## Limitations
 

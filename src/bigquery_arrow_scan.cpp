@@ -14,8 +14,8 @@
 
 #include <arrow/c/bridge.h>
 #include <arrow/util/iterator.h>
-
 #include <iostream>
+#include <limits>
 
 namespace duckdb {
 namespace bigquery {
@@ -39,170 +39,293 @@ static void SetFromNamedParameters(const TableFunctionBindInput &input,
     }
 }
 
-unique_ptr<FunctionData> BigQueryArrowScanBind(ClientContext &context,
-											   TableFunctionBindInput &input,
-											   vector<LogicalType> &return_types,
-											   vector<string> &names) {
-	// Parse table name parameter
-	if (input.inputs.empty()) {
-		throw BinderException("bigquery_arrow_scan: table name must be provided");
-	}
+unique_ptr<FunctionData> BigqueryArrowScanBind(ClientContext &context,
+                                               TableFunctionBindInput &input,
+                                               vector<LogicalType> &return_types,
+                                               vector<string> &names) {
+    // Parse table name parameter
+    if (input.inputs.empty()) {
+        throw BinderException("bigquery_arrow_scan: table name must be provided");
+    }
 
-	auto table_string = input.inputs[0].GetValue<string>();
-	auto table_ref = BigqueryUtils::ParseTableString(table_string);
-	if (!table_ref.has_dataset_id() || !table_ref.has_table_id()) {
-		throw BinderException("Invalid table string: %s", table_string);
-	}
+    auto table_string = input.inputs[0].GetValue<string>();
+    auto table_ref = BigqueryUtils::ParseTableString(table_string);
+    if (!table_ref.has_dataset_id() || !table_ref.has_table_id()) {
+        throw BinderException("Invalid table string: %s", table_string);
+    }
 
-	// Parse named parameters
-	string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
-	SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
+    // Parse named parameters
+    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
+    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
 
-	// Initialize bind data
-	auto bind_data = make_uniq<BigQueryArrowScanBindData>();
-	bind_data->table_ref = table_ref;
-	bind_data->filter_condition = filter_condition;
-	bind_data->bq_config = BigqueryConfig(table_ref.project_id)
-							   .SetDatasetId(table_ref.dataset_id)
-							   .SetBillingProjectId(billing_project_id)
-							   .SetApiEndpoint(api_endpoint)
-							   .SetGrpcEndpoint(grpc_endpoint);
-	bind_data->bq_client = make_shared_ptr<BigqueryClient>(bind_data->bq_config);
+    // Initialize bind data
+    auto bind_data = make_uniq<BigqueryArrowScanBindData>();
+    bind_data->table_ref = table_ref;
+    bind_data->filter_condition = filter_condition;
+    bind_data->bq_config = BigqueryConfig(table_ref.project_id)
+                               .SetDatasetId(table_ref.dataset_id)
+                               .SetBillingProjectId(billing_project_id)
+                               .SetApiEndpoint(api_endpoint)
+                               .SetGrpcEndpoint(grpc_endpoint);
+    bind_data->bq_client = make_shared_ptr<BigqueryClient>(bind_data->bq_config);
 
-	// Create schema reader to fetch table metadata
-	auto schema_reader = bind_data->bq_client->CreateArrowReader(table_ref.dataset_id,
-																 table_ref.table_id,
-																 1,
-																 vector<string>(),
-																 filter_condition);
+    ColumnList columns;
+    vector<unique_ptr<Constraint>> constraints;
+    bind_data->bq_client->GetTableInfo(table_ref.dataset_id, table_ref.table_id, columns, constraints);
 
-	// Export Arrow schema for DuckDB integration
-	auto status = arrow::ExportSchema(*schema_reader->GetSchema(), &bind_data->schema_root.arrow_schema);
-	if (!status.ok()) {
-		throw BinderException("Arrow schema export failed: " + status.ToString());
-	}
+    auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
+    auto status = arrow::ExportSchema(*std::move(arrow_schema_ptr), &bind_data->schema_root.arrow_schema);
+    if (!status.ok()) {
+        throw BinderException("Arrow schema export failed: " + status.ToString());
+    }
 
-	// Convert Arrow schema to DuckDB types and names
-	ArrowTableFunction::PopulateArrowTableType(DBConfig::GetConfig(context),
-											   bind_data->arrow_table,
-											   bind_data->schema_root,
-											   names,
-											   return_types);
+    // Convert Arrow schema to DuckDB types and names
+    ArrowTableFunction::PopulateArrowTableType(DBConfig::GetConfig(context),
+                                               bind_data->arrow_table,
+                                               bind_data->schema_root,
+                                               names,
+                                               return_types);
 
-	if (return_types.empty()) {
-		throw BinderException("BigQuery table has no columns");
-	}
+    if (return_types.empty()) {
+        throw BinderException("BigQuery table has no columns");
+    }
 
-	// Store schema information
-	bind_data->names = names;
-	bind_data->all_types = return_types;
-	bind_data->column_mapping.resize(names.size());
-	for (idx_t i = 0; i < names.size(); i++) {
-		bind_data->column_mapping[i] = i;
-	}
-
-	return std::move(bind_data);
+    // Store schema information
+    bind_data->names = names;
+    bind_data->all_types = return_types;
+    return std::move(bind_data);
 }
 
-unique_ptr<GlobalTableFunctionState> BigQueryArrowScanInitGlobal(ClientContext &context,
-																 TableFunctionInitInput &input) {
-	auto &bind_data = input.bind_data->CastNoConst<BigQueryArrowScanBindData>();
+unique_ptr<GlobalTableFunctionState> BigqueryArrowScanInitGlobal(ClientContext &context,
+                                                                 TableFunctionInitInput &input) {
+    auto &bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
 
-	// Determine columns required by the query
-	vector<string> selected_fields;
-	selected_fields.reserve(input.column_ids.size());
-	for (auto col_id : input.column_ids) {
-		if (col_id == COLUMN_IDENTIFIER_ROW_ID) {
-			throw BinderException("BigQuery tables do not support ROWID");
-		}
-		selected_fields.push_back(bind_data.names[col_id]);
-	}
+    // Build selected fields for BigQuery (exclude ROWID columns)
+    vector<string> selected_fields;
+    selected_fields.reserve(input.column_ids.size());
 
-	// Apply filter pushdown if enabled
-	string filter_string = bind_data.filter_condition;
-	bool enable_filter_pushdown = BigquerySettings::ExperimentalFilterPushdown();
-	if (enable_filter_pushdown && filter_string.empty() && input.filters && !input.filters->filters.empty()) {
-		for (const auto &filter : input.filters->filters) {
-			if (!filter_string.empty()) {
-				filter_string += " AND ";
-			}
-			const string &column_name = selected_fields[filter.first];
-			filter_string += BigquerySQL::TransformFilter(column_name, *filter.second);
-		}
-	}
+    for (auto col_id : input.column_ids) {
+        if (col_id == COLUMN_IDENTIFIER_ROW_ID || col_id < 0) {
+            continue;
+        }
+        selected_fields.emplace_back(bind_data.names[col_id]);
+    }
 
-	// Create BigQuery Arrow reader with selected columns and filters
-	idx_t max_read_streams = BigquerySettings::GetMaxReadStreams(context);
-	auto bq_arrow_reader = bind_data.bq_client->CreateArrowReader(
-		bind_data.table_ref.dataset_id,
-		bind_data.table_ref.table_id,
-		max_read_streams,
-		selected_fields,
-		filter_string
-	);
+    // Build filter condition for BigQuery
+    string filter_string = bind_data.filter_condition;
+    if (BigquerySettings::ExperimentalFilterPushdown() && filter_string.empty() && input.filters &&
+        !input.filters->filters.empty()) {
 
-	// Create and store stream factory
-	auto factory = make_shared_ptr<BigQueryStreamFactory>(bq_arrow_reader);
-	bind_data.factory_dep()->factory = factory;
-	bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
+        for (auto &filter : input.filters->filters) {
+            column_t logical_col = input.column_ids[filter.first];
+            if (logical_col == COLUMN_IDENTIFIER_ROW_ID || logical_col < 0) {
+                throw InvalidInputException("ROWID cannot be referenced in a WHERE clause for BigQuery tables");
+            }
 
-	// Initialize global scan state
-	auto gstate = make_uniq<ArrowScanGlobalState>();
-	gstate->max_threads = max_read_streams;
+            if (!filter_string.empty()) {
+                filter_string += " AND ";
+            }
+            const string &column_name = bind_data.names[logical_col];
+            filter_string += BigquerySQL::TransformFilter(column_name, *filter.second);
+        }
+    }
 
-	// Analyze Arrow schema (contains only selected fields)
-	auto arrow_schema = bq_arrow_reader->GetSchema();
-	const idx_t physical_column_count = arrow_schema->num_fields();
+    // Initialize the BigQuery arrow reader
+    idx_t max_read_streams = BigquerySettings::GetMaxReadStreams(context);
+    auto bq_arrow_reader = bind_data.bq_client->CreateArrowReader( //
+        bind_data.table_ref.dataset_id,
+        bind_data.table_ref.table_id,
+        max_read_streams,
+        selected_fields,
+        filter_string //
+    );
 
-	// Build mapping from column name to logical column ID
-	unordered_map<string, column_t> name_to_column_id;
-	name_to_column_id.reserve(bind_data.names.size());
-	for (idx_t col_id = 0; col_id < bind_data.names.size(); ++col_id) {
-		name_to_column_id[bind_data.names[col_id]] = col_id;
-	}
+    // Wrap reader in a factory so every thread can open its own stream
+    auto factory = make_shared_ptr<BigqueryStreamFactory>(bq_arrow_reader);
+    bind_data.factory_dep()->factory = factory;
+    bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
 
-	// Set up scanned types in physical column order
-	gstate->scanned_types.clear();
-	gstate->scanned_types.reserve(physical_column_count);
-	for (idx_t phys_idx = 0; phys_idx < physical_column_count; ++phys_idx) {
-		const string &field_name = arrow_schema->field(phys_idx)->name();
-		auto col_id = name_to_column_id.at(field_name);
-		gstate->scanned_types.emplace_back(bind_data.all_types[col_id]);
-	}
+    // Initialize global scan state
+    auto gstate = make_uniq<ArrowScanGlobalState>();
+    gstate->max_threads = max_read_streams;
 
-	// Set up column projection mapping (logical to physical)
-	gstate->projection_ids.resize(input.column_ids.size());
-	bool needs_projection = false;
-	for (idx_t output_idx = 0; output_idx < input.column_ids.size(); ++output_idx) {
-		auto col_id = input.column_ids[output_idx];
-		const string &column_name = bind_data.names[col_id];
-		idx_t physical_idx = arrow_schema->GetFieldIndex(column_name);
-		gstate->projection_ids[output_idx] = physical_idx;
-		if (physical_idx != output_idx) {
-			needs_projection = true;
-		}
-	}
+    // Set up type mapping from physical to logical columns
+    auto arrow_schema = bq_arrow_reader->GetSchema();
+    const idx_t phys_col_count = arrow_schema->num_fields();
 
-	// Clear projection if no reordering is needed (1:1 mapping)
-	if (!needs_projection) {
-		gstate->projection_ids.clear();
-	}
+    // Map column name → logical col_id for fast lookup
+    unordered_map<string, column_t> name_to_bq_physical;
+    name_to_bq_physical.reserve(bind_data.names.size());
+    for (idx_t i = 0; i < bind_data.names.size(); ++i) {
+        name_to_bq_physical.emplace(bind_data.names[i], i);
+    }
 
-	// Create and attach Arrow scan stream
-	gstate->stream = ::duckdb::ProduceArrowScan(bind_data, input.column_ids, input.filters.get());
-	return std::move(gstate);
+    // Set up scanned types in physical column order
+    gstate->scanned_types.clear();
+    gstate->scanned_types.reserve(phys_col_count);
+    for (idx_t phys_idx = 0; phys_idx < phys_col_count; ++phys_idx) {
+        const string &field_name = arrow_schema->field(phys_idx)->name();
+        auto col_id = name_to_bq_physical.at(field_name);
+        if (bind_data.mapped_bq_types.empty()) {
+            gstate->scanned_types.emplace_back(bind_data.all_types[col_id]);
+        } else {
+            gstate->scanned_types.emplace_back(bind_data.mapped_bq_types[col_id]);
+        }
+    }
+
+    bool needs_projection = false;
+    for (idx_t out_idx = 0; out_idx < input.projection_ids.size(); ++out_idx) {
+        idx_t proj_id = input.projection_ids[out_idx];
+        idx_t col_id = input.column_ids[proj_id];
+
+        const string &name = bind_data.names[col_id];
+        idx_t phys_idx = static_cast<idx_t>(arrow_schema->GetFieldIndex(name));
+        if (phys_idx == static_cast<idx_t>(-1)) {
+            throw InternalException("Column '" + name + "' not found in Arrow schema");
+        }
+
+        gstate->projection_ids.push_back(phys_idx);
+        if (phys_idx != out_idx) {
+            needs_projection = true;
+        }
+    }
+
+    // Clear projection IDs if no reordering is needed
+    if (!needs_projection) {
+        gstate->projection_ids.clear();
+    }
+
+    // Create the Arrow scan stream
+    gstate->stream = ::duckdb::ProduceArrowScan(bind_data, input.column_ids, input.filters.get());
+    return std::move(gstate);
 }
 
-BigQueryArrowScanFunction::BigQueryArrowScanFunction()
+unique_ptr<LocalTableFunctionState> BigqueryArrowScanInitLocal(ExecutionContext &context,
+                                                               TableFunctionInitInput &input,
+                                                               GlobalTableFunctionState *global_state_p) {
+    auto &client_context = context.client;
+    auto &bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
+    auto &global_state = global_state_p->Cast<ArrowScanGlobalState>();
+
+    auto current_chunk = make_uniq<ArrowArrayWrapper>();
+    auto result = make_uniq<BigqueryArrowScanLocalState>(std::move(current_chunk), client_context);
+
+    auto sorted_column_ids = input.column_ids;
+    std::sort(sorted_column_ids.begin(), sorted_column_ids.end());
+
+    result->column_ids = sorted_column_ids;
+    result->filters = input.filters.get();
+
+    if (!bind_data.projection_pushdown_enabled) {
+        result->column_ids.clear();
+    } else if (!input.projection_ids.empty() or bind_data.requires_cast) {
+        auto &asgs = global_state_p->Cast<ArrowScanGlobalState>();
+        result->all_columns.Initialize(client_context, asgs.scanned_types);
+    }
+    if (!ArrowTableFunction::ArrowScanParallelStateNext(client_context, input.bind_data.get(), *result, global_state)) {
+        return nullptr;
+    }
+
+    return std::move(result);
+}
+
+static void BigqueryArrowScanExecute(ClientContext &ctx, TableFunctionInput &data_p, DataChunk &output) {
+    if (!data_p.local_state) {
+        return;
+    }
+
+    auto &data = data_p.bind_data->CastNoConst<BigqueryArrowScanBindData>();
+    auto &state = data_p.local_state->Cast<BigqueryArrowScanLocalState>();
+    auto &gstate = data_p.global_state->Cast<ArrowScanGlobalState>();
+
+    //! Out of tuples in this chunk
+    if (state.chunk_offset >= static_cast<idx_t>(state.chunk->arrow_array.length)) {
+        if (!ArrowTableFunction::ArrowScanParallelStateNext(ctx, data_p.bind_data.get(), state, gstate)) {
+            return;
+        }
+    }
+
+    auto output_size = MinValue<idx_t>( //
+        STANDARD_VECTOR_SIZE,
+        NumericCast<idx_t>(state.chunk->arrow_array.length) - state.chunk_offset);
+    data.lines_read += output_size;
+
+    if (gstate.CanRemoveFilterColumns()) {
+        state.all_columns.Reset();
+        state.all_columns.SetCardinality(output_size);
+
+        ArrowTableFunction::ArrowToDuckDB(state,
+                                          data.arrow_table.GetColumns(),
+                                          state.all_columns,
+                                          data.lines_read - output_size);
+
+        // If no projection is needed, we can directly reference the columns
+        // or cast them if required
+        if (!data.requires_cast) {
+            // Reference columns directly
+            output.ReferenceColumns(state.all_columns, gstate.projection_ids);
+        } else {
+            for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
+                auto proj_id = gstate.projection_ids[col_idx];
+                VectorOperations::Cast(ctx,
+                                       state.all_columns.data[proj_id],
+                                       output.data[col_idx],
+                                       state.all_columns.size());
+            }
+        }
+    } else {
+        output.SetCardinality(output_size);
+        if (!data.requires_cast) {
+            // Direct write to output
+            ArrowTableFunction::ArrowToDuckDB(state,
+                                              data.arrow_table.GetColumns(),
+                                              output,
+                                              data.lines_read - output_size);
+        } else {
+            state.all_columns.Reset();
+            state.all_columns.SetCardinality(output_size);
+            ArrowTableFunction::ArrowToDuckDB(state,
+                                              data.arrow_table.GetColumns(),
+                                              state.all_columns,
+                                              data.lines_read - output_size);
+
+            // Cast each column to the output type
+            for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
+                VectorOperations::Cast(ctx,
+                                       state.all_columns.data[col_idx],
+                                       output.data[col_idx],
+                                       state.all_columns.size());
+            }
+        }
+    }
+
+    output.SetCardinality(output_size);
+    output.Verify();
+    state.chunk_offset += output.size();
+}
+
+
+static BindInfo BigqueryArrowScanGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+    auto &bind_data = bind_data_p->Cast<BigqueryArrowScanBindData>();
+    BindInfo info(ScanType::EXTERNAL);
+    if (bind_data.bq_table_entry) {
+        info.table = bind_data.bq_table_entry.get_mutable();
+    }
+    return info;
+}
+
+BigqueryArrowScanFunction::BigqueryArrowScanFunction()
     : TableFunction("bigquery_arrow_scan",
                     {LogicalType::VARCHAR},
-                    ArrowTableFunction::ArrowScanFunction,
-                    BigQueryArrowScanBind,
-                    BigQueryArrowScanInitGlobal,
-                    ArrowTableFunction::ArrowScanInitLocal) {
+                    BigqueryArrowScanExecute,
+                    BigqueryArrowScanBind,
+                    BigqueryArrowScanInitGlobal,
+                    BigqueryArrowScanInitLocal) {
     projection_pushdown = true;
     filter_pushdown = true;
     filter_prune = true;
+
+    get_bind_info = BigqueryArrowScanGetBindInfo;
 
     named_parameters["billing_project"] = LogicalType::VARCHAR;
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;

@@ -29,5 +29,5 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.table_arrays;
 [42, 999, -42]	[42.0, nan, inf, -inf, -42.0]	[🦆🦆🦆🦆🦆🦆, goose, '']
 []	[]	[]
 
-statement ok
-DROP TABLE bq.${BQ_TEST_DATASET}.table_arrays;
+#statement ok
+#DROP TABLE bq.${BQ_TEST_DATASET}.table_arrays;

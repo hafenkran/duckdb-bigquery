@@ -198,7 +198,7 @@ public:
     }
 
     static string &ArrowCompression() {
-        static string bigquery_compression = "LZ4_FRAME";
+        static string bigquery_compression = "ZSTD";
         return bigquery_compression;
     }
 
@@ -225,7 +225,7 @@ public:
     }
 
 	static bool &ExperimentalIncubatingScan() {
-		static bool bigquery_experimental_incubating_scan = false;
+		static bool bigquery_experimental_incubating_scan = true;
 		return bigquery_experimental_incubating_scan;
 	}
 

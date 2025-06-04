@@ -21,20 +21,20 @@ unique_ptr<ArrowArrayStreamWrapper> ProduceArrowScan(const ArrowScanFunctionData
 namespace bigquery {
 
 struct FactoryDependency final : public DependencyItem {
-    explicit FactoryDependency(shared_ptr<BigQueryStreamFactory> ptr) : DependencyItem(), factory(std::move(ptr)) {
+    explicit FactoryDependency(shared_ptr<BigqueryStreamFactory> ptr) : DependencyItem(), factory(std::move(ptr)) {
     }
-    shared_ptr<BigQueryStreamFactory> factory;
+    shared_ptr<BigqueryStreamFactory> factory;
 };
 
-struct BigQueryArrowScanBindData : public ArrowScanFunctionData {
-	explicit BigQueryArrowScanBindData()
-		: ArrowScanFunctionData(&BigQueryStreamFactory::Produce, 0, make_shared_ptr<FactoryDependency>(nullptr)) {
-	}
-    explicit BigQueryArrowScanBindData(stream_factory_produce_t prod, uintptr_t ptr, shared_ptr<DependencyItem> dep)
+struct BigqueryArrowScanBindData : public ArrowScanFunctionData {
+    explicit BigqueryArrowScanBindData()
+        : ArrowScanFunctionData(&BigqueryStreamFactory::Produce, 0, make_shared_ptr<FactoryDependency>(nullptr)) {
+    }
+    explicit BigqueryArrowScanBindData(stream_factory_produce_t prod, uintptr_t ptr, shared_ptr<DependencyItem> dep)
         : ArrowScanFunctionData(prod, ptr, std::move(dep)) {
     }
-    BigQueryArrowScanBindData(const BigQueryArrowScanBindData &) = delete;
-    BigQueryArrowScanBindData &operator=(const BigQueryArrowScanBindData &) = delete;
+    BigqueryArrowScanBindData(const BigqueryArrowScanBindData &) = delete;
+    BigqueryArrowScanBindData &operator=(const BigqueryArrowScanBindData &) = delete;
 
 public:
     // The BigQuery table reference for this scan
@@ -55,9 +55,11 @@ public:
     vector<string> names;
     //! Types of the columns in the table
     vector<LogicalType> types;
-	vector<idx_t> column_mapping; // Maps output columns to source columns
+    vector<LogicalType> mapped_bq_types;
+
     //! Estimated row count of the table
     idx_t estimated_row_count = 1;
+	bool requires_cast = false;
 
     shared_ptr<FactoryDependency> factory_dep() {
         return dependency ? shared_ptr_cast<DependencyItem, FactoryDependency>(dependency) : nullptr;
@@ -72,8 +74,18 @@ public:
     }
 };
 
-struct BigQueryArrowScanFunction : public TableFunction {
-    BigQueryArrowScanFunction();
+struct BigqueryArrowScanLocalState : public ArrowScanLocalState {
+public:
+    BigqueryArrowScanLocalState(unique_ptr<ArrowArrayWrapper> current_chunk, ClientContext &context)
+        : ArrowScanLocalState(std::move(current_chunk), context) {
+    }
+
+public:
+    DataChunk tmp_bq_chunk;
+};
+
+struct BigqueryArrowScanFunction : public TableFunction {
+    BigqueryArrowScanFunction();
 };
 
 } // namespace bigquery

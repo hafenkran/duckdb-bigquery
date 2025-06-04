@@ -21,9 +21,9 @@ namespace bigquery {
 struct BigqueryArrowReader;
 
 //  BigQuery Stream Factory – provides ArrowArrayStreams from BigQuery Read Streams
-class BigQueryStreamFactory {
+class BigqueryStreamFactory {
 public:
-	explicit BigQueryStreamFactory(shared_ptr<BigqueryArrowReader> reader) //
+	explicit BigqueryStreamFactory(shared_ptr<BigqueryArrowReader> reader) //
 		: reader(std::move(reader)) {
 	}
 

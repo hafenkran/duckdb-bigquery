@@ -1,20 +1,20 @@
 #include "duckdb.hpp"
 #include "duckdb/common/types/hugeint.hpp"
 #include "duckdb/common/types/time.hpp"
-#include "duckdb/parser/column_list.hpp"
 #include "duckdb/function/table/arrow.hpp"
+#include "duckdb/parser/column_list.hpp"
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/common_options.h"
 #include "google/cloud/grpc_options.h"
 
 #include <arrow/api.h>
+#include <arrow/c/bridge.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
 #include <arrow/ipc/writer.h>
-#include <arrow/visit_type_inline.h>
-#include <arrow/c/bridge.h>
 #include <arrow/util/iterator.h>
+#include <arrow/visit_type_inline.h>
 
 #include <chrono>
 #include <ctime>
@@ -53,98 +53,108 @@ private:
     std::shared_ptr<arrow::Schema> schema_;
 };
 
-unique_ptr<ArrowArrayStreamWrapper> BigQueryStreamFactory::Produce(uintptr_t factory_ptr,
-																   ArrowStreamParameters & /*params*/) {
-	auto *factory = reinterpret_cast<BigQueryStreamFactory *>(factory_ptr);
-	auto &reader = factory->reader;
+struct BigqueryStreamState {
+    shared_ptr<BigqueryArrowReader> reader;
+    shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> stream;
+    BigqueryStreamFactory *factory;
 
-	const idx_t first_stream_idx = factory->next_stream.fetch_add(1);
-	auto bq_stream = reader->GetStream(first_stream_idx);
+    google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> range;
+    google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator it;
 
-	auto stream_wrapper = make_uniq<ArrowArrayStreamWrapper>();
-	if (!bq_stream) {
-		// No more streams available
-		stream_wrapper->arrow_array_stream.release = nullptr;
-		return stream_wrapper;
-	}
+    bool range_open = false;
+    int64_t rows_delivered = 0;
+};
 
-	// Stream state container for maintaining connection and iteration state
-	struct StreamState {
-		shared_ptr<BigqueryArrowReader> reader;
-		BigQueryStreamFactory *factory;
-		shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> stream;
-		google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> rows_range;
-		decltype(rows_range)::iterator rows_it;
-		bool rows_init = false;
-		int64_t rows_delivered = 0;
-	};
+unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t factory_ptr, ArrowStreamParameters &) {
+    auto *factory = reinterpret_cast<BigqueryStreamFactory *>(factory_ptr);
+    auto &reader = factory->reader;
 
-	auto state = std::make_shared<StreamState>();
-	state->reader = reader;
-	state->factory = factory;
-	state->stream = bq_stream;
+    // Get first stream handle
+    const idx_t first_idx = factory->next_stream.fetch_add(1);
+    auto bq_stream = reader->GetStream(first_idx);
 
-	auto batch_iter = arrow::MakeFunctionIterator([state]() -> arrow::Result<BatchPtr> {
-		while (true) {
-			// Initialize row range if not already done
-			if (!state->rows_init) {
-				state->rows_range = state->reader->ReadRows(state->stream->name(), state->rows_delivered);
-				state->rows_it = state->rows_range.begin();
-				state->rows_init = true;
-			}
+    auto wrapper = make_uniq<ArrowArrayStreamWrapper>();
+    if (!bq_stream) {
+        // Export empty stream
+        auto empty_iter = arrow::MakeEmptyIterator<std::shared_ptr<arrow::RecordBatch>>();
+        auto empty_reader = std::make_shared<IteratorBatchReader>(std::move(empty_iter), reader->GetSchema());
+        auto status = arrow::ExportRecordBatchReader(empty_reader, &wrapper->arrow_array_stream);
+        if (!status.ok()) {
+            throw BinderException("Arrow export (empty stream) failed: " + status.ToString());
+        }
+        return wrapper;
+    }
 
-			// Check if current range is exhausted
-			if (state->rows_it == state->rows_range.end()) {
-				// Retry with current offset to handle potential new data
-				state->rows_range = state->reader->ReadRows(state->stream->name(), state->rows_delivered);
-				state->rows_it = state->rows_range.begin();
+    // Create state object
+    auto st = std::make_shared<BigqueryStreamState>();
+    st->reader = reader;
+    st->factory = factory;
+    st->stream = bq_stream;
 
-				// If still empty, move to next stream
-				if (state->rows_it == state->rows_range.end()) {
-					const idx_t next_idx = state->factory->next_stream.fetch_add(1);
-					state->stream = state->reader->GetStream(next_idx);
-					if (!state->stream) {
-						return nullptr; // EOF - no more streams
-					}
+    // Create Arrow iterator
+    auto iter = arrow::MakeFunctionIterator([st]() -> arrow::Result<BatchPtr> {
+        while (true) {
+            // Open range if not already open
+            if (!st->range_open) {
+                st->range = st->reader->ReadRows(st->stream->name(), 0);
+                st->it = st->range.begin();
+                st->range_open = true;
+            }
 
-					// Reset state for new stream
-					state->rows_init = false;
-					state->rows_delivered = 0;
-					continue;
-				}
-			}
+            // Check if range is exhausted - try next stream
+            if (st->it == st->range.end()) {
+                // Reopen range once more - BigQuery might have more batches
+                st->range = st->reader->ReadRows(st->stream->name(), st->rows_delivered);
+                st->it = st->range.begin();
 
-			// Process next response
-			auto &resp_or = *state->rows_it++;
-			if (!resp_or) {
-				return arrow::Status::IOError("ReadRows error: " + resp_or.status().message());
-			}
+                // If still empty, switch to next stream
+                if (st->it == st->range.end()) {
+                    const idx_t next = st->factory->next_stream.fetch_add(1);
+                    st->stream = st->reader->GetStream(next);
+                    if (!st->stream) {
+                        return nullptr; // EOF
+                    }
+                    st->range_open = false;
+                    st->rows_delivered = 0;
+                    continue;
+                }
+            }
 
-			// Skip progress messages without actual data
-			if (!resp_or->has_arrow_record_batch()) {
-				continue;
-			}
+            // Get response
+            auto &resp_or = *st->it;
+            if (!resp_or) {
+                return arrow::Status::IOError("ReadRows error: " + resp_or.status().message());
+            }
+            if (!resp_or->has_arrow_record_batch()) {
+                continue;
+            }
 
-			auto batch = state->reader->ReadBatch(resp_or->arrow_record_batch());
-			state->rows_delivered += batch ? batch->num_rows() : 0;
-			return batch;
-		}
-	});
+            // Decode batch
+            const auto &arrow_msg = resp_or->arrow_record_batch();
+            auto batch = st->reader->ReadBatch(arrow_msg);
+            st->it++;
+            if (!batch) {
+                return arrow::Status::IOError("Arrow deserialization failed");
+            }
 
-	// Convert iterator to RecordBatchReader and export to ArrowArrayStream
-	auto schema = reader->GetSchema();
-	auto rb_reader = std::make_shared<IteratorBatchReader>(std::move(batch_iter), schema);
+            st->rows_delivered += batch->num_rows();
+            return batch;
+        }
+    });
 
-	auto status = arrow::ExportRecordBatchReader(rb_reader, &stream_wrapper->arrow_array_stream);
-	if (!status.ok()) {
-		throw BinderException("Arrow export failed: " + status.ToString());
-	}
+    // Convert Iterator => RecordBatchReader => ArrowArrayStream
+    auto schema = reader->GetSchema();
+    auto rb_reader = std::make_shared<IteratorBatchReader>(std::move(iter), schema);
 
-	return stream_wrapper;
+    auto export_status = arrow::ExportRecordBatchReader(rb_reader, &wrapper->arrow_array_stream);
+    if (!export_status.ok()) {
+        throw BinderException("Arrow export failed: " + export_status.ToString());
+    }
+    return wrapper;
 }
 
-void BigQueryStreamFactory::GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema) {
-    auto *factory = reinterpret_cast<BigQueryStreamFactory *>(factory_ptr);
+void BigqueryStreamFactory::GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema) {
+    auto *factory = reinterpret_cast<BigqueryStreamFactory *>(factory_ptr);
     auto &reader = factory->reader;
 
     // Get the schema from the reader and set it in the ArrowSchema
@@ -154,7 +164,6 @@ void BigQueryStreamFactory::GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema
         throw BinderException("Arrow export failed: " + status.ToString());
     }
 }
-
 
 BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
                                          const string billing_project_id,

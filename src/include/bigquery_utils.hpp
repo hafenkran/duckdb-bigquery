@@ -17,6 +17,9 @@
 namespace duckdb {
 namespace bigquery {
 
+
+
+
 struct BigqueryUtils;
 
 struct BigqueryConfig {
@@ -182,7 +185,7 @@ public:
     static std::shared_ptr<arrow::Field> MakeArrowField(const std::string &name,
                                                         const LogicalType &dtype,
                                                         bool nullable = true);
-	static std::shared_ptr<arrow::Schema> BuildArrowSchema(const ColumnList &cols);
+    static std::shared_ptr<arrow::Schema> BuildArrowSchema(const ColumnList &cols);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
     static LogicalType BigquerySQLToLogicalType(const string &type);

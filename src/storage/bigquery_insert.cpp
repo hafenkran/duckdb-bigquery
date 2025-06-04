@@ -149,7 +149,7 @@ PhysicalOperator &AddCastToBigqueryTypes(ClientContext &context,
     for (auto &type : child_types) {
         auto bigquery_type = BigqueryUtils::CastToBigqueryType(type);
         if (type.id() != bigquery_type.id()) {
-            requires_casts = true;
+            requires_casts = false; // TODO this is intentional
             break;
         }
     }

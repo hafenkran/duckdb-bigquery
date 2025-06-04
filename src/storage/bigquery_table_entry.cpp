@@ -30,14 +30,12 @@ unique_ptr<BaseStatistics> BigqueryTableEntry::GetStatistics(ClientContext &cont
     return nullptr;
 }
 
-
-
 TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique_ptr<FunctionData> &bind_data) {
     auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
     auto catalog_transaction = bigquery_catalog.GetCatalogTransaction(context);
     auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
 
-    auto result = make_uniq<BigQueryArrowScanBindData>();
+    auto result = make_uniq<BigqueryArrowScanBindData>();
     result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
     result->bq_client = bigquery_transaction->GetBigqueryClient();
     result->bq_catalog = &bigquery_catalog;
@@ -55,12 +53,30 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
                                                    result->arrow_table,
                                                    result->schema_root,
                                                    result->names,
-                                                   result->types);
+                                                   result->all_types);
 
-        result->all_types = result->types;
+		// Check if we need to map the types to BigQuery types. The BigQuery Arrow scan function will
+		// do a cast to the BigQuery types if necessary.
+		bool requires_cast = false;
+		vector<LogicalType> mapped_bq_types;
+		for (auto &col : columns.Logical()) {
+			auto bq_type = BigqueryUtils::CastToBigqueryType(col.GetType());
+			if (bq_type != col.GetType()) {
+				requires_cast = true;
+			}
+			mapped_bq_types.push_back(bq_type);
+		}
+
+		if (requires_cast) {
+			result->mapped_bq_types = std::move(mapped_bq_types);
+		}
+		result->requires_cast = requires_cast;
+
+		// if the arrow type isn't the same as the duckdb type, we need to map it
+		// For this we create a mapping
         bind_data = std::move(result);
 
-        auto function = BigQueryArrowScanFunction();
+        auto function = BigqueryArrowScanFunction();
         Value filter_pushdown;
         if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
             function.filter_pushdown = BooleanValue::Get(filter_pushdown);

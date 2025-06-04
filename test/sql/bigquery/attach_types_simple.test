@@ -32,5 +32,12 @@ false	-128	-32768	-2147483648	-9223372036854775808
 true	127	32767	2147483647	9223372036854775807
 NULL	NULL	NULL	NULL	NULL
 
+query IIIII
+SELECT int, bool, smallint, bool, bool FROM bq.${BQ_TEST_DATASET}.types_simple;
+----
+-2147483648	false	-32768	false	false
+2147483647	true	32767	true	true
+NULL	NULL	NULL	NULL	NULL
+
 statement ok
 DROP TABLE bq.${BQ_TEST_DATASET}.types_simple
