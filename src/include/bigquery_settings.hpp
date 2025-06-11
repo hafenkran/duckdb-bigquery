@@ -225,7 +225,7 @@ public:
     }
 
 	static bool &ExperimentalIncubatingScan() {
-		static bool bigquery_experimental_incubating_scan = true;
+		static bool bigquery_experimental_incubating_scan = false;
 		return bigquery_experimental_incubating_scan;
 	}
 

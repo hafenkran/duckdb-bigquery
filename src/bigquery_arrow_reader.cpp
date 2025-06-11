@@ -192,7 +192,7 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
 
     auto *read_options = session.mutable_read_options();
     auto arrow_options = read_options->mutable_arrow_serialization_options();
-    arrow_options->set_buffer_compression(BigquerySettings::GetArrowCompressionCodec()); // Default: LZ4_FRAME
+    arrow_options->set_buffer_compression(BigquerySettings::GetArrowCompressionCodec()); // Default: ZSTD
 
     if (!selected_columns.empty()) {
         if (BigquerySettings::DebugQueryPrint()) {

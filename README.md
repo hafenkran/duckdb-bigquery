@@ -142,6 +142,8 @@ ALTER TABLE bq.some_dataset.tbl ALTER COLUMN i DROP NOT NULL;
 
 ### `bigquery_scan` Function
 
+> Note: There is now also a `bigquery_arrow_scan` function, which is significantly more performant. It is currently experimental. The syntax is the same as the `bigquery_scan`. You can enable it by default for ATTACHED catalog queries using `SET bq_experimental_use_incubating_scan=TRUE`
+
 The `bigquery_scan` function provides direct, efficient reads from a single table within your BigQuery project. This function is ideal for simple reads where no complex SQL is required, and it supports simple projection pushdown from DuckDB. 
 If you would rather query just one table directly instead of attaching all tables, you can achieve this by directly using the `bigquery_scan` functions, such as:
 
@@ -267,17 +269,18 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 ### Additional Extension Settings
 
-| Setting                                   | Description                                                                                              | Default     |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------- |
-| `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error.                 | `false`     |
-| `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting. | `90000`     |
-| `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                        | `false`     |
-| `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                   | `true`      |
-| `bq_experimental_use_info_schema`         | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)               | `true`      |
-| `bq_experimental_enable_bigquery_options` | [EXPERIMENTAL] - Whether to enable BigQuery OPTIONS in CREATE statements                                 | `false`     |
-| `bq_curl_ca_bundle_path`                  | Path to the CA certificates used by cURL for SSL certificate verification                                |             |
-| `bq_max_read_streams`                     | Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work. | `0`         |
-| `bq_arrow_compression`                          | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`           | `ZSTD` |
+| Setting                                   | Description                                                                                                                                                                                        | Default |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error.                                                                                                           | `false` |
+| `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
+| `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
+| `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |
+| `bq_experimental_use_info_schema`         | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                         | `true`  |
+| `bq_experimental_enable_bigquery_options` | [EXPERIMENTAL] - Whether to enable BigQuery OPTIONS in CREATE statements                                                                                                                           | `false` |
+| `bq_curl_ca_bundle_path`                  | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                          |         |
+| `bq_max_read_streams`                     | Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work. | `0`     |
+| `bq_arrow_compression`                    | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                       | `ZSTD`  |
+| `bq_experimental_use_incubating_scan`           | [EXPERIMENTAL] - Whether to use the incubating BigQuery scan implementation (is significantly more efficient - targeted to become the default in the future) | `false`      |
 
 ## Limitations
 

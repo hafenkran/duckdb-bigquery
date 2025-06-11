@@ -303,6 +303,8 @@ static void BigqueryArrowScanExecute(ClientContext &ctx, TableFunctionInput &dat
     output.SetCardinality(output_size);
     output.Verify();
     state.chunk_offset += output.size();
+
+	lock_guard<mutex> glock(gstate.lock);
 	gstate.position += output.size();
 }
 
