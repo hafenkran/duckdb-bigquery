@@ -146,8 +146,9 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanInitGlobal(ClientContext &
     bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
 
     // Initialize global scan state
-    auto gstate = make_uniq<ArrowScanGlobalState>();
+    auto gstate = make_uniq<BigqueryArrowScanGlobalState>();
     gstate->max_threads = max_read_streams;
+    bind_data.estimated_row_count = bq_arrow_reader->GetEstimatedRowCount();
 
     // Set up type mapping from physical to logical columns
     auto arrow_schema = bq_arrow_reader->GetSchema();
@@ -236,7 +237,7 @@ static void BigqueryArrowScanExecute(ClientContext &ctx, TableFunctionInput &dat
 
     auto &data = data_p.bind_data->CastNoConst<BigqueryArrowScanBindData>();
     auto &state = data_p.local_state->Cast<BigqueryArrowScanLocalState>();
-    auto &gstate = data_p.global_state->Cast<ArrowScanGlobalState>();
+    auto &gstate = data_p.global_state->Cast<BigqueryArrowScanGlobalState>();
 
     //! Out of tuples in this chunk
     if (state.chunk_offset >= static_cast<idx_t>(state.chunk->arrow_array.length)) {
@@ -302,8 +303,16 @@ static void BigqueryArrowScanExecute(ClientContext &ctx, TableFunctionInput &dat
     output.SetCardinality(output_size);
     output.Verify();
     state.chunk_offset += output.size();
+	gstate.position += output.size();
 }
 
+static InsertionOrderPreservingMap<string> BigqueryArrowScanToString(TableFunctionToStringInput &input) {
+    D_ASSERT(input.bind_data);
+    InsertionOrderPreservingMap<string> result;
+    auto &bind_data = input.bind_data->Cast<BigqueryArrowScanBindData>();
+    result["Table"] = bind_data.TableString();
+    return result;
+}
 
 static BindInfo BigqueryArrowScanGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
     auto &bind_data = bind_data_p->Cast<BigqueryArrowScanBindData>();
@@ -312,6 +321,24 @@ static BindInfo BigqueryArrowScanGetBindInfo(const optional_ptr<FunctionData> bi
         info.table = bind_data.bq_table_entry.get_mutable();
     }
     return info;
+}
+
+unique_ptr<NodeStatistics> BigqueryArrowScanCardinality(ClientContext &context, const FunctionData *bind_data_p) {
+    auto &bind_data = bind_data_p->Cast<BigqueryArrowScanBindData>();
+    return make_uniq<NodeStatistics>(bind_data.estimated_row_count, bind_data.estimated_row_count);
+}
+
+double BigqueryArrowScanProgress(ClientContext &context,
+                                 const FunctionData *bind_data_p,
+                                 const GlobalTableFunctionState *global_state) {
+    auto &bind_data = bind_data_p->Cast<BigqueryArrowScanBindData>();
+    auto &gstate = global_state->Cast<BigqueryArrowScanGlobalState>();
+    double progress = 0.0;
+    if (bind_data.estimated_row_count > 0) {
+        lock_guard<mutex> glock(gstate.lock);
+        progress = 100.0 * double(gstate.position) / double(bind_data.estimated_row_count);
+    }
+    return MinValue<double>(100, progress);
 }
 
 BigqueryArrowScanFunction::BigqueryArrowScanFunction()
@@ -325,6 +352,9 @@ BigqueryArrowScanFunction::BigqueryArrowScanFunction()
     filter_pushdown = true;
     filter_prune = true;
 
+    to_string = BigqueryArrowScanToString;
+    cardinality = BigqueryArrowScanCardinality;
+    table_scan_progress = BigqueryArrowScanProgress;
     get_bind_info = BigqueryArrowScanGetBindInfo;
 
     named_parameters["billing_project"] = LogicalType::VARCHAR;

@@ -59,7 +59,7 @@ public:
 
     //! Estimated row count of the table
     idx_t estimated_row_count = 1;
-	bool requires_cast = false;
+    bool requires_cast = false;
 
     shared_ptr<FactoryDependency> factory_dep() {
         return dependency ? shared_ptr_cast<DependencyItem, FactoryDependency>(dependency) : nullptr;
@@ -72,6 +72,11 @@ public:
     string TableString() const {
         return BigqueryUtils::FormatTableStringSimple(table_ref.project_id, table_ref.dataset_id, table_ref.table_id);
     }
+};
+
+struct BigqueryArrowScanGlobalState : public ArrowScanGlobalState {
+    mutable mutex lock;
+    atomic<idx_t> position;
 };
 
 struct BigqueryArrowScanLocalState : public ArrowScanLocalState {
