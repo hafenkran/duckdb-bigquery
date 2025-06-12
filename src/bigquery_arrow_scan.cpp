@@ -219,7 +219,7 @@ unique_ptr<LocalTableFunctionState> BigqueryArrowScanInitLocal(ExecutionContext 
 
     if (!bind_data.projection_pushdown_enabled) {
         result->column_ids.clear();
-    } else if (!input.projection_ids.empty() or bind_data.requires_cast) {
+    } else if (!input.projection_ids.empty() || bind_data.requires_cast) {
         auto &asgs = global_state_p->Cast<ArrowScanGlobalState>();
         result->all_columns.Initialize(client_context, asgs.scanned_types);
     }
@@ -304,8 +304,8 @@ static void BigqueryArrowScanExecute(ClientContext &ctx, TableFunctionInput &dat
     output.Verify();
     state.chunk_offset += output.size();
 
-	lock_guard<mutex> glock(gstate.lock);
-	gstate.position += output.size();
+    lock_guard<mutex> glock(gstate.lock);
+    gstate.position += output.size();
 }
 
 static InsertionOrderPreservingMap<string> BigqueryArrowScanToString(TableFunctionToStringInput &input) {
