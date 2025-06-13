@@ -9,9 +9,6 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-SET bq_bignumeric_as_varchar=false
-
-statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 ###########################################
@@ -119,31 +116,37 @@ DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
 ###########################################
 # BIGNUMERIC test
 ###########################################
-#statement ok
-#DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
-#
-#statement ok
-#CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table` AS
-#SELECT
-#    CAST(12345.678901234 AS BIGNUMERIC) AS numeric_column');
-#
-#statement ok
-#CALL bigquery_clear_cache();
-#
-#query I
-#SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_DATASET}' AND table_name='bignumeric_table';
-#----
-#
-#statement ok
-#CALL bigquery_clear_cache();
-#
-#statement ok
-#SET bq_bignumeric_as_varchar=true
-#
-#query I
-#SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
-#----
-#12345.67890123400000000000000000000000000000
-#
-#statement ok
-#DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+statement ok
+SET bq_bignumeric_as_varchar=FALSE
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+
+statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table` AS
+SELECT
+    CAST(12345.678901234 AS BIGNUMERIC) AS numeric_column');
+
+statement ok
+CALL bigquery_clear_cache();
+
+query I
+SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_DATASET}' AND table_name='bignumeric_table';
+----
+
+statement ok
+SET bq_bignumeric_as_varchar=TRUE
+
+statement ok
+CALL bigquery_clear_cache();
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
+----
+12345.67890123400000000000000000000000000000
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+
+statement ok
+SET bq_bignumeric_as_varchar=FALSE

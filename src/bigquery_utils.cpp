@@ -677,11 +677,11 @@ LogicalType BigqueryUtils::BigqueryNumericSQLToLogicalType(const string &type) {
     auto precision = precision_and_scale.first;
     auto scale = precision_and_scale.second;
 
-    // if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
-    //     if (BigquerySettings::BignumericAsVarchar()) {
-    //         return LogicalType::VARCHAR;
-    //     }
-    // }
+    if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
+        if (BigquerySettings::BignumericAsVarchar()) {
+            return LogicalType::VARCHAR;
+        }
+    }
 
     if (precision == BQ_BIGNUMERIC_PRECISION_DEFAULT) {
         throw BigqueryTypeException::BignumericNotSupported();

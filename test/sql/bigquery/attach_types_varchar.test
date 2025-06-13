@@ -9,7 +9,7 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-SET bq_bignumeric_as_varchar=true
+SET bq_bignumeric_as_varchar=TRUE
 
 statement ok
 CALL bigquery_execute('${BQ_TEST_PROJECT}', '
@@ -57,3 +57,9 @@ some BIG...query string
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_varchars;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_bignumeric_as_varchar;
+
+statement ok
+SET bq_bignumeric_as_varchar=FALSE
