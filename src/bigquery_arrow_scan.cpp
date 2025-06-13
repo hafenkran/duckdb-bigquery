@@ -178,6 +178,9 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanInitGlobal(ClientContext &
     for (idx_t out_idx = 0; out_idx < input.projection_ids.size(); ++out_idx) {
         idx_t proj_id = input.projection_ids[out_idx];
         idx_t col_id = input.column_ids[proj_id];
+        if (col_id == COLUMN_IDENTIFIER_ROW_ID || col_id < 0) {
+            continue;
+        }
 
         const string &name = bind_data.names[col_id];
         idx_t phys_idx = static_cast<idx_t>(arrow_schema->GetFieldIndex(name));
