@@ -39,6 +39,8 @@ struct BigqueryArrowScanBindData : public ArrowScanFunctionData {
 public:
     // The BigQuery table reference for this scan
     BigqueryTableRef table_ref;
+    //! The query string for the scan (used for bigquery_query function)
+    string query;
     //! The filter string for the scan
     string filter_condition;
 
@@ -63,6 +65,10 @@ public:
 
     shared_ptr<FactoryDependency> factory_dep() {
         return dependency ? shared_ptr_cast<DependencyItem, FactoryDependency>(dependency) : nullptr;
+    }
+
+    bool RequiresQueryExec() const {
+        return !query.empty();
     }
 
     string ParentString() const {
@@ -90,7 +96,20 @@ public:
 };
 
 struct BigqueryArrowScanFunction : public TableFunction {
+public:
     BigqueryArrowScanFunction();
+
+public:
+    static unique_ptr<FunctionData> BigqueryArrowScanBind(ClientContext &context,
+                                                          TableFunctionBindInput &input,
+                                                          vector<LogicalType> &return_types,
+                                                          vector<string> &names);
+    static unique_ptr<GlobalTableFunctionState> BigqueryArrowScanInitGlobal(ClientContext &context,
+                                                                            TableFunctionInitInput &input);
+    static unique_ptr<LocalTableFunctionState> BigqueryArrowScanInitLocal(ExecutionContext &context,
+                                                                          TableFunctionInitInput &input,
+                                                                          GlobalTableFunctionState *global_state_p);
+    static void BigqueryArrowScanExecute(ClientContext &ctx, TableFunctionInput &data_p, DataChunk &output);
 };
 
 } // namespace bigquery
