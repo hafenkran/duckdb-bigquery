@@ -18,6 +18,7 @@
 #include "bigquery_jobs.hpp"
 #include "bigquery_parser.hpp"
 #include "bigquery_scan.hpp"
+#include "bigquery_arrow_scan.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
 
@@ -32,6 +33,9 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     bigquery::BigqueryScanFunction bigquery_scan_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_scan_function);
+
+	bigquery::BigqueryArrowScanFunction bigquery_arrow_scan_function;
+	ExtensionUtil::RegisterFunction(instance, bigquery_arrow_scan_function);
 
     bigquery::BigqueryQueryFunction bigquery_query_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_query_function);
@@ -103,12 +107,18 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::MaxReadStreams()),
                               bigquery::BigquerySettings::SetMaxReadStreams);
-    config.AddExtensionOption("bq_compression",
+    config.AddExtensionOption("bq_arrow_compression",
                               "Compression codec for BigQuery Storage Read API. Options: UNSPECIFIED, LZ4_FRAME, ZSTD."
                               "Default is LZ4_FRAME.",
                               LogicalType::VARCHAR,
-                              Value(bigquery::BigquerySettings::Compression()),
-                              bigquery::BigquerySettings::SetCompression);
+                              Value(bigquery::BigquerySettings::ArrowCompression()),
+                              bigquery::BigquerySettings::SetArrowCompression);
+    config.AddExtensionOption("bq_experimental_use_incubating_scan",
+                              "Whether to use the incubating BigQuery scan implementation. This is currently "
+                              "experimental and is targeted to become the default in the future. ",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::ExperimentalIncubatingScan()),
+                              bigquery::BigquerySettings::SetExperimentalIncubatingScan);
 }
 
 void BigqueryExtension::Load(DuckDB &db) {

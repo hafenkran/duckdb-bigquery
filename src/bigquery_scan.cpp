@@ -26,7 +26,7 @@ namespace bigquery {
 
 struct BigqueryGlobalFunctionState : public GlobalTableFunctionState {
     explicit BigqueryGlobalFunctionState(shared_ptr<BigqueryArrowReader> arrow_reader, idx_t max_threads)
-        : arrow_reader(std::move(arrow_reader)), position(0), max_threads(max_threads) {
+        : position(0), max_threads(max_threads), arrow_reader(std::move(arrow_reader)) {
     }
 
     mutable mutex lock;
@@ -326,20 +326,6 @@ static unique_ptr<GlobalTableFunctionState> BigqueryInitGlobalState(ClientContex
     bind_data.estimated_row_count = idx_t(arrow_reader->GetEstimatedRowCount());
     auto result = make_uniq<BigqueryGlobalFunctionState>(arrow_reader, k_max_read_streams);
     return std::move(result);
-}
-
-std::vector<column_t> CalculateRanks(const std::vector<column_t> &nums) {
-    size_t n = nums.size();
-    std::vector<std::pair<column_t, column_t>> value_index_pairs(n);
-    for (size_t i = 0; i < n; ++i) {
-        value_index_pairs[i] = {nums[i], i};
-    }
-    std::sort(value_index_pairs.begin(), value_index_pairs.end());
-    std::vector<column_t> ranks(n);
-    for (column_t i = 0; i < n; ++i) {
-        ranks[value_index_pairs[i].second] = i;
-    }
-    return ranks;
 }
 
 static unique_ptr<LocalTableFunctionState> BigqueryInitLocalState(ExecutionContext &context,

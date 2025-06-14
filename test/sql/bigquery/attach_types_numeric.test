@@ -9,9 +9,6 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-SET bq_bignumeric_as_varchar=false
-
-statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 ###########################################
@@ -120,6 +117,9 @@ DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
 # BIGNUMERIC test
 ###########################################
 statement ok
+SET bq_bignumeric_as_varchar=FALSE
+
+statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
 
 statement ok
@@ -135,10 +135,10 @@ SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_D
 ----
 
 statement ok
-CALL bigquery_clear_cache();
+SET bq_bignumeric_as_varchar=TRUE
 
 statement ok
-SET bq_bignumeric_as_varchar=true
+CALL bigquery_clear_cache();
 
 query I
 SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
@@ -147,3 +147,6 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+
+statement ok
+SET bq_bignumeric_as_varchar=FALSE

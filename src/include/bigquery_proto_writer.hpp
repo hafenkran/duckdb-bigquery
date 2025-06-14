@@ -45,7 +45,6 @@ private:
     const google::protobuf::Descriptor *msg_descriptor = nullptr;
     const google::protobuf::Message *msg_prototype = nullptr;
 
-
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;
     std::unique_ptr<google::cloud::AsyncStreamingReadWriteRpc<google::cloud::bigquery::storage::v1::AppendRowsRequest,

@@ -197,21 +197,21 @@ public:
         return max_read_streams;
     }
 
-    static string &Compression() {
-        static string bigquery_compression = "LZ4_FRAME";
+    static string &ArrowCompression() {
+        static string bigquery_compression = "ZSTD";
         return bigquery_compression;
     }
 
-    static void SetCompression(ClientContext &context, SetScope scope, Value &parameter) {
+    static void SetArrowCompression(ClientContext &context, SetScope scope, Value &parameter) {
         string compression = StringValue::Get(parameter);
         if (compression != "UNSPECIFIED" && compression != "LZ4_FRAME" && compression != "ZSTD") {
             throw InvalidInputException("Compression must be one of: UNSPECIFIED, LZ4_FRAME, ZSTD");
         }
-        Compression() = compression;
+        ArrowCompression() = compression;
     }
 
-    static google::cloud::bigquery::storage::v1::ArrowSerializationOptions::CompressionCodec GetCompressionCodec() {
-        const string &compression = Compression();
+    static google::cloud::bigquery::storage::v1::ArrowSerializationOptions::CompressionCodec GetArrowCompressionCodec() {
+        const string &compression = ArrowCompression();
         if (compression == "UNSPECIFIED") {
             return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::COMPRESSION_UNSPECIFIED;
         } else if (compression == "LZ4_FRAME") {
@@ -223,6 +223,15 @@ public:
             return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::LZ4_FRAME;
         }
     }
+
+	static bool &ExperimentalIncubatingScan() {
+		static bool bigquery_experimental_incubating_scan = false;
+		return bigquery_experimental_incubating_scan;
+	}
+
+	static void SetExperimentalIncubatingScan(ClientContext &context, SetScope scope, Value &parameter) {
+		ExperimentalIncubatingScan() = BooleanValue::Get(parameter);
+	}
 };
 
 

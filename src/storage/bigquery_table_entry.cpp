@@ -3,11 +3,15 @@
 #include "duckdb/storage/statistics/base_statistics.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
+#include "bigquery_arrow_scan.hpp"
 #include "bigquery_scan.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_schema_entry.hpp"
 #include "storage/bigquery_table_entry.hpp"
 #include "storage/bigquery_transaction.hpp"
+
+#include <arrow/c/bridge.h>
+#include <arrow/util/iterator.h>
 
 #include <iostream>
 
@@ -31,24 +35,78 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     auto catalog_transaction = bigquery_catalog.GetCatalogTransaction(context);
     auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
 
-    auto result = make_uniq<BigqueryBindData>();
-	result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
+    auto result = make_uniq<BigqueryArrowScanBindData>();
+    result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
     result->bq_client = bigquery_transaction->GetBigqueryClient();
-	result->bq_catalog = &bigquery_catalog;
-	result->bq_table_entry = *this;
+    result->bq_catalog = &bigquery_catalog;
+    result->bq_table_entry = *this;
 
-    for (auto &column : columns.Logical()) {
-        result->names.push_back(column.GetName());
-        result->types.push_back(column.GetType());
-    }
-    bind_data = std::move(result);
+    if (BigquerySettings::ExperimentalIncubatingScan()) {
+		// Use the new Arrow scan function (bigquery_arrow_scan)
+        auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
+        auto status = arrow::ExportSchema(*arrow_schema_ptr, &result->schema_root.arrow_schema);
+        if (!status.ok()) {
+            throw BinderException("Arrow schema export failed: " + status.ToString());
+        }
 
-    auto function = BigqueryScanFunction();
-    Value filter_pushdown;
-    if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
-        function.filter_pushdown = BooleanValue::Get(filter_pushdown);
+        ArrowTableFunction::PopulateArrowTableType(DBConfig::GetConfig(context),
+                                                   result->arrow_table,
+                                                   result->schema_root,
+                                                   result->names,
+                                                   result->all_types);
+
+		// Check if we need to map the types to BigQuery types. The BigQuery Arrow scan function will
+		// do a cast to the BigQuery types if necessary.
+		bool requires_cast = false;
+		vector<LogicalType> mapped_bq_types;
+		for (auto &col : columns.Logical()) {
+			auto bq_type = BigqueryUtils::CastToBigqueryType(col.GetType());
+			if (bq_type != col.GetType()) {
+				requires_cast = true;
+			}
+			mapped_bq_types.push_back(bq_type);
+		}
+
+		if (requires_cast) {
+			result->mapped_bq_types = std::move(mapped_bq_types);
+		}
+		result->requires_cast = requires_cast;
+
+		// if the arrow type isn't the same as the duckdb type, we need to map it
+		// For this we create a mapping
+        bind_data = std::move(result);
+
+        auto function = BigqueryArrowScanFunction();
+        Value filter_pushdown;
+        if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
+            function.filter_pushdown = BooleanValue::Get(filter_pushdown);
+        }
+        return function;
+    } else {
+		// Use the old Bigquery scan function (bigquery_scan)
+        auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
+        auto catalog_transaction = bigquery_catalog.GetCatalogTransaction(context);
+        auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
+
+        auto result = make_uniq<BigqueryBindData>();
+        result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
+        result->bq_client = bigquery_transaction->GetBigqueryClient();
+        result->bq_catalog = &bigquery_catalog;
+        result->bq_table_entry = *this;
+
+        for (auto &column : columns.Logical()) {
+            result->names.push_back(column.GetName());
+            result->types.push_back(column.GetType());
+        }
+        bind_data = std::move(result);
+
+        auto function = BigqueryScanFunction();
+        Value filter_pushdown;
+        if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
+            function.filter_pushdown = BooleanValue::Get(filter_pushdown);
+        }
+        return function;
     }
-    return function;
 }
 
 TableStorageInfo BigqueryTableEntry::GetStorageInfo(ClientContext &context) {

@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include "duckdb/parser/column_list.hpp"
+#include "duckdb/function/table/arrow.hpp"
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
@@ -17,6 +18,25 @@
 namespace duckdb {
 namespace bigquery {
 
+struct BigqueryArrowReader;
+
+//  BigQuery Stream Factory – provides ArrowArrayStreams from BigQuery Read Streams
+class BigqueryStreamFactory {
+public:
+	explicit BigqueryStreamFactory(shared_ptr<BigqueryArrowReader> reader) //
+		: reader(std::move(reader)) {
+	}
+
+	//! DuckDB calls this via the function pointer in the bind object
+	static unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t factory_ptr, ArrowStreamParameters & /*params*/);
+
+	//! Called once in the bind step to get the schema
+	static void GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema);
+
+private:
+	shared_ptr<BigqueryArrowReader> reader;
+	std::atomic<idx_t> next_stream{0};
+};
 
 struct BigqueryArrowReader {
 public:
