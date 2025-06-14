@@ -96,6 +96,28 @@ D SHOW ALL TABLES;
 └──────────┴──────────────────┴──────────┴──────────────┴───────────────────┴───────────┘
 ```
 
+When working with BigQuery, you may need to separate storage and compute across different GCP projects. You can achieve this by using the `billing_project` parameter with the `ATTACH` command:
+
+```sql
+-- Attach to a storage project while billing compute to a different project
+D ATTACH 'project=my_storage_project billing_project=my_compute_project' AS bq (TYPE bigquery, READ_ONLY);
+
+-- Query data from the storage project, billed to the compute project
+D SELECT * FROM bq.quacking_dataset.duck_tbl WHERE i = 12;
+┌───────┬────────────────┐
+│   i   │       s        │
+│ int32 │    varchar     │
+├───────┼────────────────┤
+│    12 │ quack 🦆       │
+└───────┴────────────────┘
+```
+
+In this configuration:
+- `project=storage-project` specifies where your data is stored
+- `billing_project=compute-project` specifies which project will be billed for query execution and compute resources
+
+This approach allows you to maintain clear separation between data storage costs and compute costs across different GCP projects.
+
 ## Additional Operations and Settings
 
 The following SQL statements provide a brief overview of supported functionalities and include examples for interacting with BigQuery:
@@ -178,11 +200,16 @@ While `bigquery_scan` offers high-speed data retrieval, it does not support read
 
 The `bigquery_query` function allows you to run custom [GoogleSQL](https://cloud.google.com/bigquery/docs/introduction-sql) read queries within your BigQuery project. This function is also especially useful to get around the limitations of the BigQuery Storage Read API, such as reading from views or external tables.
 
-> **Note**: If your goal is straightforward table reads, `bigquery_scan` is often more efficient, as it bypasses the SQL layer for direct data access. However, `bigquery_query` is ideal when you need to execute custom SQL that requires the full querying capabilities of BigQuery expressed in GoogleSQL. In this case, BigQuery transparently creates an anonymous temporary result table, which is fetched in exactly the same way as with `bigquery_scan`.
+
 
 ```sql
 D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`');
 ```
+
+> **Note**: If your goal is straightforward table reads, `bigquery_scan` is often more efficient, as it bypasses the SQL layer for direct data access. However, `bigquery_query` is ideal when you need to execute custom SQL that requires the full querying capabilities of BigQuery expressed in GoogleSQL. In this case, BigQuery transparently creates an anonymous temporary result table, which is fetched in exactly the same way as with `bigquery_scan`.
+
+> **Note**: The `bq_experimental_use_incubating_scan` setting also applies to `bigquery_query`. The temporary result will be fetched using the new scan implementation when the setting is enabled.
+
 
 ### `bigquery_execute` Function
 
@@ -280,7 +307,7 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 | `bq_curl_ca_bundle_path`                  | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                          |         |
 | `bq_max_read_streams`                     | Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work. | `0`     |
 | `bq_arrow_compression`                    | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                       | `ZSTD`  |
-| `bq_experimental_use_incubating_scan`           | [EXPERIMENTAL] - Whether to use the incubating BigQuery scan implementation (is significantly more efficient - targeted to become the default in the future) | `false`      |
+| `bq_experimental_use_incubating_scan`           | [EXPERIMENTAL] - Enables the new BigQuery scan for `SELECT` statements. This scan is significantly more efficient and will likely become the default in a future release. This setting affects internal execution details but should be result-compatible with the current default. | `false`      |
 
 ## Limitations
 
