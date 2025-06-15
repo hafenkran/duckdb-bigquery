@@ -604,7 +604,7 @@ jobs:
 
   windows:
     name: Windows
-    runs-on: windows-latest
+    runs-on: windows-2019
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.windows_matrix != '{}' && needs.generate_matrix.outputs.windows_matrix != '' }}
     strategy:
