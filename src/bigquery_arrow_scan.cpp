@@ -39,10 +39,10 @@ static void SetFromNamedParameters(const TableFunctionBindInput &input,
     }
 }
 
-unique_ptr<FunctionData> BigqueryArrowScanBind(ClientContext &context,
-                                               TableFunctionBindInput &input,
-                                               vector<LogicalType> &return_types,
-                                               vector<string> &names) {
+unique_ptr<FunctionData> BigqueryArrowScanFunction::BigqueryArrowScanBind(ClientContext &context,
+                                                                          TableFunctionBindInput &input,
+                                                                          vector<LogicalType> &return_types,
+                                                                          vector<string> &names) {
     // Parse table name parameter
     if (input.inputs.empty()) {
         throw BinderException("bigquery_arrow_scan: table name must be provided");
@@ -96,8 +96,9 @@ unique_ptr<FunctionData> BigqueryArrowScanBind(ClientContext &context,
     return std::move(bind_data);
 }
 
-unique_ptr<GlobalTableFunctionState> BigqueryArrowScanInitGlobal(ClientContext &context,
-                                                                 TableFunctionInitInput &input) {
+unique_ptr<GlobalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowScanInitGlobal(
+    ClientContext &context,
+    TableFunctionInitInput &input) {
     auto &bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
 
     // Build selected fields for BigQuery (exclude ROWID columns)
@@ -204,9 +205,10 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanInitGlobal(ClientContext &
     return std::move(gstate);
 }
 
-unique_ptr<LocalTableFunctionState> BigqueryArrowScanInitLocal(ExecutionContext &context,
-                                                               TableFunctionInitInput &input,
-                                                               GlobalTableFunctionState *global_state_p) {
+unique_ptr<LocalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowScanInitLocal(
+    ExecutionContext &context,
+    TableFunctionInitInput &input,
+    GlobalTableFunctionState *global_state_p) {
     auto &client_context = context.client;
     auto &bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
     auto &global_state = global_state_p->Cast<ArrowScanGlobalState>();
@@ -233,7 +235,9 @@ unique_ptr<LocalTableFunctionState> BigqueryArrowScanInitLocal(ExecutionContext 
     return std::move(result);
 }
 
-static void BigqueryArrowScanExecute(ClientContext &ctx, TableFunctionInput &data_p, DataChunk &output) {
+void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
+                                                         TableFunctionInput &data_p,
+                                                         DataChunk &output) {
     if (!data_p.local_state) {
         return;
     }
@@ -349,10 +353,10 @@ double BigqueryArrowScanProgress(ClientContext &context,
 BigqueryArrowScanFunction::BigqueryArrowScanFunction()
     : TableFunction("bigquery_arrow_scan",
                     {LogicalType::VARCHAR},
-                    BigqueryArrowScanExecute,
-                    BigqueryArrowScanBind,
-                    BigqueryArrowScanInitGlobal,
-                    BigqueryArrowScanInitLocal) {
+                    BigqueryArrowScanFunction::BigqueryArrowScanExecute,
+                    BigqueryArrowScanFunction::BigqueryArrowScanBind,
+                    BigqueryArrowScanFunction::BigqueryArrowScanInitGlobal,
+                    BigqueryArrowScanFunction::BigqueryArrowScanInitLocal) {
     projection_pushdown = true;
     filter_pushdown = true;
     filter_prune = true;

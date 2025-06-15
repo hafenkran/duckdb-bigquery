@@ -8,8 +8,8 @@ require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
-#statement ok
-#SET bq_experimental_use_incubating_scan=TRUE
+statement ok
+SET bq_experimental_use_incubating_scan=TRUE
 
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
@@ -65,6 +65,12 @@ query III
 SELECT d, i2, s FROM bq.${BQ_TEST_DATASET}.new_scan WHERE i = 10 ORDER BY d;
 ----
 123.4	32	some string
+
+query II
+SELECT i, d FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.new_scan') ORDER BY i;
+----
+10	123.4
+12	123.4567
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.new_scan;
