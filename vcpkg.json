@@ -25,7 +25,7 @@
       "features": [ "schannel" ]
     }
   ],
-  "builtin-baseline": "e01906b2ba7e645a76ee021a19de616edc98d29f",
+  "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0",
   "overrides": [
     {
       "name": "abseil",
