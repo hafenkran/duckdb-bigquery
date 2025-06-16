@@ -53,7 +53,7 @@ public:
 
     void MapTableInfo(ColumnList &res_columns, vector<unique_ptr<Constraint>> &res_constraints);
     shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> GetStream(idx_t stream_idx);
-    google::cloud::v2_33::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
+    google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
         const string &stream_name,
         int row_offset);
 
