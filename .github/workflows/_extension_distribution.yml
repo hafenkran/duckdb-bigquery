@@ -378,7 +378,7 @@ jobs:
             -e BQ_TEST_DATASET=$BQ_TEST_DATASET \
             -e GOOGLE_APPLICATION_CREDENTIALS=/auth/gcloud-service-key.json \
             -v $GOOGLE_APPLICATION_CREDENTIALS:/auth/gcloud-service-key.json \
-            --env-file=docker_env.txt
+            --env-file=docker_env.txt \
             -v `pwd`:/duckdb_build_dir \
             -v `pwd`/ccache_dir:/ccache_dir \
             duckdb/${{ matrix.duckdb_arch }} make test_release

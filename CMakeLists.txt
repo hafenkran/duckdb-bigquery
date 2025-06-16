@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.5...3.29)
 
+if(WIN32)
+    add_compile_definitions(_WIN32_WINNT=0x0601)
+endif()
 if(POLICY CMP0177)
     cmake_policy(SET CMP0177 NEW)
 endif()
@@ -25,6 +28,8 @@ execute_process(
         -DVCPKG_TARGET_ARCHITECTURE=${VCPKG_TARGET_ARCHITECTURE}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_FLAGS=-D_WIN32_WINNT=0x0601
+        -DCMAKE_CXX_FLAGS=-D_WIN32_WINNT=0x0601
         -G ${CMAKE_GENERATOR}
         -S ${CMAKE_CURRENT_SOURCE_DIR}/external
         -B ${CMAKE_BINARY_DIR}/external

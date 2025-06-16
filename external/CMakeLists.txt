@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.5...3.29)
 
 if(POLICY CMP0177)
     cmake_policy(SET CMP0177 NEW)
@@ -40,4 +40,7 @@ ExternalProject_Add(
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF
                -DGOOGLE_CLOUD_CPP_WITH_MOCKS=OFF
                -DGOOGLE_CLOUD_CPP_ENABLE_CCACHE=ON
-               -DGOOGLE_CLOUD_CPP_ENABLE=bigquerycontrol,bigquery)
+               -DGOOGLE_CLOUD_CPP_ENABLE=bigquerycontrol,bigquery
+               # windows api version
+               -DCMAKE_C_FLAGS=-D_WIN32_WINNT=0x0601
+               -DCMAKE_CXX_FLAGS=-D_WIN32_WINNT=0x0601)
