@@ -26,16 +26,7 @@
     }
   ],
   "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0",
-  "overrides": [
-    {
-      "name": "abseil",
-      "version": "20230802.1"
-    },
-    {
-      "name": "re2",
-      "version": "2024-04-01"
-    }
-  ],
+  "overrides": [],
   "vcpkg-configuration": {
     "overlay-ports": [
       "./extension-ci-tools/vcpkg_ports"
