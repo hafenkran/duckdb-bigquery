@@ -26,7 +26,12 @@
     }
   ],
   "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0",
-  "overrides": [],
+  "overrides": [
+    {
+      "name": "protobuf",
+      "version": "5.26.1#0"
+    }
+  ],
   "vcpkg-configuration": {
     "overlay-ports": [
       "./extension-ci-tools/vcpkg_ports"
