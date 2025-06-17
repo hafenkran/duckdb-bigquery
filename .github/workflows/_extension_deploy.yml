@@ -110,6 +110,9 @@ jobs:
         with:
             credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
 
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v2'
+
       # - name: Deploy
       #   shell: bash
       #   env:

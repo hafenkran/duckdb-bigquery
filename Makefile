@@ -5,6 +5,18 @@ PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 EXT_NAME=bigquery
 EXT_CONFIG=${PROJ_DIR}extension_config.cmake
 
+# # ---------------------------------------------
+# # Enable AddressSanitizer (and UBSan) globally
+# EXT_DEBUG_FLAGS   += -DENABLE_SANITIZER=1 -DENABLE_UBSAN=1
+# EXT_RELEASE_FLAGS += -DENABLE_SANITIZER=1 -DENABLE_UBSAN=1
+# # Falls du eigene Flags erzwingen willst:
+# SAN_FLAGS := -fsanitize=address -fno-omit-frame-pointer -g -O1
+# EXT_DEBUG_FLAGS   += -DCMAKE_C_FLAGS="$(SAN_FLAGS)" \
+#                      -DCMAKE_CXX_FLAGS="$(SAN_FLAGS)"
+# # ---------------------------------------------
+
+
+
 # Include the Makefile from extension-ci-tools
 include extension-ci-tools/makefiles/duckdb_extension.Makefile
 

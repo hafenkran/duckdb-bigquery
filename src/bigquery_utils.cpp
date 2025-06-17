@@ -419,9 +419,8 @@ std::shared_ptr<arrow::DataType> BigqueryUtils::LogicalTypeToArrowType(const Log
     case LogicalTypeId::DECIMAL: {
         auto prec = DecimalType::GetWidth(type);
         auto scale = DecimalType::GetScale(type);
-        // für NUMERIC (≤38 Stellen) genügt 128 Bit
         if (prec <= 38) {
-            return arrow::decimal(prec, scale);
+            return arrow::decimal128(prec, scale);
         }
         // BIGNUMERIC → 256 Bit
         return arrow::decimal256(prec, scale);
