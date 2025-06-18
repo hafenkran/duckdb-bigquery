@@ -25,15 +25,11 @@
       "features": [ "schannel" ]
     }
   ],
-  "builtin-baseline": "e01906b2ba7e645a76ee021a19de616edc98d29f",
+  "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0",
   "overrides": [
     {
-      "name": "abseil",
-      "version": "20230802.1"
-    },
-    {
-      "name": "re2",
-      "version": "2024-04-01"
+      "name": "protobuf",
+      "version": "5.26.1#0"
     }
   ],
   "vcpkg-configuration": {
