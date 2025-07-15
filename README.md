@@ -1,6 +1,8 @@
 # DuckDB BigQuery Extension
 
-This repository contains the [DuckDB](https://duckdb.org) BigQuery Extension. This extension lets DuckDB integrate with Google BigQuery, allowing users to directly access, manage, and manipulate their BigQuery datasets/tables using standard SQL statements. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel.
+This extension allows [DuckDB](https://duckdb.org) to query data from Google BigQuery using the BigQuery Storage API. It enables users to access, manage, and manipulate their BigQuery datasets/tables directly from DuckDB using standard SQL queries. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel.
+
+> **Disclaimer**: This is an independent, community-maintained open-source project, not affiliated with DuckDB Labs or Google LLC, or any of their subsidiaries. This extension is provided "as is" without any warranties or guarantees. Users are responsible for compliance and costs.
 
 > This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `linux_amd64_musl`, `osx_arm64`, and `windows_amd64`.
 
@@ -397,6 +399,8 @@ docker run \
 ```
 
 ## Important Notes on Using Google BigQuery
+
+> **⚠️ Disclaimer**: This is an independent, community-maintained open-source project and is not affiliated with, endorsed by, or officially supported by DuckDB Labs, Google LLC, or any of their subsidiaries. This extension is provided "as is" without any warranties or guarantees. "DuckDB" and "BigQuery" are trademarks of their respective owners. Users are solely responsible for compliance with applicable terms of service and any costs incurred through usage.
 
 When using this software with Google BigQuery, please ensure your usage complies with the [Google API Terms of Service](https://developers.google.com/terms). Be mindful of the usage limits and quotas, and adhere to Google's Fair Use Policy.
 
