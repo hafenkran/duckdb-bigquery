@@ -11,7 +11,7 @@ namespace bigquery {
 
 class BigqueryClient;
 
-struct BigqueryBindData : public TableFunctionData {
+struct BigqueryLegacyScanBindData : public TableFunctionData {
     BigqueryConfig config;
     BigqueryTableRef table_ref;
 
