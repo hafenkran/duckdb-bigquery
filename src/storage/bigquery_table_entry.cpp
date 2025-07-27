@@ -88,7 +88,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
         auto catalog_transaction = bigquery_catalog.GetCatalogTransaction(context);
         auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
 
-        auto result = make_uniq<BigqueryBindData>();
+        auto result = make_uniq<BigqueryLegacyScanBindData>();
         result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
         result->bq_client = bigquery_transaction->GetBigqueryClient();
         result->bq_catalog = &bigquery_catalog;
