@@ -112,7 +112,6 @@ private:
     bool rows_read = false;
     google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> read_rows;
     google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator read_rows_it;
-    google::cloud::v2_38::StatusOr<google::cloud::bigquery::storage::v1::ReadRowsResponse> rows;
     std::shared_ptr<arrow::RecordBatch> current_batch;
 
     bool ReadNextBatch() {
@@ -126,13 +125,12 @@ private:
             return false;
         }
 
-        rows = *read_rows_it;
-        if (!rows.ok()) {
-            std::cerr << "Error reading rows: " << rows.status() << std::endl;
+        if (!read_rows_it->ok()) {
+            std::cerr << "Error reading rows: " << read_rows_it->status() << std::endl;
             done = true;
             return false;
         }
-        current_batch = arrow_reader->ReadBatch(rows->arrow_record_batch());
+        current_batch = arrow_reader->ReadBatch(read_rows_it->value().arrow_record_batch());
         read_rows_it++;
         return true;
     }
@@ -142,7 +140,8 @@ static void SetFromNamedParameters(const TableFunctionBindInput &input,
                                    string &billing_project_id,
                                    string &api_endpoint,
                                    string &grpc_endpoint,
-                                   string &filter_condition) {
+                                   string &filter_condition,
+                                   string &scan_type) {
     for (auto &kv : input.named_parameters) {
         auto loption = StringUtil::Lower(kv.first);
         if (loption == "billing_project") {
@@ -153,24 +152,26 @@ static void SetFromNamedParameters(const TableFunctionBindInput &input,
             grpc_endpoint = kv.second.GetValue<string>();
         } else if (loption == "filter") {
             filter_condition = kv.second.GetValue<string>();
+        } else if (loption == "scan_type") {
+            scan_type = kv.second.GetValue<string>();
         }
     }
 }
 
-static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
-                                                 TableFunctionBindInput &input,
-                                                 vector<LogicalType> &return_types,
-                                                 vector<string> &names) {
+static unique_ptr<FunctionData> BigqueryLegacyScanBind(ClientContext &context,
+                                                       TableFunctionBindInput &input,
+                                                       vector<LogicalType> &return_types,
+                                                       vector<string> &names) {
     auto table_string = input.inputs[0].GetValue<string>();
     auto table_ref = BigqueryUtils::ParseTableString(table_string);
     if (!table_ref.has_dataset_id() || !table_ref.has_table_id()) {
         throw ParserException("Invalid table string: %s", table_string);
     }
 
-    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
-    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
+    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type;
+    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type);
 
-    auto result = make_uniq<BigqueryBindData>();
+    auto result = make_uniq<BigqueryLegacyScanBindData>();
     result->table_ref = table_ref;
     result->filter_condition = filter_condition;
     result->config = BigqueryConfig(table_ref.project_id)
@@ -210,9 +211,29 @@ static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
     return std::move(result);
 }
 
-static unique_ptr<GlobalTableFunctionState> BigqueryScanInitGlobalState(ClientContext &context,
-                                                                        TableFunctionInitInput &input) {
-    auto &bind_data = input.bind_data->Cast<BigqueryBindData>();
+static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
+                                                 TableFunctionBindInput &input,
+                                                 vector<LogicalType> &return_types,
+                                                 vector<string> &names) {
+    string scan_type;
+    for (auto &kv : input.named_parameters) {
+        auto loption = StringUtil::Lower(kv.first);
+        if (loption == "scan_type") {
+            scan_type = kv.second.GetValue<string>();
+            break;
+        }
+    }
+
+    if (StringUtil::Lower(scan_type) == "optimized") {
+        return BigqueryArrowScanFunction::BigqueryArrowScanBind(context, input, return_types, names);
+    } else {
+        return BigqueryLegacyScanBind(context, input, return_types, names);
+    }
+}
+
+static unique_ptr<GlobalTableFunctionState> BigqueryLegacyScanInitGlobalState(ClientContext &context,
+                                                                              TableFunctionInitInput &input) {
+    auto &bind_data = input.bind_data->Cast<BigqueryLegacyScanBindData>();
 
     // selected fields
     vector<string> selected_fields;
@@ -251,15 +272,15 @@ static unique_ptr<GlobalTableFunctionState> BigqueryScanInitGlobalState(ClientCo
                                                                selected_fields,
                                                                filter_string);
 
-    auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryBindData>();
+    auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryLegacyScanBindData>();
     mutable_bind_data.estimated_row_count = idx_t(arrow_reader->GetEstimatedRowCount());
     auto result = make_uniq<BigqueryGlobalFunctionState>(arrow_reader, k_max_read_streams);
     return std::move(result);
 }
 
-static unique_ptr<LocalTableFunctionState> BigqueryScanInitLocalState(ExecutionContext &context,
-                                                                      TableFunctionInitInput &input,
-                                                                      GlobalTableFunctionState *global_state) {
+static unique_ptr<LocalTableFunctionState> BigqueryLegacyScanInitLocalState(ExecutionContext &context,
+                                                                            TableFunctionInitInput &input,
+                                                                            GlobalTableFunctionState *global_state) {
     auto &gstate = global_state->Cast<BigqueryGlobalFunctionState>();
     auto lstate = make_uniq<BigqueryLocalFunctionState>();
     lstate->arrow_reader = gstate.arrow_reader;
@@ -275,7 +296,7 @@ static unique_ptr<LocalTableFunctionState> BigqueryScanInitLocalState(ExecutionC
     return std::move(lstate);
 }
 
-static void BigqueryScanExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+static void BigqueryLegacyScanExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
     auto &lstate = data.local_state->Cast<BigqueryLocalFunctionState>();
     auto &gstate = data.global_state->Cast<BigqueryGlobalFunctionState>();
     if (lstate.done) {
@@ -287,39 +308,100 @@ static void BigqueryScanExecute(ClientContext &context, TableFunctionInput &data
     gstate.position += output.size();
 }
 
+static unique_ptr<GlobalTableFunctionState> BigqueryScanInitGlobalState(ClientContext &context,
+                                                                        TableFunctionInitInput &input) {
+    // Check bind data type and forward to appropriate implementation
+    if (dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
+        return BigqueryArrowScanFunction::BigqueryArrowScanInitGlobal(context, input);
+    } else {
+        return BigqueryLegacyScanInitGlobalState(context, input);
+    }
+}
+
+static unique_ptr<LocalTableFunctionState> BigqueryScanInitLocalState(ExecutionContext &context,
+                                                                      TableFunctionInitInput &input,
+                                                                      GlobalTableFunctionState *global_state) {
+    // Check bind data type and forward to appropriate implementation
+    if (dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
+        return BigqueryArrowScanFunction::BigqueryArrowScanInitLocal(context, input, global_state);
+    } else {
+        return BigqueryLegacyScanInitLocalState(context, input, global_state);
+    }
+}
+
+static void BigqueryScanExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+    // Check bind data type and forward to appropriate implementation
+    if (dynamic_cast<const BigqueryArrowScanBindData *>(data.bind_data.get())) {
+        BigqueryArrowScanFunction::BigqueryArrowScanExecute(context, data, output);
+    } else {
+        BigqueryLegacyScanExecute(context, data, output);
+    }
+}
+
 static InsertionOrderPreservingMap<string> BigqueryScanToString(TableFunctionToStringInput &input) {
     D_ASSERT(input.bind_data);
     InsertionOrderPreservingMap<string> result;
-    auto &bind_data = input.bind_data->Cast<BigqueryBindData>();
-    result["Table"] = bind_data.TableString();
+
+    // Check bind data type and forward to appropriate implementation
+    if (auto *arrow_bind_data = dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
+        result["Table"] = arrow_bind_data->TableString();
+    } else {
+        auto &bind_data = input.bind_data->Cast<BigqueryLegacyScanBindData>();
+        result["Table"] = bind_data.TableString();
+    }
     return result;
 }
 
 unique_ptr<NodeStatistics> BigqueryScanCardinality(ClientContext &context, const FunctionData *bind_data_p) {
-    auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
-    return make_uniq<NodeStatistics>(bind_data.estimated_row_count, bind_data.estimated_row_count);
+    // Check bind data type and forward to appropriate implementation
+    if (auto *arrow_bind_data = dynamic_cast<const BigqueryArrowScanBindData *>(bind_data_p)) {
+        return make_uniq<NodeStatistics>(arrow_bind_data->estimated_row_count, arrow_bind_data->estimated_row_count);
+    } else {
+        auto &bind_data = bind_data_p->Cast<BigqueryLegacyScanBindData>();
+        return make_uniq<NodeStatistics>(bind_data.estimated_row_count, bind_data.estimated_row_count);
+    }
 }
 
 double BigqueryScanProgress(ClientContext &context,
                             const FunctionData *bind_data_p,
                             const GlobalTableFunctionState *global_state) {
-    auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
-    auto &gstate = global_state->Cast<BigqueryGlobalFunctionState>();
-    double progress = 0.0;
-    if (bind_data.estimated_row_count > 0) {
-        lock_guard<mutex> glock(gstate.lock);
-        progress = 100.0 * double(gstate.position) / double(bind_data.estimated_row_count);
+    // Check bind data type and forward to appropriate implementation
+    if (auto *arrow_bind_data = dynamic_cast<const BigqueryArrowScanBindData *>(bind_data_p)) {
+        auto &gstate = global_state->Cast<BigqueryArrowScanGlobalState>();
+        double progress = 0.0;
+        if (arrow_bind_data->estimated_row_count > 0) {
+            lock_guard<mutex> glock(gstate.lock);
+            progress = 100.0 * double(gstate.position) / double(arrow_bind_data->estimated_row_count);
+        }
+        return MinValue<double>(100, progress);
+    } else {
+        auto &bind_data = bind_data_p->Cast<BigqueryLegacyScanBindData>();
+        auto &gstate = global_state->Cast<BigqueryGlobalFunctionState>();
+        double progress = 0.0;
+        if (bind_data.estimated_row_count > 0) {
+            lock_guard<mutex> glock(gstate.lock);
+            progress = 100.0 * double(gstate.position) / double(bind_data.estimated_row_count);
+        }
+        return MinValue<double>(100, progress);
     }
-    return MinValue<double>(100, progress);
 }
 
 static BindInfo BigqueryScanGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
-    auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
-    BindInfo info(ScanType::EXTERNAL);
-    if (bind_data.bq_table_entry) {
-        info.table = bind_data.bq_table_entry.get_mutable();
+    // Try to cast to BigqueryArrowScanBindData first (optimized scan)
+    if (auto *arrow_bind_data = dynamic_cast<const BigqueryArrowScanBindData *>(bind_data_p.get())) {
+        BindInfo info(ScanType::EXTERNAL);
+        if (arrow_bind_data->bq_table_entry) {
+            info.table = arrow_bind_data->bq_table_entry.get_mutable();
+        }
+        return info;
+    } else {
+        auto &bind_data = bind_data_p->Cast<BigqueryLegacyScanBindData>();
+        BindInfo info(ScanType::EXTERNAL);
+        if (bind_data.bq_table_entry) {
+            info.table = bind_data.bq_table_entry.get_mutable();
+        }
+        return info;
     }
-    return info;
 }
 
 
@@ -342,6 +424,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
     named_parameters["filter"] = LogicalType::VARCHAR;
+    named_parameters["scan_type"] = LogicalType::VARCHAR;
 }
 
 static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
@@ -351,8 +434,8 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
-    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
-    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
+    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type;
+    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type);
 
     if (BigquerySettings::ExperimentalIncubatingScan()) {
         auto bind_data = make_uniq<BigqueryArrowScanBindData>();
@@ -410,7 +493,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         bind_data->all_types = return_types;
         return std::move(bind_data);
     } else {
-        auto bind_data = make_uniq<BigqueryBindData>();
+        auto bind_data = make_uniq<BigqueryLegacyScanBindData>();
         bind_data->query = query_string;
         bind_data->estimated_row_count = 1;
 
@@ -483,7 +566,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         return BigqueryArrowScanFunction::BigqueryArrowScanInitGlobal(context, input);
     } else {
         // Legacy scan implementation
-        auto &bind_data = input.bind_data->CastNoConst<BigqueryBindData>();
+        auto &bind_data = input.bind_data->CastNoConst<BigqueryLegacyScanBindData>();
 
         // Execute the query and get destination table
         auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query);
@@ -498,7 +581,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
                                           destination_table.dataset_id(),
                                           destination_table.table_id());
         bind_data.table_ref = table_ref;
-        return BigqueryScanInitGlobalState(context, input);
+        return BigqueryLegacyScanInitGlobalState(context, input);
     }
 }
 
@@ -508,7 +591,7 @@ static unique_ptr<LocalTableFunctionState> BigqueryQueryInitLocal(ExecutionConte
     if (dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
         return BigqueryArrowScanFunction::BigqueryArrowScanInitLocal(context, input, global_state);
     } else {
-        return BigqueryScanInitLocalState(context, input, global_state);
+        return BigqueryLegacyScanInitLocalState(context, input, global_state);
     }
 }
 
@@ -516,7 +599,7 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
     if (dynamic_cast<const BigqueryArrowScanBindData *>(data.bind_data.get())) {
         BigqueryArrowScanFunction::BigqueryArrowScanExecute(context, data, output);
     } else {
-        BigqueryScanExecute(context, data, output);
+        BigqueryLegacyScanExecute(context, data, output);
     }
 }
 
@@ -529,7 +612,7 @@ static BindInfo BigqueryQueryGetBindInfo(const optional_ptr<FunctionData> bind_d
         }
         return info;
     } else {
-        auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
+        auto &bind_data = bind_data_p->Cast<BigqueryLegacyScanBindData>();
         BindInfo info(ScanType::EXTERNAL);
         if (bind_data.bq_table_entry) {
             info.table = bind_data.bq_table_entry.get_mutable();
@@ -547,7 +630,7 @@ static InsertionOrderPreservingMap<string> BigqueryQueryToString(TableFunctionTo
         result["Query"] = arrow_bind_data->query;
         result["Table"] = arrow_bind_data->TableString();
     } else {
-        auto &bind_data = input.bind_data->Cast<BigqueryBindData>();
+        auto &bind_data = input.bind_data->Cast<BigqueryLegacyScanBindData>();
         result["Query"] = bind_data.query;
         result["Table"] = bind_data.TableString();
     }
@@ -559,7 +642,7 @@ static unique_ptr<NodeStatistics> BigqueryQueryCardinality(ClientContext &contex
     if (auto *arrow_bind_data = dynamic_cast<const BigqueryArrowScanBindData *>(bind_data_p)) {
         return make_uniq<NodeStatistics>(arrow_bind_data->estimated_row_count, arrow_bind_data->estimated_row_count);
     } else {
-        auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
+        auto &bind_data = bind_data_p->Cast<BigqueryLegacyScanBindData>();
         return make_uniq<NodeStatistics>(bind_data.estimated_row_count, bind_data.estimated_row_count);
     }
 }
@@ -577,7 +660,7 @@ static double BigqueryQueryProgress(ClientContext &context,
         }
         return MinValue<double>(100, progress);
     } else {
-        auto &bind_data = bind_data_p->Cast<BigqueryBindData>();
+        auto &bind_data = bind_data_p->Cast<BigqueryLegacyScanBindData>();
         auto &gstate = global_state->Cast<BigqueryGlobalFunctionState>();
         double progress = 0.0;
         if (bind_data.estimated_row_count > 0) {
