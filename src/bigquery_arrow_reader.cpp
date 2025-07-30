@@ -472,9 +472,8 @@ void BigqueryArrowReader::ConvertFlatArrayToVector(const std::shared_ptr<arrow::
         }
 
         if (precision > 38) {
-            throw BinderException("BIGDECIMAL precision of " + std::to_string(precision) +
-                                  " exceeds the maximum supported precision of 38 in DuckDB. Consider enabling "
-                                  "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+            throw BinderException("DuckDB only supports precision between 1 and 38. Invalid precision '" +
+                                  std::to_string(precision) + "' specified for type 'DECIMAL256'.");
         }
 
         for (int64_t row = 0; row < row_count; ++row) {
@@ -666,9 +665,8 @@ Value BigqueryArrowReader::ConvertListElementToValue(const std::shared_ptr<arrow
         }
 
         if (precision > 38) {
-            throw BinderException("BIGDECIMAL precision of " + std::to_string(precision) +
-                                  " exceeds the maximum supported precision of 38 in DuckDB. Consider enabling "
-                                  "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+            throw BinderException("DuckDB only supports precision between 1 and 38. Invalid precision '" +
+                                  std::to_string(precision) + "' specified for type 'DECIMAL256'.");
         }
 
         for (int32_t i = start_offset; i < end_offset; ++i) {
@@ -685,9 +683,7 @@ Value BigqueryArrowReader::ConvertListElementToValue(const std::shared_ptr<arrow
                 hugeint_value.upper = static_cast<int64_t>(parts[1]); // next 64 Bits
 
                 if (parts[2] != 0 || parts[3] != 0) {
-                    throw BinderException("BIGDECIMAL value exceeds the range of 128-bit Decimal supported by "
-                                          "DuckDB. Consider enabling "
-                                          "'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+                    throw BinderException("BIGDECIMAL value exceeds the range of 128-bit Decimal supported by DuckDB.");
                 }
 
                 list_values.push_back(Value::DECIMAL(hugeint_value, precision, scale));
