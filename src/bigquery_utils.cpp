@@ -49,11 +49,11 @@ public:
     }
 
     static BigqueryTypeException BignumericNotSupported() {
-        return BigqueryTypeException(
-            "DuckDB only supports precision between 1 and " + std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
-                ". BIGNUMERIC fields have a default precision of " + std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) +
-                "." + " Consider enabling 'bq_bignumeric_as_varchar' to read them as VARCHAR instead.",
-            "BIGNUMERIC");
+        return BigqueryTypeException("DuckDB only supports precision between 1 and " +
+                                         std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
+                                         ". BIGNUMERIC fields have a default precision of " +
+                                         std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".",
+                                     "BIGNUMERIC");
     }
 
 private:
@@ -250,23 +250,28 @@ LogicalType BigqueryUtils::FieldSchemaNumericToLogicalType(const google::cloud::
     auto precision = field.precision();
     auto scale = field.scale();
 
-    // If no precision and scale are provided, BigQuery assumes default values
+    // If no precision and scale are provided, BigQuery assumes default max values
     if (precision == 0 && scale == 0) {
         precision = BQ_NUMERIC_PRECISION_DEFAULT;
         scale = BQ_NUMERIC_SCALE_DEFAULT;
     }
 
     const auto &bigquery_type = field.type();
-    if (bigquery_type == "BIGNUMERIC" && BigquerySettings::BignumericAsVarchar()) {
-        return LogicalType::VARCHAR;
+    if (bigquery_type == "BIGNUMERIC") {
+        if (BigquerySettings::BignumericAsVarchar()) {
+            return LogicalType::VARCHAR;
+        }
+        throw BinderException(
+            "DuckDB only supports precision between 1 and " + std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
+            ". BIGNUMERIC fields have a default precision of " + std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".");
     }
     if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
-        throw BinderException("DuckDB's decimal precision must be between 1 and " +
+        throw BinderException("DuckDB only supports precision between 1 and " +
                               std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + " for NUMERIC/BIGNUMERIC fields.");
     }
     if (scale < 0 || scale > DUCKDB_DECIMAL_SCALE_MAX) {
-        throw BinderException("DuckDB's decimal scale must be between 0 and " +
-                              std::to_string(DUCKDB_DECIMAL_SCALE_MAX) + " for NUMERIC/BIGNUMERIC fields.");
+        throw BinderException("DuckDB only supports scale between 0 and " + std::to_string(DUCKDB_DECIMAL_SCALE_MAX) +
+                              " for NUMERIC/BIGNUMERIC fields.");
     }
     if (precision - scale < 1 || precision - scale > DUCKDB_DECIMAL_PRECISION_MAX) {
         throw BinderException("Difference between precision and scale must be at least 1 and at most " +
@@ -346,8 +351,7 @@ LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::D
         if (precision > DUCKDB_DECIMAL_PRECISION_MAX) {
             throw BinderException("Precision exceeds DuckDB's maximum of " +
                                   std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
-                                  ". Provided: " + std::to_string(precision) +
-                                  ". Consider enabling 'bq_bignumeric_as_varchar' to read them as VARCHAR instead.");
+                                  ". Provided: " + std::to_string(precision) + ".");
         }
         return LogicalType::DECIMAL(precision, scale);
     }
@@ -449,7 +453,7 @@ std::shared_ptr<arrow::Schema> BigqueryUtils::BuildArrowSchema(const ColumnList 
     arrow::FieldVector fields;
     fields.reserve(cols.LogicalColumnCount());
     for (auto &col : cols.Logical()) {
-		auto mapped_bq_type = BigqueryUtils::CastToBigqueryType(col.GetType());
+        auto mapped_bq_type = BigqueryUtils::CastToBigqueryType(col.GetType());
         auto arrow_type = BigqueryUtils::LogicalTypeToArrowType(mapped_bq_type);
         fields.push_back(arrow::field(col.GetName(), std::move(arrow_type), true));
     }
@@ -513,7 +517,7 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     case LogicalTypeId::TIMESTAMP:
     case LogicalTypeId::TIMESTAMP_SEC:
     case LogicalTypeId::TIMESTAMP_MS:
-	case LogicalTypeId::TIMESTAMP_TZ:
+    case LogicalTypeId::TIMESTAMP_TZ:
         return LogicalType::TIMESTAMP;
     case LogicalTypeId::TIMESTAMP_NS:
         // return LogicalType::TIMESTAMP;

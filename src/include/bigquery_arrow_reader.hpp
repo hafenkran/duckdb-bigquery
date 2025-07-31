@@ -1,8 +1,8 @@
 #pragma once
 
 #include "duckdb.hpp"
-#include "duckdb/parser/column_list.hpp"
 #include "duckdb/function/table/arrow.hpp"
+#include "duckdb/parser/column_list.hpp"
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
@@ -23,19 +23,24 @@ struct BigqueryArrowReader;
 //  BigQuery Stream Factory – provides ArrowArrayStreams from BigQuery Read Streams
 class BigqueryStreamFactory {
 public:
-	explicit BigqueryStreamFactory(shared_ptr<BigqueryArrowReader> reader) //
-		: reader(std::move(reader)) {
-	}
+    explicit BigqueryStreamFactory(shared_ptr<BigqueryArrowReader> reader) //
+        : reader(std::move(reader)) {
+    }
 
-	//! DuckDB calls this via the function pointer in the bind object
-	static unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t factory_ptr, ArrowStreamParameters & /*params*/);
+    //! DuckDB calls this via the function pointer in the bind object
+    static unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t factory_ptr, ArrowStreamParameters & /*params*/);
 
-	//! Called once in the bind step to get the schema
-	static void GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema);
+    //! Called once in the bind step to get the schema
+    static void GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema);
+
+    //! Get the underlying BigQuery Arrow reader
+    shared_ptr<BigqueryArrowReader> GetArrowReader() {
+        return reader;
+    }
 
 private:
-	shared_ptr<BigqueryArrowReader> reader;
-	std::atomic<idx_t> next_stream{0};
+    shared_ptr<BigqueryArrowReader> reader;
+    std::atomic<idx_t> next_stream{0};
 };
 
 struct BigqueryArrowReader {
