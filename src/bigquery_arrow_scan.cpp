@@ -134,8 +134,7 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowSca
     // Initialize the BigQuery arrow reader
     idx_t max_read_streams = BigquerySettings::GetMaxReadStreams(context);
     auto bq_arrow_reader = bind_data.bq_client->CreateArrowReader( //
-        bind_data.table_ref.dataset_id,
-        bind_data.table_ref.table_id,
+        bind_data.table_ref,
         max_read_streams,
         selected_fields,
         filter_string //

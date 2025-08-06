@@ -188,8 +188,7 @@ static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
         filter_cond = filter_condition;
     }
 
-    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref.dataset_id,
-                                                             table_ref.table_id,
+    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref,
                                                              1,
                                                              std::vector<string>(),
                                                              filter_cond);
@@ -247,8 +246,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryScanInitGlobalState(ClientCo
     // when preserve_insertion_order=FALSE, we can use multiple streams for parallelization; defaults to maximum_threads
     // when preserve_insertion_order=TRUE, we use only 1 stream as there won't be any parallelization from DuckDB
     idx_t k_max_read_streams = BigquerySettings::GetMaxReadStreams(context);
-    auto arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.table_ref.dataset_id,
-                                                               bind_data.table_ref.table_id,
+    auto arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.table_ref,
                                                                k_max_read_streams,
                                                                selected_fields,
                                                                filter_string);
@@ -471,8 +469,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
 
         // Execute the query and get destination table
         auto query_response = mutable_bind_data.bq_client->ExecuteQuery(mutable_bind_data.query);
-        auto job = mutable_bind_data.bq_client->GetJob(query_response.job_reference().job_id(),
-                                                       query_response.job_reference().location().value());
+        auto job = mutable_bind_data.bq_client->GetJobByReference(query_response.job_reference());
+
         if (job.status().has_error_result()) {
             throw BinderException(job.status().error_result().message());
         }
@@ -489,8 +487,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
 
         // Execute the query and get destination table
         auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query);
-        auto job = bind_data.bq_client->GetJob(query_response.job_reference().job_id(),
-                                               query_response.job_reference().location().value());
+        auto job = bind_data.bq_client->GetJobByReference(query_response.job_reference());
+
         if (job.status().has_error_result()) {
             throw BinderException(job.status().error_result().message());
         }
