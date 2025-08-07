@@ -299,6 +299,33 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     return result;
 }
 
+google::cloud::bigquery::v2::Job BigqueryClient::GetJobByReference(const google::cloud::bigquery::v2::JobReference &job_ref) {
+	if (job_ref.job_id().empty()) {
+		throw BinderException("Job ID cannot be empty");
+	}
+
+	auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+	auto request = google::cloud::bigquery::v2::GetJobRequest();
+	request.set_project_id(job_ref.project_id());
+	request.set_job_id(job_ref.job_id());
+	if (job_ref.has_location()) {
+		request.set_location(job_ref.location().value());
+	}
+
+	auto response = client.GetJob(request);
+	if (!response.ok()) {
+		if (CheckSSLError(response.status())) {
+			return GetJobByReference(job_ref);
+		}
+		throw BinderException(response.status().message());
+	}
+
+	auto job = response.value();
+	return job;
+}
+
 google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, const string &location) {
     if (job_id.empty()) {
         throw BinderException("Job ID cannot be empty");
@@ -308,7 +335,7 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, co
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     auto request = google::cloud::bigquery::v2::GetJobRequest();
-    request.set_project_id(config.project_id);
+    request.set_project_id(config.BillingProject());
     request.set_job_id(job_id);
     if (!location.empty()) {
         request.set_location(location);
@@ -562,8 +589,7 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
     MapTableSchema(schema, res_columns, res_constraints);
 }
 
-shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &dataset_id,
-                                                                  const string &table_id,
+shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const BigqueryTableRef &table_ref,
                                                                   const idx_t num_streams,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
@@ -581,7 +607,7 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const string &
                     /*scaling=*/2.0)
                     .clone());
 
-    return make_shared_ptr<BigqueryArrowReader>(BigqueryTableRef(config.project_id, dataset_id, table_id),
+    return make_shared_ptr<BigqueryArrowReader>(table_ref,
                                                 config.BillingProject(),
                                                 num_streams,
                                                 options,

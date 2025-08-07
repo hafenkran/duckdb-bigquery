@@ -73,6 +73,7 @@ public:
 
     vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
     google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
+	google::cloud::bigquery::v2::Job GetJobByReference(const google::cloud::bigquery::v2::JobReference &job_ref);
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query,
                                                             const string &location = "",
@@ -81,8 +82,7 @@ public:
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
 
-    shared_ptr<BigqueryArrowReader> CreateArrowReader(const string &dataset_id,
-                                                      const string &table_id,
+    shared_ptr<BigqueryArrowReader> CreateArrowReader(const BigqueryTableRef &table_ref,
                                                       const idx_t num_streams,
                                                       const vector<string> &column_ids = std::vector<string>(),
                                                       const string &filter_cond = "");
