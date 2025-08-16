@@ -1,4 +1,5 @@
 #include "bigquery_scan.hpp"
+#include "bigquery_arrow_scan.hpp"
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_arrow_scan.hpp"
 #include "bigquery_client.hpp"
@@ -29,6 +30,44 @@
 
 namespace duckdb {
 namespace bigquery {
+
+ScanEngine DetermineScanEngine(const TableFunctionBindInput &input) {
+    ScanEngine engine = ScanEngine::V2;
+    for (auto &kv : input.named_parameters) {
+        auto lower_key = StringUtil::Lower(kv.first);
+        if (lower_key == "engine") {
+            auto lower_engine = StringUtil::Lower(kv.second.GetValue<string>());
+            if (lower_engine == "v1" || lower_engine == "legacy") {
+                engine = ScanEngine::V1;
+            } else if (lower_engine == "v2" || lower_engine == "auto") {
+                engine = ScanEngine::V2;
+            } else {
+                throw BinderException("Invalid engine: '%s'. Allowed: 'v1', 'v2', 'legacy'",
+                                      kv.second.GetValue<string>());
+            }
+        }
+    }
+    return engine;
+}
+
+static void SetFromNamedParameters(const TableFunctionBindInput &input,
+                                   string &billing_project_id,
+                                   string &api_endpoint,
+                                   string &grpc_endpoint,
+                                   string &filter_condition) {
+    for (auto &kv : input.named_parameters) {
+        auto lower_option = StringUtil::Lower(kv.first);
+        if (lower_option == "billing_project") {
+            billing_project_id = kv.second.GetValue<string>();
+        } else if (lower_option == "api_endpoint") {
+            api_endpoint = kv.second.GetValue<string>();
+        } else if (lower_option == "grpc_endpoint") {
+            grpc_endpoint = kv.second.GetValue<string>();
+        } else if (lower_option == "filter") {
+            filter_condition = kv.second.GetValue<string>();
+        }
+    }
+}
 
 struct BigqueryGlobalFunctionState : public GlobalTableFunctionState {
     explicit BigqueryGlobalFunctionState(shared_ptr<BigqueryArrowReader> arrow_reader, idx_t max_threads)
@@ -136,28 +175,6 @@ private:
     }
 };
 
-static void SetFromNamedParameters(const TableFunctionBindInput &input,
-                                   string &billing_project_id,
-                                   string &api_endpoint,
-                                   string &grpc_endpoint,
-                                   string &filter_condition,
-                                   string &scan_type) {
-    for (auto &kv : input.named_parameters) {
-        auto loption = StringUtil::Lower(kv.first);
-        if (loption == "billing_project") {
-            billing_project_id = kv.second.GetValue<string>();
-        } else if (loption == "api_endpoint") {
-            api_endpoint = kv.second.GetValue<string>();
-        } else if (loption == "grpc_endpoint") {
-            grpc_endpoint = kv.second.GetValue<string>();
-        } else if (loption == "filter") {
-            filter_condition = kv.second.GetValue<string>();
-        } else if (loption == "scan_type") {
-            scan_type = kv.second.GetValue<string>();
-        }
-    }
-}
-
 static unique_ptr<FunctionData> BigqueryLegacyScanBind(ClientContext &context,
                                                        TableFunctionBindInput &input,
                                                        vector<LogicalType> &return_types,
@@ -168,8 +185,8 @@ static unique_ptr<FunctionData> BigqueryLegacyScanBind(ClientContext &context,
         throw ParserException("Invalid table string: %s", table_string);
     }
 
-    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type;
-    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type);
+    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
+    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
 
     auto result = make_uniq<BigqueryLegacyScanBindData>();
     result->table_ref = table_ref;
@@ -215,16 +232,9 @@ static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
                                                  TableFunctionBindInput &input,
                                                  vector<LogicalType> &return_types,
                                                  vector<string> &names) {
-    string scan_type;
-    for (auto &kv : input.named_parameters) {
-        auto loption = StringUtil::Lower(kv.first);
-        if (loption == "scan_type") {
-            scan_type = kv.second.GetValue<string>();
-            break;
-        }
-    }
+    auto engine = DetermineScanEngine(input);
 
-    if (StringUtil::Lower(scan_type) == "optimized") {
+    if (engine == ScanEngine::V2) {
         return BigqueryArrowScanFunction::BigqueryArrowScanBind(context, input, return_types, names);
     } else {
         return BigqueryLegacyScanBind(context, input, return_types, names);
@@ -424,7 +434,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
     named_parameters["filter"] = LogicalType::VARCHAR;
-    named_parameters["scan_type"] = LogicalType::VARCHAR;
+    named_parameters["engine"] = LogicalType::VARCHAR;
 }
 
 static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
@@ -434,10 +444,12 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
-    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type;
-    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition, scan_type);
+    auto engine = DetermineScanEngine(input);
 
-    if (BigquerySettings::ExperimentalIncubatingScan()) {
+    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
+    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
+
+    if (engine == ScanEngine::V2) {
         auto bind_data = make_uniq<BigqueryArrowScanBindData>();
         bind_data->query = query_string;
         bind_data->estimated_row_count = 1;
@@ -493,6 +505,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         bind_data->all_types = return_types;
         return std::move(bind_data);
     } else {
+        // Legacy implementation (V1)
         auto bind_data = make_uniq<BigqueryLegacyScanBindData>();
         bind_data->query = query_string;
         bind_data->estimated_row_count = 1;
@@ -690,6 +703,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     named_parameters["billing_project"] = LogicalType::VARCHAR;
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
+    named_parameters["engine"] = LogicalType::VARCHAR;
 }
 
 } // namespace bigquery

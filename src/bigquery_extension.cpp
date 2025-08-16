@@ -34,8 +34,8 @@ static void LoadInternal(DatabaseInstance &instance) {
     bigquery::BigqueryScanFunction bigquery_scan_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_scan_function);
 
-	bigquery::BigqueryArrowScanFunction bigquery_arrow_scan_function;
-	ExtensionUtil::RegisterFunction(instance, bigquery_arrow_scan_function);
+    bigquery::BigqueryArrowScanFunction bigquery_arrow_scan_function;
+    ExtensionUtil::RegisterFunction(instance, bigquery_arrow_scan_function);
 
     bigquery::BigqueryQueryFunction bigquery_query_function;
     ExtensionUtil::RegisterFunction(instance, bigquery_query_function);
