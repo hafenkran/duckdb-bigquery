@@ -1,5 +1,5 @@
 # name: test/sql/bigquery/attach_incubating_scan.test
-# description: Test using the bigquery_arrow_scan
+# description: Test using the default v2 scan engine
 # group: [bigquery]
 
 require bigquery
@@ -9,7 +9,7 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-SET bq_experimental_use_incubating_scan=TRUE
+SET bq_default_scan_engine='v2'
 
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
@@ -76,4 +76,4 @@ statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.new_scan;
 
 statement ok
-SET bq_experimental_use_incubating_scan=FALSE
+SET bq_default_scan_engine='v1'
