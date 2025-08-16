@@ -160,8 +160,6 @@ public:
 
     static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
         BignumericAsVarchar() = BooleanValue::Get(parameter);
-        
-        // Warn user if they enable BIGNUMERIC as VARCHAR with V2 engine as default
         if (BooleanValue::Get(parameter) && DefaultScanEngine() == "v2") {
             printf("WARNING: bq_bignumeric_as_varchar=TRUE is only supported with V1 scan engine. "
                    "Current default scan engine is 'v2'. Consider setting bq_default_scan_engine='v1' "
