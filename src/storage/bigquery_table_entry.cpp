@@ -41,7 +41,8 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     result->bq_catalog = &bigquery_catalog;
     result->bq_table_entry = *this;
 
-    if (BigquerySettings::ExperimentalIncubatingScan()) {
+    auto default_engine = BigquerySettings::DefaultScanEngine();
+    if (default_engine == "v2") {
 		// Use the new Arrow scan function (bigquery_arrow_scan)
         auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
         auto status = arrow::ExportSchema(*arrow_schema_ptr, &result->schema_root.arrow_schema);

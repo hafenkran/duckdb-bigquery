@@ -13,7 +13,7 @@ class BigqueryClient;
 
 enum class ScanEngine { V1, V2 };
 
-ScanEngine DetermineScanEngine(const TableFunctionBindInput &input);
+ScanEngine DetermineScanEngine(ClientContext &context, const TableFunctionBindInput &input);
 
 struct BigqueryLegacyScanBindData : public TableFunctionData {
     BigqueryConfig config;

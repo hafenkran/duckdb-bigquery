@@ -31,23 +31,28 @@
 namespace duckdb {
 namespace bigquery {
 
-ScanEngine DetermineScanEngine(const TableFunctionBindInput &input) {
-    ScanEngine engine = ScanEngine::V2;
+ScanEngine DetermineScanEngine(ClientContext &context, const TableFunctionBindInput &input) {
     for (auto &kv : input.named_parameters) {
         auto lower_key = StringUtil::Lower(kv.first);
         if (lower_key == "engine") {
             auto lower_engine = StringUtil::Lower(kv.second.GetValue<string>());
             if (lower_engine == "v1" || lower_engine == "legacy") {
-                engine = ScanEngine::V1;
+                return ScanEngine::V1;
             } else if (lower_engine == "v2" || lower_engine == "auto") {
-                engine = ScanEngine::V2;
+                return ScanEngine::V2;
             } else {
                 throw BinderException("Invalid engine: '%s'. Allowed: 'v1', 'v2', 'legacy'",
                                       kv.second.GetValue<string>());
             }
         }
     }
-    return engine;
+
+    auto default_engine = BigquerySettings::DefaultScanEngine();
+    if (default_engine == "v1" || default_engine == "legacy") {
+        return ScanEngine::V1;
+    } else {
+        return ScanEngine::V2;
+    }
 }
 
 static void SetFromNamedParameters(const TableFunctionBindInput &input,
@@ -232,7 +237,7 @@ static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
                                                  TableFunctionBindInput &input,
                                                  vector<LogicalType> &return_types,
                                                  vector<string> &names) {
-    auto engine = DetermineScanEngine(input);
+    auto engine = DetermineScanEngine(context, input);
 
     if (engine == ScanEngine::V2) {
         return BigqueryArrowScanFunction::BigqueryArrowScanBind(context, input, return_types, names);
@@ -444,7 +449,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
-    auto engine = DetermineScanEngine(input);
+    auto engine = DetermineScanEngine(context, input);
 
     string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
     SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);

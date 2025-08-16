@@ -113,12 +113,12 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::VARCHAR,
                               Value(bigquery::BigquerySettings::ArrowCompression()),
                               bigquery::BigquerySettings::SetArrowCompression);
-    config.AddExtensionOption("bq_experimental_use_incubating_scan",
-                              "Whether to use the incubating BigQuery scan implementation. This is currently "
-                              "experimental and is targeted to become the default in the future. ",
-                              LogicalType::BOOLEAN,
-                              Value(bigquery::BigquerySettings::ExperimentalIncubatingScan()),
-                              bigquery::BigquerySettings::SetExperimentalIncubatingScan);
+    config.AddExtensionOption("bq_default_scan_engine",
+                              "Default scan engine for BigQuery tables ('v1', 'v2'). "
+                              "Used when no explicit engine parameter is specified in functions.",
+                              LogicalType::VARCHAR,
+                              Value(bigquery::BigquerySettings::DefaultScanEngine()),
+                              bigquery::BigquerySettings::SetDefaultScanEngine);
 }
 
 void BigqueryExtension::Load(DuckDB &db) {

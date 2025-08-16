@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/common/string_util.hpp"
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 
@@ -224,13 +225,17 @@ public:
         }
     }
 
-	static bool &ExperimentalIncubatingScan() {
-		static bool bigquery_experimental_incubating_scan = false;
-		return bigquery_experimental_incubating_scan;
+	static string &DefaultScanEngine() {
+		static string bigquery_default_scan_engine = "v2";
+		return bigquery_default_scan_engine;
 	}
 
-	static void SetExperimentalIncubatingScan(ClientContext &context, SetScope scope, Value &parameter) {
-		ExperimentalIncubatingScan() = BooleanValue::Get(parameter);
+	static void SetDefaultScanEngine(ClientContext &context, SetScope scope, Value &parameter) {
+		auto engine = StringUtil::Lower(parameter.GetValue<string>());
+		if (engine != "v1" && engine != "v2" && engine != "legacy") {
+			throw InvalidInputException("Invalid default scan engine: '%s'. Allowed: 'v1', 'v2', 'legacy'", engine);
+		}
+		DefaultScanEngine() = engine;
 	}
 };
 
