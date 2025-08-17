@@ -11,10 +11,6 @@ namespace bigquery {
 
 class BigqueryClient;
 
-enum class ScanEngine { V1, V2 };
-
-ScanEngine DetermineScanEngine(ClientContext &context, const TableFunctionBindInput &input);
-
 struct BigqueryLegacyScanBindData : public TableFunctionData {
     BigqueryConfig config;
     BigqueryTableRef table_ref;

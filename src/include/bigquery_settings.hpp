@@ -160,10 +160,10 @@ public:
 
     static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
         BignumericAsVarchar() = BooleanValue::Get(parameter);
-        if (BooleanValue::Get(parameter) && DefaultScanEngine() == "v2") {
-            printf("WARNING: bq_bignumeric_as_varchar=TRUE is only supported with V1 scan engine. "
-                   "Current default scan engine is 'v2'. Consider setting bq_default_scan_engine='v1' "
-                   "or use engine='v1' parameter in scan functions.\n");
+        if (BooleanValue::Get(parameter) && !UseLegacyScan()) {
+            printf("WARNING: bq_bignumeric_as_varchar=TRUE is only supported with legacy scan. "
+                   "Current setting uses Arrow scan by default. Consider setting bq_use_legacy_scan=TRUE "
+                   "or use use_legacy_scan=TRUE parameter in scan functions.\n");
         }
     }
 
@@ -230,17 +230,13 @@ public:
         }
     }
 
-	static string &DefaultScanEngine() {
-		static string bigquery_default_scan_engine = "v2";
-		return bigquery_default_scan_engine;
+	static bool &UseLegacyScan() {
+		static bool bigquery_use_legacy_scan = false;
+		return bigquery_use_legacy_scan;
 	}
 
-	static void SetDefaultScanEngine(ClientContext &context, SetScope scope, Value &parameter) {
-		auto engine = StringUtil::Lower(parameter.GetValue<string>());
-		if (engine != "v1" && engine != "v2" && engine != "legacy") {
-			throw InvalidInputException("Invalid default scan engine: '%s'. Allowed: 'v1', 'v2', 'legacy'", engine);
-		}
-		DefaultScanEngine() = engine;
+	static void SetUseLegacyScan(ClientContext &context, SetScope scope, Value &parameter) {
+		UseLegacyScan() = BooleanValue::Get(parameter);
 	}
 };
 

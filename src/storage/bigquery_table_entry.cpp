@@ -35,15 +35,15 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     auto catalog_transaction = bigquery_catalog.GetCatalogTransaction(context);
     auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
 
-    auto result = make_uniq<BigqueryArrowScanBindData>();
-    result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
-    result->bq_client = bigquery_transaction->GetBigqueryClient();
-    result->bq_catalog = &bigquery_catalog;
-    result->bq_table_entry = *this;
+    auto use_legacy_scan = BigquerySettings::UseLegacyScan();
+    if (!use_legacy_scan) {
+        // Use the new Arrow scan function (bigquery_arrow_scan)
+        auto result = make_uniq<BigqueryArrowScanBindData>();
+        result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
+        result->bq_client = bigquery_transaction->GetBigqueryClient();
+        result->bq_catalog = &bigquery_catalog;
+        result->bq_table_entry = *this;
 
-    auto default_engine = BigquerySettings::DefaultScanEngine();
-    if (default_engine == "v2") {
-		// Use the new Arrow scan function (bigquery_arrow_scan)
         auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
         auto status = arrow::ExportSchema(*arrow_schema_ptr, &result->schema_root.arrow_schema);
         if (!status.ok()) {
@@ -84,11 +84,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
         }
         return function;
     } else {
-		// Use the old Bigquery scan function (bigquery_scan)
-        auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
-        auto catalog_transaction = bigquery_catalog.GetCatalogTransaction(context);
-        auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
-
+        // Use the old Bigquery scan function (bigquery_scan)
         auto result = make_uniq<BigqueryLegacyScanBindData>();
         result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
         result->bq_client = bigquery_transaction->GetBigqueryClient();

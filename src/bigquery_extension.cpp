@@ -113,12 +113,12 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::VARCHAR,
                               Value(bigquery::BigquerySettings::ArrowCompression()),
                               bigquery::BigquerySettings::SetArrowCompression);
-    config.AddExtensionOption("bq_default_scan_engine",
-                              "Default scan engine for BigQuery tables ('v1', 'v2'). "
-                              "Used when no explicit engine parameter is specified in functions.",
-                              LogicalType::VARCHAR,
-                              Value(bigquery::BigquerySettings::DefaultScanEngine()),
-                              bigquery::BigquerySettings::SetDefaultScanEngine);
+    config.AddExtensionOption("bq_use_legacy_scan",
+                              "Whether to use legacy scan implementation for BigQuery tables. "
+                              "Default is false (uses optimized Arrow-based implementation).",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::UseLegacyScan()),
+                              bigquery::BigquerySettings::SetUseLegacyScan);
 }
 
 void BigqueryExtension::Load(DuckDB &db) {
