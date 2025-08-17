@@ -138,7 +138,7 @@ statement ok
 SET bq_bignumeric_as_varchar=TRUE
 
 statement ok
-SET bq_default_scan_engine='v1'
+SET bq_use_legacy_scan=true
 
 statement ok
 CALL bigquery_clear_cache();
@@ -155,4 +155,4 @@ statement ok
 SET bq_bignumeric_as_varchar=FALSE
 
 statement ok
-SET bq_default_scan_engine='v2'
+SET bq_use_legacy_scan=false

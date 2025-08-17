@@ -115,6 +115,7 @@ D SELECT * FROM bq.quacking_dataset.duck_tbl WHERE i = 12;
 ```
 
 In this configuration:
+
 - `project=storage-project` specifies where your data is stored
 - `billing_project=compute-project` specifies which project will be billed for query execution and compute resources
 
@@ -181,7 +182,7 @@ D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
 └───────┴────────────────┴──────────────────────────┘
 ```
 
-> By default, `bigquery_query` now uses the optimized Arrow-based implementation (formerly `bigquery_arrow_scan`). You can set `engine='v1'` to use the legacy implementation if needed. For backwards compatibility, the separate `bigquery_arrow_scan` function is still available and now behaves identically to the default `bigquery_scan`.
+> By default, `bigquery_scan` now uses the optimized Arrow-based implementation (formerly `bigquery_arrow_scan`). You can set `use_legacy_scan=true` to use the legacy implementation if needed. For backwards compatibility, the separate `bigquery_arrow_scan` function is still available and now behaves identically to the default `bigquery_scan`.
 
 The function supports filter pushdown by accepting [row restriction filter statements](https://cloud.google.com/bigquery/docs/reference/storage/rpc/google.cloud.bigquery.storage.v1#google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions) as an optional argument. These filters are passed directly to BigQuery and restrict which rows are transfered from the source table. For example:
 
@@ -201,17 +202,17 @@ While `bigquery_scan` offers high-speed data retrieval, it does not support read
 
 The `bigquery_scan` function supports the following named parameters:
 
-| Parameter         | Type      | Description                                                                     |
-| ----------------- | --------- | ------------------------------------------------------------------------------- |
-| `filter`          | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API. |
-| `engine`          | `VARCHAR` | Scan engine to use: `'v1'` (legacy) or `'v2'` (optimized, default).             |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).            |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                               |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                      |
+| Parameter         | Type      | Description                                                                      |
+| ----------------- | --------- | -------------------------------------------------------------------------------- |
+| `filter`          | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API.  |
+| `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default). |
+| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).             |
+| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                |
+| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                       |
 
 ### `bigquery_query` Function
 
-The `bigquery_query` function allows you to run custom [GoogleSQL](https://cloud.google.com/bigquery/docs/introduction-sql) read queries within your BigQuery project. Like `bigquery_scan`, it uses the optimized Arrow-based implementation by default, with the option to use `engine='v1'` for the legacy implementation if needed. This function is especially useful to get around the limitations of the BigQuery Storage Read API, such as reading from views or external tables.
+The `bigquery_query` function allows you to run custom [GoogleSQL](https://cloud.google.com/bigquery/docs/introduction-sql) read queries within your BigQuery project. Like `bigquery_scan`, it uses the optimized Arrow-based implementation by default, with the option to use `use_legacy_scan=true` for the legacy implementation if needed. This function is especially useful to get around the limitations of the BigQuery Storage Read API, such as reading from views or external tables.
 
 ```sql
 D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`');
@@ -316,7 +317,7 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 | Setting                                   | Description                                                                                                                                                                                        | Default |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error. **Note: Only supported with V1 scan engine.**                                                             | `false` |
-| `bq_default_scan_engine`                  | Default scan engine for BigQuery tables ('v1', 'v2', 'legacy'). Used when no explicit engine parameter is specified in functions.                                                                  | `v2`    |
+| `bq_use_legacy_scan`                      | Use legacy scan implementation instead of optimized Arrow-based scan. Set to `true` for the old scan or `false` for the new optimized implementation.                                             | `false` |
 | `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
 | `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |
@@ -334,7 +335,7 @@ There are some limitations that arise from the combination of DuckDB and BigQuer
 
 * **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 
-* **BIGNUMERIC Type Support**: The `bq_bignumeric_as_varchar` setting is only supported with the V1 scan engine. If you need to read BIGNUMERIC columns as VARCHAR, ensure you use `engine='v1'` in scan functions or set `bq_default_scan_engine='v1'` globally. The V2 engine does not currently support this conversion.
+* **BIGNUMERIC Type Support**: The `bq_bignumeric_as_varchar` setting is only supported with the legacy scan implementation. If you need to read BIGNUMERIC columns as VARCHAR, ensure you use `use_legacy_scan=true` in scan functions or set `bq_use_legacy_scan=true` globally. The optimized Arrow-based scan does not currently support this conversion.
 
 * **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
 

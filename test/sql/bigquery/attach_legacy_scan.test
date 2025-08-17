@@ -1,5 +1,5 @@
-# name: test/sql/bigquery/attach_incubating_scan.test
-# description: Test using the default v2 scan engine
+# name: test/sql/bigquery/attach_legacy_scan.test
+# description: Test using the legacy scan implementation
 # group: [bigquery]
 
 require bigquery
@@ -9,7 +9,7 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-SET bq_default_scan_engine='v2'
+SET bq_use_legacy_scan=true
 
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
@@ -76,4 +76,4 @@ statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.new_scan;
 
 statement ok
-SET bq_default_scan_engine='v1'
+SET bq_use_legacy_scan=false
