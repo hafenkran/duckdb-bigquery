@@ -238,6 +238,16 @@ public:
 	static void SetUseLegacyScan(ClientContext &context, SetScope scope, Value &parameter) {
 		UseLegacyScan() = BooleanValue::Get(parameter);
 	}
+
+	// Deprecated setting for backward compatibility
+	static void SetExperimentalIncubatingScan(ClientContext &context, SetScope scope, Value &parameter) {
+		bool value = BooleanValue::Get(parameter);
+		UseLegacyScan() = !value;
+
+		printf("WARNING: bq_experimental_use_incubating_scan is deprecated. "
+		       "Please use bq_use_legacy_scan=%s instead.\n",
+		       value ? "false" : "true");
+	}
 };
 
 
