@@ -12,6 +12,9 @@ statement ok
 SET bq_bignumeric_as_varchar=TRUE
 
 statement ok
+SET bq_use_legacy_scan=true
+
+statement ok
 CALL bigquery_execute('${BQ_TEST_PROJECT}', '
 CREATE OR REPLACE TABLE ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.table_bignumeric_as_varchar AS
 SELECT
@@ -63,3 +66,6 @@ DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_bignumeric_as_varchar;
 
 statement ok
 SET bq_bignumeric_as_varchar=FALSE
+
+statement ok
+SET bq_use_legacy_scan=false

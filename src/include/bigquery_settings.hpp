@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/common/string_util.hpp"
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 
@@ -159,6 +160,11 @@ public:
 
     static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
         BignumericAsVarchar() = BooleanValue::Get(parameter);
+        if (BooleanValue::Get(parameter) && !UseLegacyScan()) {
+            printf("WARNING: bq_bignumeric_as_varchar=TRUE is only supported with legacy scan. "
+                   "Current setting uses Arrow scan by default. Consider setting bq_use_legacy_scan=TRUE "
+                   "or use use_legacy_scan=TRUE parameter in scan functions.\n");
+        }
     }
 
     static int &MaxReadStreams() {
@@ -224,13 +230,23 @@ public:
         }
     }
 
-	static bool &ExperimentalIncubatingScan() {
-		static bool bigquery_experimental_incubating_scan = false;
-		return bigquery_experimental_incubating_scan;
+	static bool &UseLegacyScan() {
+		static bool bigquery_use_legacy_scan = false;
+		return bigquery_use_legacy_scan;
 	}
 
+	static void SetUseLegacyScan(ClientContext &context, SetScope scope, Value &parameter) {
+		UseLegacyScan() = BooleanValue::Get(parameter);
+	}
+
+	// Deprecated setting for backward compatibility
 	static void SetExperimentalIncubatingScan(ClientContext &context, SetScope scope, Value &parameter) {
-		ExperimentalIncubatingScan() = BooleanValue::Get(parameter);
+		bool value = BooleanValue::Get(parameter);
+		UseLegacyScan() = !value;
+
+		printf("WARNING: bq_experimental_use_incubating_scan is deprecated. "
+		       "Please use bq_use_legacy_scan=%s instead.\n",
+		       value ? "false" : "true");
 	}
 };
 

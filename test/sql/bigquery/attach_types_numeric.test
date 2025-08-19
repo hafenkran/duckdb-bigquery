@@ -138,6 +138,9 @@ statement ok
 SET bq_bignumeric_as_varchar=TRUE
 
 statement ok
+SET bq_use_legacy_scan=true
+
+statement ok
 CALL bigquery_clear_cache();
 
 query I
@@ -150,3 +153,6 @@ DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
 
 statement ok
 SET bq_bignumeric_as_varchar=FALSE
+
+statement ok
+SET bq_use_legacy_scan=false
