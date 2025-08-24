@@ -248,6 +248,28 @@ public:
 		       "Please use bq_use_legacy_scan=%s instead.\n",
 		       value ? "false" : "true");
 	}
+
+	static bool IsSpatialExtensionLoaded(ClientContext &context) {
+		if (!context.db->ExtensionIsLoaded("spatial")) {
+			return false;
+		}
+		return true;
+	}
+
+	static bool &GeographyAsGeometry() {
+		static bool bigquery_geography_as_geometry = false;
+		return bigquery_geography_as_geometry;
+	}
+
+	static void SetGeographyAsGeometry(ClientContext &context, SetScope scope, Value &parameter) {
+		auto geography_as_geometry = BooleanValue::Get(parameter);
+		if (BooleanValue::Get(parameter) && !IsSpatialExtensionLoaded(context)) {
+			printf("WARNING: bq_geography_as_geometry=true requires the spatial extension. "
+				   "Please first run: `INSTALL spatial; LOAD spatial;`\n");
+			return;
+		}
+		GeographyAsGeometry() = geography_as_geometry;
+	}
 };
 
 

@@ -119,6 +119,12 @@ static void LoadInternal(DatabaseInstance &instance) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::UseLegacyScan()),
                               bigquery::BigquerySettings::SetUseLegacyScan);
+    config.AddExtensionOption("bq_geography_as_geometry",
+                              "Whether to return BigQuery GEOGRAPHY columns as DuckDB GEOMETRY types "
+                              "(requires spatial extension). Default is false (returns WKT strings).",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::GeographyAsGeometry()),
+                              bigquery::BigquerySettings::SetGeographyAsGeometry);
 
     // Deprecated setting
     config.AddExtensionOption(
