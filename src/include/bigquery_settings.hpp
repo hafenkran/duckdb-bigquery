@@ -216,7 +216,8 @@ public:
         ArrowCompression() = compression;
     }
 
-    static google::cloud::bigquery::storage::v1::ArrowSerializationOptions::CompressionCodec GetArrowCompressionCodec() {
+    static google::cloud::bigquery::storage::v1::ArrowSerializationOptions::CompressionCodec
+    GetArrowCompressionCodec() {
         const string &compression = ArrowCompression();
         if (compression == "UNSPECIFIED") {
             return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::COMPRESSION_UNSPECIFIED;
@@ -230,46 +231,53 @@ public:
         }
     }
 
-	static bool &UseLegacyScan() {
-		static bool bigquery_use_legacy_scan = false;
-		return bigquery_use_legacy_scan;
-	}
+    static bool &UseLegacyScan() {
+        static bool bigquery_use_legacy_scan = false;
+        return bigquery_use_legacy_scan;
+    }
 
-	static void SetUseLegacyScan(ClientContext &context, SetScope scope, Value &parameter) {
-		UseLegacyScan() = BooleanValue::Get(parameter);
-	}
+    static void SetUseLegacyScan(ClientContext &context, SetScope scope, Value &parameter) {
+        UseLegacyScan() = BooleanValue::Get(parameter);
+    }
 
-	// Deprecated setting for backward compatibility
-	static void SetExperimentalIncubatingScan(ClientContext &context, SetScope scope, Value &parameter) {
-		bool value = BooleanValue::Get(parameter);
-		UseLegacyScan() = !value;
+    // Deprecated setting for backward compatibility
+    static void SetExperimentalIncubatingScan(ClientContext &context, SetScope scope, Value &parameter) {
+        bool value = BooleanValue::Get(parameter);
+        UseLegacyScan() = !value;
 
-		printf("WARNING: bq_experimental_use_incubating_scan is deprecated. "
-		       "Please use bq_use_legacy_scan=%s instead.\n",
-		       value ? "false" : "true");
-	}
+        printf("WARNING: bq_experimental_use_incubating_scan is deprecated. "
+               "Please use bq_use_legacy_scan=%s instead.\n",
+               value ? "false" : "true");
+    }
 
-	static bool IsSpatialExtensionLoaded(ClientContext &context) {
-		if (!context.db->ExtensionIsLoaded("spatial")) {
-			return false;
-		}
-		return true;
-	}
+    static bool &GeographyAsGeometry() {
+        static bool bigquery_geography_as_geometry = true;
+        return bigquery_geography_as_geometry;
+    }
 
-	static bool &GeographyAsGeometry() {
-		static bool bigquery_geography_as_geometry = true;
-		return bigquery_geography_as_geometry;
-	}
+    static void SetGeographyAsGeometry(ClientContext &context, SetScope scope, Value &parameter) {
+        auto geography_as_geometry = BooleanValue::Get(parameter);
+        if (BooleanValue::Get(parameter) && !IsSpatialExtensionLoaded(context)) {
+            printf("WARNING: bq_geography_as_geometry=true requires the spatial extension. "
+                   "Please first run: `INSTALL spatial; LOAD spatial;`\n");
+            return;
+        }
+        GeographyAsGeometry() = geography_as_geometry;
+    }
 
-	static void SetGeographyAsGeometry(ClientContext &context, SetScope scope, Value &parameter) {
-		auto geography_as_geometry = BooleanValue::Get(parameter);
-		if (BooleanValue::Get(parameter) && !IsSpatialExtensionLoaded(context)) {
-			printf("WARNING: bq_geography_as_geometry=true requires the spatial extension. "
-				   "Please first run: `INSTALL spatial; LOAD spatial;`\n");
-			return;
-		}
-		GeographyAsGeometry() = geography_as_geometry;
-	}
+    static bool IsSpatialExtensionLoaded(ClientContext &context) {
+        return context.db->ExtensionIsLoaded("spatial");
+    }
+
+    static bool IsGeometryConversionEnabled(ClientContext &context) {
+        if (!GeographyAsGeometry()) {
+            return false;
+        }
+        if (!IsSpatialExtensionLoaded(context)) {
+            return false;
+        }
+        return true;
+    }
 };
 
 

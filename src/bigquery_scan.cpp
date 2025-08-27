@@ -496,6 +496,23 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         bind_data->names = names;
         bind_data->all_types = return_types;
+
+        // Check if we need type mapping for enhanced BigQuery types (including WKT to GEOMETRY conversion)
+        bool requires_cast = false;
+        vector<LogicalType> mapped_bq_types;
+        for (idx_t i = 0; i < return_types.size(); i++) {
+            auto bq_type = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(return_types[i], &context);
+            if (bq_type != return_types[i]) {
+                requires_cast = true;
+            }
+            mapped_bq_types.push_back(bq_type);
+        }
+
+        if (requires_cast) {
+            bind_data->mapped_bq_types = std::move(mapped_bq_types);
+        }
+        bind_data->requires_cast = requires_cast;
+
         return std::move(bind_data);
     } else {
         // Legacy implementation (V1)

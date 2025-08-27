@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/function/table/arrow.hpp"
 
 // #include "google/cloud/bigquery/v2/minimal/internal/table_schema.h"
 
@@ -13,12 +14,8 @@
 #include <regex>
 #include <thread>
 
-
 namespace duckdb {
 namespace bigquery {
-
-
-
 
 struct BigqueryUtils;
 
@@ -177,6 +174,8 @@ public:
     static string ReplaceQuotes(string &identifier, char to_replace = '\'');
 
     static LogicalType CastToBigqueryType(const LogicalType &type);
+    //! Enhanced cast function that handles WKT to GEOMETRY conversion when spatial extension is available
+    static LogicalType CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context = nullptr);
     static LogicalType FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
     static LogicalType FieldSchemaNumericToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
 
@@ -186,6 +185,14 @@ public:
                                                         const LogicalType &dtype,
                                                         bool nullable = true);
     static std::shared_ptr<arrow::Schema> BuildArrowSchema(const ColumnList &cols);
+
+    static void PopulateAndMapArrowTableTypes(ClientContext &context,
+                                              ArrowTableType &arrow_table,
+                                              ArrowSchemaWrapper &schema_root,
+                                              vector<string> &names,
+                                              vector<LogicalType> &return_types,
+                                              vector<LogicalType> &mapped_bq_types,
+                                              const ColumnList *source_columns = nullptr);
 
     static string LogicalTypeToBigquerySQL(const LogicalType &type);
     static LogicalType BigquerySQLToLogicalType(const string &type);

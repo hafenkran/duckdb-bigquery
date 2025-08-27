@@ -21,6 +21,7 @@
 #include "bigquery_scan.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
+#include "bigquery_geometry_cast.hpp"
 
 #include <iostream>
 
@@ -52,6 +53,8 @@ static void LoadInternal(DatabaseInstance &instance) {
     auto &config = DBConfig::GetConfig(instance);
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
 
+    // Register WKT->GEOMETRY cast (runtime lookup of spatial extension's ST_GeomFromText)
+    bigquery::RegisterWKTGeometryCast(instance);
 
     bigquery::BigqueryParserExtension bigquery_parser_extension;
     config.parser_extensions.push_back(bigquery_parser_extension);

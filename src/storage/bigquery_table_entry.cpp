@@ -57,11 +57,11 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
                                                    result->all_types);
 
 		// Check if we need to map the types to BigQuery types. The BigQuery Arrow scan function will
-		// do a cast to the BigQuery types if necessary.
+		// do a cast to the BigQuery types if necessary. Use enhanced cast that handles WKT to GEOMETRY conversion.
 		bool requires_cast = false;
 		vector<LogicalType> mapped_bq_types;
 		for (auto &col : columns.Logical()) {
-			auto bq_type = BigqueryUtils::CastToBigqueryType(col.GetType());
+			auto bq_type = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(col.GetType(), &context);
 			if (bq_type != col.GetType()) {
 				requires_cast = true;
 			}
