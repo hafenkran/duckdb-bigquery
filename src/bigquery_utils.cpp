@@ -228,7 +228,10 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     } else if (bigquery_type == "BIGNUMERIC") {
         type = BigqueryUtils::FieldSchemaNumericToLogicalType(field);
     } else if (bigquery_type == "GEOGRAPHY") {
-        type = LogicalType::VARCHAR;
+        type = LogicalType(LogicalTypeId::VARCHAR);
+		if (BigquerySettings::GeographyAsGeometry()) {
+        	type.SetAlias("WKT");
+		}
     } else if (bigquery_type == "STRUCT" || bigquery_type == "RECORD") {
         child_list_t<LogicalType> new_types;
         for (auto &child : field.fields()) {
@@ -525,8 +528,13 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
         // throw NotImplementedException("TIMESTAMP WITH TIME ZONE not supported in BigQuery.");
     case LogicalTypeId::INTERVAL:
         return LogicalType::INTERVAL;
-    case LogicalTypeId::VARCHAR:
-        return LogicalType::VARCHAR;
+    case LogicalTypeId::VARCHAR: {
+        LogicalType result = LogicalType::VARCHAR;
+        if (type.HasAlias()) {
+            result.SetAlias(type.GetAlias());
+        }
+        return result;
+    }
     case LogicalTypeId::UUID:
         return LogicalType::VARCHAR;
     case LogicalTypeId::LIST:
@@ -645,7 +653,10 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
     } else if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
         result = BigqueryUtils::BigqueryNumericSQLToLogicalType(type);
     } else if (type == "GEOGRAPHY") {
-        result = LogicalType::VARCHAR;
+        result = LogicalType(LogicalTypeId::VARCHAR);
+		if (BigquerySettings::GeographyAsGeometry()) {
+        	result.SetAlias("WKT");
+		}
     } else if (type.find("ARRAY<") == 0) {
         string array_sub_type = type.substr(6, type.size() - 7);
         LogicalType element_logical_type = BigquerySQLToLogicalType(array_sub_type);

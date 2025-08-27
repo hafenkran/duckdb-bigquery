@@ -257,7 +257,7 @@ public:
 	}
 
 	static bool &GeographyAsGeometry() {
-		static bool bigquery_geography_as_geometry = false;
+		static bool bigquery_geography_as_geometry = true;
 		return bigquery_geography_as_geometry;
 	}
 
