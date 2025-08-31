@@ -228,9 +228,11 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     } else if (bigquery_type == "BIGNUMERIC") {
         type = BigqueryUtils::FieldSchemaNumericToLogicalType(field);
     } else if (bigquery_type == "GEOGRAPHY") {
-        type = LogicalType(LogicalTypeId::VARCHAR);
         if (BigquerySettings::GeographyAsGeometry()) {
-            type.SetAlias("GEOGRAPHY");
+            type = LogicalType::BLOB;
+            type.SetAlias("GEOMETRY");
+        } else {
+            type = LogicalType::VARCHAR;
         }
     } else if (bigquery_type == "STRUCT" || bigquery_type == "RECORD") {
         child_list_t<LogicalType> new_types;
@@ -505,8 +507,7 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
         if (bq_type != return_types[i]) {
             requires_cast = true;
         }
-        mapped_bq_types.push_back(return_types[i]); // store original physical
-        return_types[i] = bq_type;                  // set mapped logical output
+        mapped_bq_types.push_back(bq_type);
     }
     if (!requires_cast) {
         mapped_bq_types.clear(); // signal no cast path needed
@@ -560,7 +561,7 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     case LogicalTypeId::DOUBLE:
         return LogicalType::DOUBLE;
     case LogicalTypeId::BLOB:
-        return LogicalType::BLOB;
+        return type;
     case LogicalTypeId::DATE:
         return LogicalType::DATE;
     case LogicalTypeId::DECIMAL:
@@ -608,18 +609,19 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     }
 }
 
+bool BigqueryUtils::IsGeographyType(const LogicalType &type) {
+    return type.id() == LogicalTypeId::VARCHAR && type.HasAlias() && type.GetAlias() == "GEOGRAPHY";
+}
+
 LogicalType BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context) {
-    // First get the normal BigQuery cast
     LogicalType result = CastToBigqueryType(type);
 
     // Check for WKT alias on VARCHAR types - convert to GEOMETRY if spatial extension is available
-    if (result.id() == LogicalTypeId::VARCHAR && type.HasAlias() && type.GetAlias() == "GEOGRAPHY") {
-        if (context && BigquerySettings::GeographyAsGeometry() &&
-            BigquerySettings::IsSpatialExtensionLoaded(*context)) {
-
+    if (result.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY") {
+        if (context && BigquerySettings::IsGeometryConversionEnabled(*context)) {
             // Create GEOMETRY type (BLOB with GEOMETRY alias)
-            LogicalType geometry_type = LogicalType(LogicalTypeId::BLOB);
-            geometry_type.SetAlias("GEOMETRY");
+            LogicalType geometry_type = LogicalType(LogicalTypeId::VARCHAR);
+            geometry_type.SetAlias("GEOGRAPHY");
             return geometry_type;
         }
     }
@@ -722,9 +724,11 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
     } else if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
         result = BigqueryUtils::BigqueryNumericSQLToLogicalType(type);
     } else if (type == "GEOGRAPHY") {
-        result = LogicalType(LogicalTypeId::VARCHAR);
         if (BigquerySettings::GeographyAsGeometry()) {
-            result.SetAlias("GEOGRAPHY");
+            result = LogicalType::BLOB;
+            result.SetAlias("GEOMETRY");
+        } else {
+            result = LogicalType::VARCHAR;
         }
     } else if (type.find("ARRAY<") == 0) {
         string array_sub_type = type.substr(6, type.size() - 7);

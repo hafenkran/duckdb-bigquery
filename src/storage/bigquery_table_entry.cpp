@@ -50,31 +50,21 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
             throw BinderException("Arrow schema export failed: " + status.ToString());
         }
 
-        ArrowTableFunction::PopulateArrowTableType(DBConfig::GetConfig(context),
-                                                   result->arrow_table,
-                                                   result->schema_root,
-                                                   result->names,
-                                                   result->all_types);
+        vector<LogicalType> mapped_bq_types;
+        BigqueryUtils::PopulateAndMapArrowTableTypes(context,
+                                                     result->arrow_table,
+                                                     result->schema_root,
+                                                     result->names,
+                                                     result->all_types,
+                                                     mapped_bq_types,
+                                                     &columns);
+        if (!mapped_bq_types.empty()) {
+            result->requires_cast = true;
+            result->mapped_bq_types = std::move(mapped_bq_types);
+        } else {
+            result->requires_cast = false;
+        }
 
-		// Check if we need to map the types to BigQuery types. The BigQuery Arrow scan function will
-		// do a cast to the BigQuery types if necessary. Use enhanced cast that handles WKT to GEOMETRY conversion.
-		bool requires_cast = false;
-		vector<LogicalType> mapped_bq_types;
-		for (auto &col : columns.Logical()) {
-			auto bq_type = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(col.GetType(), &context);
-			if (bq_type != col.GetType()) {
-				requires_cast = true;
-			}
-			mapped_bq_types.push_back(bq_type);
-		}
-
-		if (requires_cast) {
-			result->mapped_bq_types = std::move(mapped_bq_types);
-		}
-		result->requires_cast = requires_cast;
-
-		// if the arrow type isn't the same as the duckdb type, we need to map it
-		// For this we create a mapping
         bind_data = std::move(result);
 
         auto function = BigqueryArrowScanFunction();
@@ -85,6 +75,20 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
         return function;
     } else {
         // Use the old Bigquery scan function (bigquery_scan)
+
+        // Check if geography_as_geometry is enabled with legacy scan and GEOGRAPHY columns present
+        if (BigquerySettings::GeographyAsGeometry()) {
+            for (const auto &column : columns.Logical()) {
+                const auto &type = column.GetType();
+                if (BigqueryUtils::IsGeographyType(type)) {
+                    throw BinderException(
+                        "BigQuery GEOGRAPHY columns with geography_as_geometry=true are not supported in legacy scan. "
+                        "Please either set bq_use_legacy_scan=false (recommended) or set "
+                        "bq_geography_as_geometry=false.");
+                }
+            }
+        }
+
         auto result = make_uniq<BigqueryLegacyScanBindData>();
         result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
         result->bq_client = bigquery_transaction->GetBigqueryClient();

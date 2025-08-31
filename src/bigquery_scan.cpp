@@ -1,5 +1,4 @@
 #include "bigquery_scan.hpp"
-#include "bigquery_arrow_scan.hpp"
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_arrow_scan.hpp"
 #include "bigquery_client.hpp"
@@ -199,10 +198,7 @@ static unique_ptr<FunctionData> BigqueryLegacyScanBind(ClientContext &context,
         filter_cond = filter_condition;
     }
 
-    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref,
-                                                             1,
-                                                             std::vector<string>(),
-                                                             filter_cond);
+    auto arrow_reader = result->bq_client->CreateArrowReader(table_ref, 1, std::vector<string>(), filter_cond);
     arrow_reader->MapTableInfo(columns, constraints);
 
     for (auto &column : columns.Logical()) {
@@ -212,6 +208,16 @@ static unique_ptr<FunctionData> BigqueryLegacyScanBind(ClientContext &context,
     if (names.empty()) {
         auto table_ref = arrow_reader->GetTableRef();
         throw std::runtime_error("no columns for table " + table_ref.table_id);
+    }
+
+    if (BigquerySettings::GeographyAsGeometry()) {
+        for (const auto &column : columns.Logical()) {
+            if (BigqueryUtils::IsGeographyType(column.GetType())) {
+                throw BinderException(
+                    "BigQuery GEOGRAPHY columns with geography_as_geometry=true are not supported in legacy scan. "
+                    "Please either set bq_use_legacy_scan=false (recommended) or set bq_geography_as_geometry=false.");
+            }
+        }
     }
 
     // TODO GetMaxRowId
@@ -270,10 +276,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryLegacyScanInitGlobalState(Cl
     // when preserve_insertion_order=FALSE, we can use multiple streams for parallelization; defaults to maximum_threads
     // when preserve_insertion_order=TRUE, we use only 1 stream as there won't be any parallelization from DuckDB
     idx_t k_max_read_streams = BigquerySettings::GetMaxReadStreams(context);
-    auto arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.table_ref,
-                                                               k_max_read_streams,
-                                                               selected_fields,
-                                                               filter_string);
+    auto arrow_reader =
+        bind_data.bq_client->CreateArrowReader(bind_data.table_ref, k_max_read_streams, selected_fields, filter_string);
 
     auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryLegacyScanBindData>();
     mutable_bind_data.estimated_row_count = idx_t(arrow_reader->GetEstimatedRowCount());
@@ -558,6 +562,16 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         }
         if (names.empty()) {
             throw std::runtime_error("no columns for query: " + query_string);
+        }
+
+        if (BigquerySettings::GeographyAsGeometry()) {
+            for (const auto &column : columns.Logical()) {
+                if (BigqueryUtils::IsGeographyType(column.GetType())) {
+                    throw BinderException(
+                        "BigQuery GEOGRAPHY columns with geography_as_geometry=true are not supported in legacy scan. "
+                        "Please either set use_legacy_scan=false (recommended) or set bq_geography_as_geometry=false.");
+                }
+            }
         }
 
         bind_data->names = names;

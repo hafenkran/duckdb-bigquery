@@ -173,9 +173,9 @@ public:
     static string WriteQuotedIdentifier(const string &identifier);
     static string ReplaceQuotes(string &identifier, char to_replace = '\'');
 
+	static bool IsGeographyType(const LogicalType &type);
     static LogicalType CastToBigqueryType(const LogicalType &type);
-    //! Enhanced cast function that handles WKT to GEOMETRY conversion when spatial extension is available
-    static LogicalType CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context = nullptr);
+	static LogicalType CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context = nullptr);
     static LogicalType FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
     static LogicalType FieldSchemaNumericToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
 
