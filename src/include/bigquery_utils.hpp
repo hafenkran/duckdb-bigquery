@@ -174,6 +174,7 @@ public:
     static string ReplaceQuotes(string &identifier, char to_replace = '\'');
 
 	static bool IsGeographyType(const LogicalType &type);
+	static bool IsGeometryType(const LogicalType &type);
     static LogicalType CastToBigqueryType(const LogicalType &type);
 	static LogicalType CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context = nullptr);
     static LogicalType FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);

@@ -613,6 +613,10 @@ bool BigqueryUtils::IsGeographyType(const LogicalType &type) {
     return type.id() == LogicalTypeId::VARCHAR && type.HasAlias() && type.GetAlias() == "GEOGRAPHY";
 }
 
+bool BigqueryUtils::IsGeometryType(const LogicalType &type) {
+	return type.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY";
+}
+
 LogicalType BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context) {
     LogicalType result = CastToBigqueryType(type);
 

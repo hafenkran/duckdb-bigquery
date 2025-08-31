@@ -37,12 +37,12 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
 
     auto use_legacy_scan = BigquerySettings::UseLegacyScan();
     if (!use_legacy_scan) {
-        // Use the new Arrow scan function (bigquery_arrow_scan)
         auto result = make_uniq<BigqueryArrowScanBindData>();
         result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
         result->bq_client = bigquery_transaction->GetBigqueryClient();
         result->bq_catalog = &bigquery_catalog;
         result->bq_table_entry = *this;
+        result->bq_config = bigquery_catalog.config;
 
         auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
         auto status = arrow::ExportSchema(*arrow_schema_ptr, &result->schema_root.arrow_schema);
@@ -50,20 +50,77 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
             throw BinderException("Arrow schema export failed: " + status.ToString());
         }
 
-        vector<LogicalType> mapped_bq_types;
+        vector<string> physical_names;             // names extracted from arrow schema
+        vector<LogicalType> physical_return_types; // physical DuckDB logical types derived from Arrow
+        vector<LogicalType> util_mapped_bq_types;  // (unused for table entry logical exposure)
         BigqueryUtils::PopulateAndMapArrowTableTypes(context,
                                                      result->arrow_table,
                                                      result->schema_root,
-                                                     result->names,
-                                                     result->all_types,
-                                                     mapped_bq_types,
+                                                     physical_names,
+                                                     physical_return_types,
+                                                     util_mapped_bq_types,
                                                      &columns);
-        if (!mapped_bq_types.empty()) {
-            result->requires_cast = true;
-            result->mapped_bq_types = std::move(mapped_bq_types);
-        } else {
-            result->requires_cast = false;
+        if (physical_return_types.empty()) {
+            throw BinderException("BigQuery table has no columns");
         }
+
+        vector<LogicalType> user_return_types;
+        user_return_types.reserve(columns.LogicalColumnCount());
+        vector<string> user_names;
+        user_names.reserve(columns.LogicalColumnCount());
+        for (auto &col : columns.Logical()) {
+            user_return_types.push_back(col.GetType());
+            user_names.push_back(col.GetName());
+        }
+
+        if (user_return_types.size() != physical_return_types.size()) {
+            throw InternalException("Arrow schema column count (%llu) != catalog column count (%llu) for table %s",
+                                    (unsigned long long)physical_return_types.size(),
+                                    (unsigned long long)user_return_types.size(),
+                                    name);
+        }
+
+        // Build mapping: if physical type differs from user-visible, we will cast (incl. spatial handling)
+        bool requires_cast = false;
+        vector<LogicalType> mapped_bq_types; // physical source types aligned with user types
+        mapped_bq_types.reserve(user_return_types.size());
+        for (idx_t i = 0; i < user_return_types.size(); i++) {
+            const auto &user_type = user_return_types[i];
+            const auto &arrow_phys = physical_return_types[i];
+
+            auto spatial_source = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(user_type, &context);
+
+            LogicalType chosen_physical;
+            // SPECIAL CASE (GEOGRAPHY -> GEOMETRY):
+            // Catalog/user type: BLOB alias GEOMETRY (target user-facing GEOMETRY)
+            // Actual BigQuery Arrow stream delivers WKT as VARCHAR alias GEOGRAPHY.
+            // CastToBigqueryTypeWithSpatialConversion returns VARCHAR GEOGRAPHY. We must keep that as the mapped
+            // physical source so that cast logic triggers and converts WKT->GEOMETRY blob.
+            bool is_geometry_target = BigqueryUtils::IsGeometryType(user_type);
+            bool spatial_inversion = BigqueryUtils::IsGeographyType(spatial_source);
+            if (is_geometry_target && spatial_inversion) {
+                // Keep spatial_source (VARCHAR GEOGRAPHY) as mapped physical
+                chosen_physical = spatial_source;
+            } else {
+                // Otherwise trust Arrow's physical interpretation (incl. decimals/structs) – aliases already copied
+                chosen_physical = arrow_phys;
+            }
+
+            if (chosen_physical != user_type) {
+                requires_cast = true;
+            }
+            mapped_bq_types.push_back(chosen_physical);
+        }
+        if (!requires_cast) {
+            mapped_bq_types.clear(); // signal no cast path needed
+        }
+
+        result->names = std::move(user_names);
+        result->all_types = std::move(user_return_types);
+        if (requires_cast) {
+            result->mapped_bq_types = std::move(mapped_bq_types);
+        }
+        result->requires_cast = requires_cast;
 
         bind_data = std::move(result);
 
