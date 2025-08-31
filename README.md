@@ -206,7 +206,6 @@ The `bigquery_scan` function supports the following named parameters:
 | ----------------------- | --------- | -------------------------------------------------------------------------------- |
 | `filter`                | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API.  |
 | `use_legacy_scan`       | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default). |
-| `geography_as_geometry` | `BOOLEAN` | Return GEOGRAPHY columns as GEOMETRY types (requires spatial extension).         |
 | `billing_project`       | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).             |
 | `api_endpoint`          | `VARCHAR` | Custom BigQuery API endpoint URL.                                                |
 | `grpc_endpoint`         | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                       |
