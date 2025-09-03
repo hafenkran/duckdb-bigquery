@@ -682,7 +682,6 @@ void BigqueryProtoWriter::WriteField(google::protobuf::Message *msg,
         break;
     }
     case LogicalTypeId::BLOB: {
-        // auto value = val;
         reflection->SetString(msg, field, val.GetValueUnsafe<string>());
         break;
     }

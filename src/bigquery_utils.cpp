@@ -561,6 +561,11 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     case LogicalTypeId::DOUBLE:
         return LogicalType::DOUBLE;
     case LogicalTypeId::BLOB:
+        // if (BigqueryUtils::IsGeometryType(type)) {
+        //     auto geom_type = LogicalType(LogicalTypeId::VARCHAR);
+        //     geom_type.SetAlias("GEOGRAPHY");
+        //     return geom_type;
+        // }
         return type;
     case LogicalTypeId::DATE:
         return LogicalType::DATE;
@@ -614,14 +619,12 @@ bool BigqueryUtils::IsGeographyType(const LogicalType &type) {
 }
 
 bool BigqueryUtils::IsGeometryType(const LogicalType &type) {
-	return type.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY";
+    return type.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY";
 }
 
 LogicalType BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context) {
-    LogicalType result = CastToBigqueryType(type);
-
     // Check for WKT alias on VARCHAR types - convert to GEOMETRY if spatial extension is available
-    if (result.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY") {
+    if (type.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY") {
         if (context && BigquerySettings::IsGeometryConversionEnabled(*context)) {
             // Create GEOMETRY type (BLOB with GEOMETRY alias)
             LogicalType geometry_type = LogicalType(LogicalTypeId::VARCHAR);
@@ -629,13 +632,16 @@ LogicalType BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(const Logical
             return geometry_type;
         }
     }
-
+    LogicalType result = CastToBigqueryType(type);
     return result;
 }
 
 google::protobuf::FieldDescriptorProto::Type BigqueryUtils::LogicalTypeToProtoType(const LogicalType &type) {
     switch (type.id()) {
     case LogicalTypeId::BLOB:
+        if (BigqueryUtils::IsGeometryType(type)) {
+            return google::protobuf::FieldDescriptorProto::TYPE_STRING;
+        }
         return google::protobuf::FieldDescriptorProto::TYPE_BYTES;
     case LogicalTypeId::BIT:
         return google::protobuf::FieldDescriptorProto::TYPE_BOOL;

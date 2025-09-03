@@ -15,32 +15,31 @@ namespace duckdb {
 namespace bigquery {
 
 struct WKTGeomCastData : public BoundCastData {
-	WKTGeomCastData() : has_function(false),
-						resolved_function({LogicalType::VARCHAR}, LogicalType::BLOB, nullptr) {
-		target_type = LogicalType::BLOB;
-		target_type.SetAlias("GEOMETRY");
-		source_type = LogicalType::VARCHAR;
-		source_type.SetAlias("WKT");
-		function_return_type = target_type;
-	}
+    WKTGeomCastData() : has_function(false), resolved_function({LogicalType::VARCHAR}, LogicalType::BLOB, nullptr) {
+        target_type = LogicalType::BLOB;
+        target_type.SetAlias("GEOMETRY");
+        source_type = LogicalType::VARCHAR;
+        source_type.SetAlias("WKT");
+        function_return_type = target_type;
+    }
 
-	unique_ptr<BoundCastData> Copy() const override {
-		auto result = make_uniq<WKTGeomCastData>();
-		result->has_function = has_function;
-		result->resolved_function = resolved_function;
-		result->bind_data = bind_data ? bind_data->Copy() : nullptr;
-		result->function_return_type = function_return_type;
-		result->target_type = target_type;
-		result->source_type = source_type;
-		return result;
-	}
+    unique_ptr<BoundCastData> Copy() const override {
+        auto result = make_uniq<WKTGeomCastData>();
+        result->has_function = has_function;
+        result->resolved_function = resolved_function;
+        result->bind_data = bind_data ? bind_data->Copy() : nullptr;
+        result->function_return_type = function_return_type;
+        result->target_type = target_type;
+        result->source_type = source_type;
+        return result;
+    }
 
-	bool has_function;
-	ScalarFunction resolved_function;
-	unique_ptr<FunctionData> bind_data;
-	LogicalType function_return_type;
-	LogicalType target_type;
-	LogicalType source_type;
+    bool has_function;
+    ScalarFunction resolved_function;
+    unique_ptr<FunctionData> bind_data;
+    LogicalType function_return_type;
+    LogicalType target_type;
+    LogicalType source_type;
 };
 
 struct WKTGeomCastLocalState : public FunctionLocalState {
@@ -69,7 +68,7 @@ static unique_ptr<FunctionLocalState> InitWKTGeomCastLocalState(CastLocalStatePa
     // Output chunk uses the function return type; we will cast to target if they differ
     state->output_chunk.Initialize(Allocator::Get(*params.context), {cast_data.function_return_type});
 
-	vector<unique_ptr<Expression>> args;
+    vector<unique_ptr<Expression>> args;
     args.push_back(make_uniq<BoundReferenceExpression>(cast_data.source_type, 0));
     state->expression = make_uniq<BoundFunctionExpression>(cast_data.function_return_type,
                                                            cast_data.resolved_function,
@@ -123,7 +122,7 @@ static BoundCastInfo BindWKTGeomCast(BindCastInput &input, const LogicalType &so
     }
     try {
         auto &catalog = Catalog::GetSystemCatalog(*context);
-        auto &func_entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(*context, DEFAULT_SCHEMA, "ST_GeomFromText");
+        auto &func_entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(*context, DEFAULT_SCHEMA, "st_geomfromtext");
         vector<LogicalType> args{LogicalType(LogicalTypeId::VARCHAR)};
 
         auto func = func_entry.functions.GetFunctionByArguments(*context, args);
