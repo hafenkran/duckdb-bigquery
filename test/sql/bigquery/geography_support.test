@@ -1,0 +1,80 @@
+# name: test/sql/bigquery/geography_support.test
+# description: Test GEOGRAPHY to GEOMETRY type conversion feature
+# group: [bigquery]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+# Create a simple table with GEOGRAPHY columns using bigquery_execute
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+	CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test` AS
+	SELECT * FROM (
+		SELECT 1 as id, ST_GEOGPOINT(-122.4194, 37.7749) as geom
+		UNION ALL
+		SELECT 2 as id, ST_GEOGFROMTEXT("POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))") as geom
+	)
+');
+
+# Test 1: Default behavior - GEOGRAPHY columns should be returned as VARCHAR (WKT strings)
+query II
+SELECT id, geom FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test') ORDER BY id;
+----
+1	POINT(-122.4194 37.7749)
+2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
+
+# Test 2: Load spatial extension for geometry conversion
+statement ok
+INSTALL spatial;
+
+statement ok
+LOAD spatial;
+
+# Test 3: Set geography_as_geometry to false (default) - should return WKT strings
+statement ok
+SET bq_geography_as_geometry = false;
+
+query II
+SELECT id, geom FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test') ORDER BY id;
+----
+1	POINT(-122.4194 37.7749)
+2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
+
+# Test 4: Set geography_as_geometry to true - should convert to GEOMETRY type
+statement ok
+SET bq_geography_as_geometry = true;
+
+# Verify that spatial functions work on converted GEOMETRY columns
+query III
+SELECT
+    id,
+    ST_AsText(geom) as geom_wkt,
+    ST_GeometryType(geom) as geom_type
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test')
+ORDER BY id;
+----
+1	POINT (-122.4194 37.7749)	POINT
+2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	POLYGON
+
+# Test 5: ATTACH and write to table
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.geography_test VALUES (4, ST_GeomFromText('POINT(10 20)'))
+
+query II
+SELECT * FROM bq.${BQ_TEST_DATASET}.geography_test WHERE id = 4;
+----
+4	POINT (10 20)
+
+# Reset setting
+statement ok
+SET bq_geography_as_geometry = false;
+
+# Cleanup
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_DATASET}.geography_test`');

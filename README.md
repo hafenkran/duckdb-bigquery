@@ -202,13 +202,13 @@ While `bigquery_scan` offers high-speed data retrieval, it does not support read
 
 The `bigquery_scan` function supports the following named parameters:
 
-| Parameter         | Type      | Description                                                                      |
-| ----------------- | --------- | -------------------------------------------------------------------------------- |
-| `filter`          | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API.  |
-| `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default). |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).             |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                       |
+| Parameter               | Type      | Description                                                                      |
+| ----------------------- | --------- | -------------------------------------------------------------------------------- |
+| `filter`                | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API.  |
+| `use_legacy_scan`       | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default). |
+| `billing_project`       | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).             |
+| `api_endpoint`          | `VARCHAR` | Custom BigQuery API endpoint URL.                                                |
+| `grpc_endpoint`         | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                       |
 
 ### `bigquery_query` Function
 
@@ -316,8 +316,9 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 | Setting                                   | Description                                                                                                                                                                                        | Default |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error. **Note: Only supported with V1 scan engine.**                                                             | `false` |
+| `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error. **Note: Only supported with legacy scan.**                                                                | `false` |
 | `bq_use_legacy_scan`                      | Use legacy scan implementation instead of optimized Arrow-based scan. Set to `true` for the old scan or `false` for the new optimized implementation.                                              | `false` |
+| `bq_geography_as_geometry`                | Return BigQuery `GEOGRAPHY` columns as DuckDB `GEOMETRY` types (requires spatial extension). When `false`, returns WKT strings as `VARCHAR`.                                                        | `false` |
 | `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
 | `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |

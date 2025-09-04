@@ -17,4 +17,5 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_parser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_arrow_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_geometry_cast.cpp
     PARENT_SCOPE)

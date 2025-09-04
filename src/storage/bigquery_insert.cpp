@@ -1,6 +1,7 @@
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_create_table.hpp"
 #include "duckdb/planner/operator/logical_insert.hpp"
@@ -13,6 +14,12 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
 #include "bigquery_proto_writer.hpp"
+#include "bigquery_utils.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
+#include "duckdb/common/error_data.hpp"
+#include "duckdb/function/function_binder.hpp"
+#include "duckdb/function/function_set.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_insert.hpp"
 #include "storage/bigquery_transaction.hpp"
@@ -179,6 +186,82 @@ PhysicalOperator &AddCastToBigqueryTypes(ClientContext &context,
     return proj;
 }
 
+PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
+                                              PhysicalPlanGenerator &planner,
+                                              PhysicalOperator &plan) {
+    auto &child_types = plan.GetTypes();
+
+    // Skip if no geometry types
+    bool has_geometry = false;
+    for (auto &type : child_types) {
+        if (BigqueryUtils::IsGeometryType(type)) {
+            has_geometry = true;
+            break;
+        }
+    }
+    if (!has_geometry) {
+        return plan; // nothing to do
+    }
+
+    FunctionBinder binder(context);
+
+    vector<LogicalType> projected_types;
+    vector<unique_ptr<Expression>> select_list;
+    projected_types.reserve(child_types.size());
+    select_list.reserve(child_types.size());
+
+    // Lookup ST_AsText once
+    ScalarFunctionSet *astext_set = nullptr;
+    try {
+        auto &entry = Catalog::GetEntry(context,
+                                        CatalogType::SCALAR_FUNCTION_ENTRY,
+                                        INVALID_CATALOG,
+                                        INVALID_SCHEMA,
+                                        "ST_AsText");
+        auto &sf_entry = entry.Cast<ScalarFunctionCatalogEntry>();
+        astext_set = &sf_entry.functions;
+    } catch (...) {
+        throw InvalidInputException(
+            "Writing GEOMETRY columns to BigQuery requires the spatial extension (function ST_AsText not found)");
+    }
+
+    for (idx_t i = 0; i < child_types.size(); i++) {
+        auto &type = child_types[i];
+        if (!BigqueryUtils::IsGeometryType(type)) {
+            select_list.push_back(make_uniq<BoundReferenceExpression>(type, i));
+            projected_types.push_back(type);
+            continue;
+        }
+
+        // Prepare argument logical types for cost-based binding
+        vector<LogicalType> arg_types{type};
+        ErrorData error;
+        auto opt_index = binder.BindFunction("st_astext", *astext_set, arg_types, error);
+        if (!opt_index.IsValid()) {
+            throw InvalidInputException("Failed to bind ST_AsText for GEOMETRY column: %s", error.Message().c_str());
+        }
+
+        auto func = astext_set->GetFunctionByOffset(opt_index.GetIndex());
+        vector<unique_ptr<Expression>> args;
+        args.push_back(make_uniq<BoundReferenceExpression>(type, i));
+        unique_ptr<Expression> bound =
+            make_uniq<BoundFunctionExpression>(func.return_type, func, std::move(args), nullptr, false);
+
+        if (func.return_type.id() != LogicalTypeId::VARCHAR) {
+            bound = BoundCastExpression::AddCastToType(context, std::move(bound), LogicalType::VARCHAR);
+            projected_types.push_back(LogicalType::VARCHAR);
+        } else {
+            projected_types.push_back(func.return_type);
+        }
+        select_list.push_back(std::move(bound));
+    }
+
+    auto &proj = planner.Make<PhysicalProjection>(std::move(projected_types),
+                                                  std::move(select_list),
+                                                  plan.estimated_cardinality);
+    proj.children.push_back(plan);
+    return proj;
+}
 
 PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
                                               PhysicalPlanGenerator &planner,
@@ -191,7 +274,8 @@ PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
         throw BinderException("ON CONFLCIT clause not supported.");
     }
 
-    auto &child_plan = AddCastToBigqueryTypes(context, planner, *plan);
+    auto &geom_proj = AddGeometryAsTextProjection(context, planner, *plan);
+    auto &child_plan = AddCastToBigqueryTypes(context, planner, geom_proj);
     auto &insert = planner.Make<BigqueryInsert>(op, op.table, op.column_index_map);
     insert.children.push_back(child_plan);
     return insert;
@@ -201,7 +285,8 @@ PhysicalOperator &BigqueryCatalog::PlanCreateTableAs(ClientContext &context,
                                                      PhysicalPlanGenerator &planner,
                                                      LogicalCreateTable &op,
                                                      PhysicalOperator &plan) {
-    auto &child_plan = AddCastToBigqueryTypes(context, planner, plan); // TODO
+    auto &geom_proj = AddGeometryAsTextProjection(context, planner, plan);
+    auto &child_plan = AddCastToBigqueryTypes(context, planner, geom_proj); // retain existing cast behavior
     auto &insert = planner.Make<BigqueryInsert>(op, op.schema, std::move(op.info));
     insert.children.push_back(child_plan);
     return insert;

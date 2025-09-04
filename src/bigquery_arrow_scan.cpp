@@ -80,19 +80,27 @@ unique_ptr<FunctionData> BigqueryArrowScanFunction::BigqueryArrowScanBind(Client
     }
 
     // Convert Arrow schema to DuckDB types and names
-    ArrowTableFunction::PopulateArrowTableType(DBConfig::GetConfig(context),
-                                               bind_data->arrow_table,
-                                               bind_data->schema_root,
-                                               names,
-                                               return_types);
-
-    if (return_types.empty()) {
-        throw BinderException("BigQuery table has no columns");
-    }
+    vector<LogicalType> mapped_bq_types; // original physical types if casts required
+    BigqueryUtils::PopulateAndMapArrowTableTypes(context,
+                                                 bind_data->arrow_table,
+                                                 bind_data->schema_root,
+                                                 names,
+                                                 return_types,
+                                                 mapped_bq_types,
+                                                 &columns);
 
     // Store schema information
     bind_data->names = names;
     bind_data->all_types = return_types;
+
+    // mapped_bq_types holds original physical types if non-empty
+    if (!mapped_bq_types.empty()) {
+        bind_data->mapped_bq_types = std::move(mapped_bq_types);
+        bind_data->requires_cast = true;
+    } else {
+        bind_data->requires_cast = false;
+    }
+
     return std::move(bind_data);
 }
 
@@ -266,14 +274,44 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                                           state.all_columns,
                                           data.lines_read - output_size);
 
-        // If no projection is needed, we can directly reference the columns
-        // or cast them if required
+        // Determine if we must force geometry casting (WKT -> GEOMETRY) even if requires_cast is false
+        bool geometry_cast_needed = false;
         if (!data.requires_cast) {
+            // Examine projected columns
+            if (gstate.projection_ids.empty()) {
+                for (idx_t i = 0; i < output.ColumnCount(); i++) {
+                    auto &src_vec = state.all_columns.data[i];
+                    auto &dst_type = output.data[i].GetType();
+                    if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
+                        src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
+                        geometry_cast_needed = true;
+                        break;
+                    }
+                }
+            } else {
+                for (idx_t i = 0; i < output.ColumnCount(); i++) {
+                    auto proj_id = gstate.projection_ids[i];
+                    auto &src_vec = state.all_columns.data[proj_id];
+                    auto &dst_type = output.data[i].GetType();
+                    if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
+                        src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
+                        geometry_cast_needed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        bool do_cast = data.requires_cast || geometry_cast_needed;
+
+        if (!do_cast) {
             // Reference columns directly
             output.ReferenceColumns(state.all_columns, gstate.projection_ids);
         } else {
             for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
                 auto proj_id = gstate.projection_ids[col_idx];
+
+                // perform cast; output vector already has desired logical type assigned by framework
                 VectorOperations::Cast(ctx,
                                        state.all_columns.data[proj_id],
                                        output.data[col_idx],
@@ -282,7 +320,23 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
         }
     } else {
         output.SetCardinality(output_size);
+
+        // Detect if we need geometry cast despite requires_cast=false
+        bool geometry_cast_needed = false;
         if (!data.requires_cast) {
+            for (idx_t i = 0; i < output.ColumnCount(); i++) {
+                auto &dst_type = output.data[i].GetType();
+                // scanned type from gstate.scanned_types (physical source type)
+                const LogicalType &src_type = gstate.scanned_types[i];
+                if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
+                    src_type.id() == LogicalTypeId::VARCHAR) {
+                    geometry_cast_needed = true;
+                    break;
+                }
+            }
+        }
+        bool do_cast = data.requires_cast || geometry_cast_needed;
+        if (!do_cast) {
             // Direct write to output
             ArrowTableFunction::ArrowToDuckDB(state,
                                               data.arrow_table.GetColumns(),
@@ -295,9 +349,8 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                                               data.arrow_table.GetColumns(),
                                               state.all_columns,
                                               data.lines_read - output_size);
-
-            // Cast each column to the output type
             for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
+                // perform cast; output vector already has desired logical type assigned by framework
                 VectorOperations::Cast(ctx,
                                        state.all_columns.data[col_idx],
                                        output.data[col_idx],
