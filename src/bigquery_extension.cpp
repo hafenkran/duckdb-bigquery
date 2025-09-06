@@ -5,7 +5,6 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
-#include "duckdb/main/extension_util.hpp"
 
 // OpenSSL linked through vcpkg
 #include <openssl/opensslv.h>
@@ -27,34 +26,34 @@
 
 namespace duckdb {
 
-static void LoadInternal(DatabaseInstance &instance) {
+static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigqueryAttachFunction bigquery_attach_function;
-    ExtensionUtil::RegisterFunction(instance, bigquery_attach_function);
+    loader.RegisterFunction(bigquery_attach_function);
 
     bigquery::BigqueryScanFunction bigquery_scan_function;
-    ExtensionUtil::RegisterFunction(instance, bigquery_scan_function);
+    loader.RegisterFunction(bigquery_scan_function);
 
     bigquery::BigqueryArrowScanFunction bigquery_arrow_scan_function;
-    ExtensionUtil::RegisterFunction(instance, bigquery_arrow_scan_function);
+    loader.RegisterFunction(bigquery_arrow_scan_function);
 
     bigquery::BigqueryQueryFunction bigquery_query_function;
-    ExtensionUtil::RegisterFunction(instance, bigquery_query_function);
+    loader.RegisterFunction(bigquery_query_function);
 
     bigquery::BigqueryClearCacheFunction clear_cache_function;
-    ExtensionUtil::RegisterFunction(instance, clear_cache_function);
+    loader.RegisterFunction(clear_cache_function);
 
     bigquery::BigQueryExecuteFunction bigquery_execute_function;
-    ExtensionUtil::RegisterFunction(instance, bigquery_execute_function);
+    loader.RegisterFunction(bigquery_execute_function);
 
     bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
-    ExtensionUtil::RegisterFunction(instance, bigquery_list_jobs_function);
+    loader.RegisterFunction(bigquery_list_jobs_function);
 
-    auto &config = DBConfig::GetConfig(instance);
+    auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
 
     // Register WKT->GEOMETRY cast (runtime lookup of spatial extension's ST_GeomFromText)
-    bigquery::RegisterWKTGeometryCast(instance);
+    bigquery::RegisterWKTGeometryCast(loader.GetDatabaseInstance());
 
     bigquery::BigqueryParserExtension bigquery_parser_extension;
     config.parser_extensions.push_back(bigquery_parser_extension);
@@ -140,28 +139,28 @@ static void LoadInternal(DatabaseInstance &instance) {
         bigquery::BigquerySettings::SetExperimentalIncubatingScan);
 }
 
-void BigqueryExtension::Load(DuckDB &db) {
-    LoadInternal(*db.instance);
+void BigqueryExtension::Load(ExtensionLoader &loader) {
+    LoadInternal(loader);
+}
+
+std::string BigqueryExtension::Name() {
+	return "bigquery";
+}
+
+std::string BigqueryExtension::Version() const {
+#ifdef EXT_VERSION_BIGQUERY
+	return EXT_VERSION_BIGQUERY;
+#else
+	return "";
+#endif
 }
 
 } // namespace duckdb
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void bigquery_init(duckdb::DatabaseInstance &db) {
-    duckdb::DuckDB db_wrapper(db);
-    db_wrapper.LoadExtension<duckdb::BigqueryExtension>();
+DUCKDB_CPP_EXTENSION_ENTRY(bigquery, loader) {
+	duckdb::LoadInternal(loader);
 }
 
-DUCKDB_EXTENSION_API const char *bigquery_version() {
-    return duckdb::DuckDB::LibraryVersion();
 }
-
-DUCKDB_EXTENSION_API void bigquery_storage_init(duckdb::DBConfig &config) {
-    config.storage_extensions["bigquery"] = duckdb::make_uniq<duckdb::bigquery::BigqueryStorageExtension>();
-}
-}
-
-#ifndef DUCKDB_EXTENSION_MAIN
-#error DUCKDB_EXTENSION_MAIN not defined
-#endif

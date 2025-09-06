@@ -16,19 +16,19 @@ namespace duckdb {
 namespace bigquery {
 
 
-static unique_ptr<Catalog> BigqueryAttach(StorageExtensionInfo *storage_info,
+static unique_ptr<Catalog> BigqueryAttach(optional_ptr<StorageExtensionInfo> storage_info,
                                           ClientContext &context,
                                           AttachedDatabase &db,
                                           const string &name,
                                           AttachInfo &info,
-                                          AccessMode access_mode) {
+                                          AttachOptions &attach_options) {
     BigqueryOptions options;
-    options.access_mode = access_mode;
+    options.access_mode = attach_options.access_mode;
     return duckdb::make_uniq<BigqueryCatalog>(db, info.path, options);
 }
 
 
-static unique_ptr<TransactionManager> BigqueryCreateTransactionManager(StorageExtensionInfo *storage_info,
+static unique_ptr<TransactionManager> BigqueryCreateTransactionManager(optional_ptr<StorageExtensionInfo> storage_info,
                                                                        AttachedDatabase &db,
                                                                        Catalog &catalog) {
     auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();

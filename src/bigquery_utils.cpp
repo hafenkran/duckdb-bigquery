@@ -466,17 +466,18 @@ std::shared_ptr<arrow::Schema> BigqueryUtils::BuildArrowSchema(const ColumnList 
 }
 
 void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
-                                                  ArrowTableType &arrow_table,
+                                                  ArrowTableSchema &arrow_table,
                                                   ArrowSchemaWrapper &schema_root,
                                                   vector<string> &names,
                                                   vector<LogicalType> &return_types,
                                                   vector<LogicalType> &mapped_bq_types,
                                                   const ColumnList *source_columns) {
-    ArrowTableFunction::PopulateArrowTableType(DBConfig::GetConfig(context),
-                                               arrow_table,
-                                               schema_root,
-                                               names,
-                                               return_types);
+    // Populate ArrowTableSchema (names and types) from the Arrow schema using the updated DuckDB API
+    ArrowTableFunction::PopulateArrowTableSchema(DBConfig::GetConfig(context), arrow_table, schema_root.arrow_schema);
+
+    // Extract names and types from the populated ArrowTableSchema
+    names = arrow_table.GetNames();
+    return_types = arrow_table.GetTypes();
     if (return_types.empty()) {
         throw BinderException("BigQuery table has no columns");
     }
@@ -968,7 +969,7 @@ pair<int, int> BigqueryUtils::ParseNumericPrecisionAndScale(const string &type) 
 }
 
 uint64_t Iso8601ToMillis(const string &iso8601) {
-    auto timestamp = Timestamp::FromString(iso8601);
+    auto timestamp = Timestamp::FromString(iso8601, false);
     auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
     return timestamp_ms;
 }
