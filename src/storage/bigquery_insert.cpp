@@ -27,16 +27,20 @@
 namespace duckdb {
 namespace bigquery {
 
-BigqueryInsert::BigqueryInsert(LogicalOperator &op,
+BigqueryInsert::BigqueryInsert(PhysicalPlan &physical_plan,
+                               LogicalOperator &op,
                                TableCatalogEntry &table,
                                physical_index_vector_t<idx_t> column_index_map_p)
-    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), //
+    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), //
       table(&table),                                                  //
       column_index_map(std::move(column_index_map_p)) {
 }
 
-BigqueryInsert::BigqueryInsert(LogicalOperator &op, SchemaCatalogEntry &schema, unique_ptr<BoundCreateTableInfo> info_p)
-    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), //
+BigqueryInsert::BigqueryInsert(PhysicalPlan &physical_plan,
+                               LogicalOperator &op,
+                               SchemaCatalogEntry &schema,
+                               unique_ptr<BoundCreateTableInfo> info_p)
+    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), //
       schema(&schema),                                                //
       info(std::move(info_p)) {
 }
@@ -270,10 +274,11 @@ PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
     if (op.return_chunk) {
         throw BinderException("RETURNING clause not supported.");
     }
-    if (op.action_type != OnConflictAction::THROW) {
+    if (op.on_conflict_info.action_type != OnConflictAction::THROW) {
         throw BinderException("ON CONFLCIT clause not supported.");
     }
 
+    D_ASSERT(plan);
     auto &geom_proj = AddGeometryAsTextProjection(context, planner, *plan);
     auto &child_plan = AddCastToBigqueryTypes(context, planner, geom_proj);
     auto &insert = planner.Make<BigqueryInsert>(op, op.table, op.column_index_map);

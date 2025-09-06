@@ -14,8 +14,8 @@
 namespace duckdb {
 namespace bigquery {
 
-BigqueryDelete::BigqueryDelete(LogicalOperator &op, TableCatalogEntry &table, string query)
-    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
+BigqueryDelete::BigqueryDelete(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query)
+    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
 }
 
 unique_ptr<GlobalSinkState> BigqueryDelete::GetGlobalSinkState(ClientContext &context) const {

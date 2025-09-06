@@ -472,10 +472,8 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
                                                   vector<LogicalType> &return_types,
                                                   vector<LogicalType> &mapped_bq_types,
                                                   const ColumnList *source_columns) {
-    // Populate ArrowTableSchema (names and types) from the Arrow schema using the updated DuckDB API
     ArrowTableFunction::PopulateArrowTableSchema(DBConfig::GetConfig(context), arrow_table, schema_root.arrow_schema);
 
-    // Extract names and types from the populated ArrowTableSchema
     names = arrow_table.GetNames();
     return_types = arrow_table.GetTypes();
     if (return_types.empty()) {

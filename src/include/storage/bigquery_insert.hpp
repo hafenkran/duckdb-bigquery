@@ -11,9 +11,15 @@ namespace bigquery {
 class BigqueryInsert : public PhysicalOperator {
 public:
     //! INSERT INTO
-    BigqueryInsert(LogicalOperator &op, TableCatalogEntry &table, physical_index_vector_t<idx_t> column_index_map_p);
+    BigqueryInsert(PhysicalPlan &physical_plan,
+                   LogicalOperator &op,
+                   TableCatalogEntry &table,
+                   physical_index_vector_t<idx_t> column_index_map_p);
     //! CREATE TABLE AS
-    BigqueryInsert(LogicalOperator &op, SchemaCatalogEntry &schema, unique_ptr<BoundCreateTableInfo> info);
+    BigqueryInsert(PhysicalPlan &physical_plan,
+                   LogicalOperator &op,
+                   SchemaCatalogEntry &schema,
+                   unique_ptr<BoundCreateTableInfo> info);
 
     ~BigqueryInsert() override;
 
@@ -34,7 +40,9 @@ public:
     // Sink interface
     unique_ptr<GlobalSinkState> GetGlobalSinkState(ClientContext &context) const override;
     SinkResultType Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const override;
-    SinkFinalizeType Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
+    SinkFinalizeType Finalize(Pipeline &pipeline,
+                              Event &event,
+                              ClientContext &context,
                               OperatorSinkFinalizeInput &input) const override;
 
     bool IsSink() const override {

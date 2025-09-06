@@ -143,6 +143,10 @@ string BigqueryCatalog::GetDBPath() {
 
 void BigqueryCatalog::ClearCache() {
     schemas.ClearEntries();
+    {
+        lock_guard<mutex> lock(default_dataset_lock);
+        default_dataset.reset();
+    }
 }
 
 } // namespace bigquery

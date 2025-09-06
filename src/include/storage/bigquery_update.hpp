@@ -8,7 +8,7 @@ namespace bigquery {
 
 class BigqueryUpdate : public PhysicalOperator {
 public:
-    BigqueryUpdate(LogicalOperator &op, TableCatalogEntry &table, string query);
+    BigqueryUpdate(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query);
 
     // Table to do updates on
     TableCatalogEntry &table;

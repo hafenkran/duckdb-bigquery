@@ -14,7 +14,7 @@ public:
 
 class BigqueryDelete : public PhysicalOperator {
 public:
-    BigqueryDelete(LogicalOperator &op, TableCatalogEntry &table, string query);
+    BigqueryDelete(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query);
 
     TableCatalogEntry &table;
     string query;
