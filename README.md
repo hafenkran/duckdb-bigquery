@@ -1,8 +1,6 @@
 # DuckDB BigQuery Extension
 
-This extension allows [DuckDB](https://duckdb.org) to query data from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST API. It enables users to access, manage, and manipulate their BigQuery datasets/tables directly from DuckDB using standard SQL queries. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel.
-
-> **Disclaimer**: This is an independent, community-maintained open-source project, not affiliated with DuckDB Labs or Google LLC, or any of their subsidiaries. This extension is provided "as is" without any warranties or guarantees. Users are responsible for compliance and costs.
+This community extension allows [DuckDB](https://duckdb.org) to query data from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST API. It enables users to access, manage, and manipulate their BigQuery datasets/tables directly from DuckDB using standard SQL queries. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel. See [Important Notes](#important-notes-on-using-google-bigquery) for disclaimers and usage information.
 
 > This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `linux_amd64_musl`, `osx_arm64`, and `windows_amd64`.
 
@@ -312,6 +310,35 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Working with Geometries
+
+The BigQuery extension supports geospatial data with automatic conversion between DuckDB `GEOMETRY` and BigQuery [`GEOGRAPHY`](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#geography_type) types. By default, BigQuery `GEOGRAPHY` columns are read as `VARCHAR` (WKT format). With the [spatial extension](https://duckdb.org/docs/stable/core_extensions/spatial/overview.html) installed and loaded and the `bq_geography_as_geometry` setting enabled, they can be read as native DuckDB `GEOMETRY` types:
+
+```sql
+-- Load spatial extension and enable GEOMETRY support (BEFORE ATTACH)
+D INSTALL spatial; LOAD spatial;
+D SET bq_geography_as_geometry = true;
+D ATTACH 'project=my_gcp_project' AS bq (TYPE bigquery);
+
+-- Read GEOGRAPHY columns as native GEOMETRY
+D SELECT name, geography_column FROM bq.dataset.geo_table;
+┌──────────────┬────────────────────────────────────────┐
+│     name     │           geography_column             │
+│   varchar    │               geometry                 │
+├──────────────┼────────────────────────────────────────┤
+│ Location A   │ POINT(-122.4194 37.7749)              │
+│ Location B   │ POLYGON((-122.5 37.7, -122.3 37.8, ...)) │
+└──────────────┴────────────────────────────────────────┘
+
+-- Write GEOMETRY data - automatically converted to BigQuery GEOGRAPHY
+D INSERT INTO bq.dataset.geo_table VALUES 
+    ('New Point', ST_Point(-122.2, 37.8)),
+    ('Buffer Zone', ST_Buffer(ST_Point(-122.0, 37.9), 0.01));
+```
+
+> **⚠️ Spatial Extension Loading Order**: The spatial extension must be installed and loaded **before** setting `bq_geography_as_geometry=true` and **before** using `ATTACH`. Otherwise, the internal catalog will be configured for `VARCHAR` types and geometry conversion will not work properly.
+
+
 ### Additional Extension Settings
 
 | Setting                                   | Description                                                                                                                                                                                        | Default |
@@ -419,7 +446,7 @@ docker run \
 
 ## Important Notes on Using Google BigQuery
 
-> **⚠️ Disclaimer**: This is an independent, community-maintained open-source project and is not affiliated with, endorsed by, or officially supported by DuckDB Labs, Google LLC, or any of their subsidiaries. This extension is provided "as is" without any warranties or guarantees. "DuckDB" and "BigQuery" are trademarks of their respective owners. Users are solely responsible for compliance with applicable terms of service and any costs incurred through usage.
+> **⚠️ Disclaimer**: This is an independent, community-maintained open-source project and is not affiliated with, endorsed by, or officially supported by Google LLC, or any of their subsidiaries. This extension is provided "as is" without any warranties or guarantees. "DuckDB" and "BigQuery" are trademarks of their respective owners. Users are solely responsible for compliance with applicable terms of service and any costs incurred through usage.
 
 When using this software with Google BigQuery, please ensure your usage complies with the [Google API Terms of Service](https://developers.google.com/terms). Be mindful of the usage limits and quotas, and adhere to Google's Fair Use Policy.
 
