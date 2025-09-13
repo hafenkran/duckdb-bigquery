@@ -17,7 +17,7 @@ execute_process(
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
         # osx options
         -DOSX_BUILD_ARCH=${OSX_BUILD_ARCH}
-        -DCMAKE_OSX_ARCHITECTURES=${DCMAKE_OSX_ARCHITECTURES}
+        -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
         -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
         # vcpkg options
         -DVCPKG_MANIFEST_DIR=${VCPKG_MANIFEST_DIR}
@@ -27,6 +27,9 @@ execute_process(
         -DVCPKG_OVERLAY_TRIPLETS=${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains/
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        # Force static linking for cross-compilation
+        -DBUILD_SHARED_LIBS=OFF
+        -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
         -G ${CMAKE_GENERATOR}
         -S ${CMAKE_CURRENT_SOURCE_DIR}/external
         -B ${CMAKE_BINARY_DIR}/external
@@ -60,6 +63,7 @@ find_package(Arrow REQUIRED)
 find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 
+# Find Google Cloud C++ packages with better error handling
 find_package(google_cloud_cpp_common REQUIRED)
 find_package(google_cloud_cpp_rest_internal REQUIRED)
 find_package(google_cloud_cpp_grpc_utils REQUIRED)
@@ -86,20 +90,31 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 function(link_libraries_to_extension target_name)
     target_link_libraries(
         ${target_name}
-        OpenSSL::SSL
-        OpenSSL::Crypto
-        -lpthread
-        -ldl
-        CURL::libcurl
+        # Google Cloud C++ libraries (order matters!)
         google-cloud-cpp::common
-        google-cloud-cpp::rest_internal
         google-cloud-cpp::bigquery
         google-cloud-cpp::bigquerycontrol
         google-cloud-cpp::grpc_utils
+        google-cloud-cpp::rest_internal
+        # gRPC and protobuf
+        gRPC::grpc++
+        gRPC::grpc
+        protobuf::libprotobuf
+        # Abseil libraries (add more that might be needed)
         absl::base
         absl::memory
         absl::status
         absl::variant
+        absl::strings
+        absl::time
+        absl::synchronization
+        # System libraries
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        CURL::libcurl
+        -lpthread
+        -ldl
+        # Arrow
         "$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>"
     )
 endfunction()
