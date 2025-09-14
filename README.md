@@ -2,7 +2,7 @@
 
 This community extension allows [DuckDB](https://duckdb.org) to query data from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST API. It enables users to access, manage, and manipulate their BigQuery datasets/tables directly from DuckDB using standard SQL queries. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel. See [Important Notes](#important-notes-on-using-google-bigquery) for disclaimers and usage information.
 
-> This extension only supports the following builds: `linux_amd64`, `linux_amd64_gcc4`, `linux_amd64_musl`, `osx_arm64`, and `windows_amd64`.
+> This extension supports the following builds: `linux_amd64`, `linux_arm64`, `linux_amd64_musl`, `osx_amd64`, `osx_arm64`, and `windows_amd64`. The builds `wasm_mvp`, `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
 
 ## Preliminaries
 
@@ -200,13 +200,13 @@ While `bigquery_scan` offers high-speed data retrieval, it does not support read
 
 The `bigquery_scan` function supports the following named parameters:
 
-| Parameter               | Type      | Description                                                                      |
-| ----------------------- | --------- | -------------------------------------------------------------------------------- |
-| `filter`                | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API.  |
-| `use_legacy_scan`       | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default). |
-| `billing_project`       | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).             |
-| `api_endpoint`          | `VARCHAR` | Custom BigQuery API endpoint URL.                                                |
-| `grpc_endpoint`         | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                       |
+| Parameter         | Type      | Description                                                                      |
+| ----------------- | --------- | -------------------------------------------------------------------------------- |
+| `filter`          | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API.  |
+| `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default). |
+| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).             |
+| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                |
+| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                       |
 
 ### `bigquery_query` Function
 
@@ -345,7 +345,7 @@ D INSERT INTO bq.dataset.geo_table VALUES
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error. **Note: Only supported with legacy scan.**                                                                | `false` |
 | `bq_use_legacy_scan`                      | Use legacy scan implementation instead of optimized Arrow-based scan. Set to `true` for the old scan or `false` for the new optimized implementation.                                              | `false` |
-| `bq_geography_as_geometry`                | Return BigQuery `GEOGRAPHY` columns as DuckDB `GEOMETRY` types (requires spatial extension). When `false`, returns WKT strings as `VARCHAR`.                                                        | `false` |
+| `bq_geography_as_geometry`                | Return BigQuery `GEOGRAPHY` columns as DuckDB `GEOMETRY` types (requires spatial extension). When `false`, returns WKT strings as `VARCHAR`.                                                       | `false` |
 | `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
 | `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |
