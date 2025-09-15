@@ -41,4 +41,9 @@ ExternalProject_Add(
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF
                -DGOOGLE_CLOUD_CPP_WITH_MOCKS=OFF
                -DGOOGLE_CLOUD_CPP_ENABLE_CCACHE=ON
-               -DGOOGLE_CLOUD_CPP_ENABLE=bigquerycontrol,bigquery)
+               -DGOOGLE_CLOUD_CPP_ENABLE=bigquerycontrol,bigquery
+               # Ensure googleapis is built (contains google::rpc symbols)
+               -DGOOGLE_CLOUD_CPP_ENABLE_GOOGLEAPIS=ON
+               # Fix for macOS cross-compilation
+               -DBUILD_SHARED_LIBS=OFF
+               -DCMAKE_FIND_LIBRARY_SUFFIXES=".a")
