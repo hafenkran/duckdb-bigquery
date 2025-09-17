@@ -15,8 +15,8 @@ struct BigqueryUpdateGlobalState : public GlobalSinkState {
     idx_t updated_count;
 };
 
-BigqueryUpdate::BigqueryUpdate(LogicalOperator &op, TableCatalogEntry &table, string query)
-    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
+BigqueryUpdate::BigqueryUpdate(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query)
+    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
 }
 
 unique_ptr<GlobalSinkState> BigqueryUpdate::GetGlobalSinkState(ClientContext &context) const {
@@ -68,10 +68,10 @@ PhysicalOperator &BigqueryCatalog::PlanUpdate(ClientContext &context,
     if (op.return_chunk) {
         throw NotImplementedException("RETURNING clause not supported.");
     }
-	auto query = BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op, plan);
-	auto &update = planner.Make<BigqueryUpdate>(op, op.table, query);
-	update.children.push_back(plan);
-	return update;
+    auto query = BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op, plan);
+    auto &update = planner.Make<BigqueryUpdate>(op, op.table, query);
+    update.children.push_back(plan);
+    return update;
 }
 
 } // namespace bigquery

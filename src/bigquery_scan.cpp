@@ -488,11 +488,12 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
             throw BinderException("Arrow schema export failed: " + status.ToString());
         }
 
-        ArrowTableFunction::PopulateArrowTableType(DBConfig::GetConfig(context),
-                                                   bind_data->arrow_table,
-                                                   bind_data->schema_root,
-                                                   names,
-                                                   return_types);
+        // Populate names/types using updated DuckDB Arrow API
+        ArrowTableFunction::PopulateArrowTableSchema(DBConfig::GetConfig(context),
+                                                     bind_data->arrow_table,
+                                                     bind_data->schema_root.arrow_schema);
+        names = bind_data->arrow_table.GetNames();
+        return_types = bind_data->arrow_table.GetTypes();
 
         if (return_types.empty()) {
             throw BinderException("BigQuery query has no columns: " + query_string);

@@ -188,7 +188,7 @@ public:
     static std::shared_ptr<arrow::Schema> BuildArrowSchema(const ColumnList &cols);
 
     static void PopulateAndMapArrowTableTypes(ClientContext &context,
-                                              ArrowTableType &arrow_table,
+                                              ArrowTableSchema &arrow_table,
                                               ArrowSchemaWrapper &schema_root,
                                               vector<string> &names,
                                               vector<LogicalType> &return_types,
