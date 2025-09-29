@@ -14,17 +14,20 @@ struct BigQueryExecuteBindData : public TableFunctionData {
     BigqueryConfig config;
     shared_ptr<BigqueryClient> bq_client;
     string query;
+	bool dry_run = false;
     bool finished = false;
 };
 
-static void SetFromNamedParameters(const TableFunctionBindInput &input, string &api_endpoint, string &grpc_endpoint) {
+static void SetFromNamedParameters(const TableFunctionBindInput &input, string &api_endpoint, string &grpc_endpoint, bool &dry_run) {
     for (auto &kv : input.named_parameters) {
         auto loption = StringUtil::Lower(kv.first);
         if (loption == "api_endpoint") {
             api_endpoint = kv.second.GetValue<string>();
         } else if (loption == "grpc_endpoint") {
             grpc_endpoint = kv.second.GetValue<string>();
-        }
+        } else if (loption == "dry_run") {
+			dry_run = BooleanValue::Get(kv.second);
+		}
     }
 }
 
@@ -36,10 +39,12 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
     auto query_string = input.inputs[1].GetValue<string>();
 
     string api_endpoint, grpc_endpoint;
-    SetFromNamedParameters(input, api_endpoint, grpc_endpoint);
+	bool dry_run = false;
+    SetFromNamedParameters(input, api_endpoint, grpc_endpoint, dry_run);
 
     auto result = make_uniq<BigQueryExecuteBindData>();
     result->query = query_string;
+	result->dry_run = dry_run;
 
     auto &database_manager = DatabaseManager::Get(context);
     auto database = database_manager.GetDatabase(context, dbname_or_project_id);
@@ -69,20 +74,29 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
         result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
     }
 
-    return_types.emplace_back(LogicalTypeId::BOOLEAN);
-    names.emplace_back("success");
-    return_types.emplace_back(LogicalTypeId::VARCHAR);
-    names.emplace_back("job_id");
-    return_types.emplace_back(LogicalTypeId::VARCHAR);
-    names.emplace_back("project_id");
-    return_types.emplace_back(LogicalTypeId::VARCHAR);
-    names.emplace_back("location");
-    return_types.emplace_back(LogicalTypeId::UBIGINT);
-    names.emplace_back("total_rows");
-    return_types.emplace_back(LogicalTypeId::BIGINT);
-    names.emplace_back("total_bytes_processed");
-    return_types.emplace_back(LogicalTypeId::VARCHAR);
-    names.emplace_back("num_dml_affected_rows");
+	if (!dry_run) {
+		return_types.emplace_back(LogicalTypeId::BOOLEAN);
+		names.emplace_back("success");
+		return_types.emplace_back(LogicalTypeId::VARCHAR);
+		names.emplace_back("job_id");
+		return_types.emplace_back(LogicalTypeId::VARCHAR);
+		names.emplace_back("project_id");
+		return_types.emplace_back(LogicalTypeId::VARCHAR);
+		names.emplace_back("location");
+		return_types.emplace_back(LogicalTypeId::UBIGINT);
+		names.emplace_back("total_rows");
+		return_types.emplace_back(LogicalTypeId::BIGINT);
+		names.emplace_back("total_bytes_processed");
+		return_types.emplace_back(LogicalTypeId::VARCHAR);
+		names.emplace_back("num_dml_affected_rows");
+	} else {
+		return_types.emplace_back(LogicalTypeId::BIGINT);
+		names.emplace_back("total_bytes_processed");
+		return_types.emplace_back(LogicalTypeId::BOOLEAN);
+		names.emplace_back("cache_hit");
+		return_types.emplace_back(LogicalTypeId::VARCHAR);
+		names.emplace_back("location");
+	}
 
     return result;
 }
@@ -92,16 +106,22 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
     if (data.finished) {
         return;
     }
-    auto response = data.bq_client->ExecuteQuery(data.query);
-
+    auto response = data.bq_client->ExecuteQuery(data.query, "", data.dry_run);
     data.finished = true;
-    output.SetValue(0, 0, true);
-    output.SetValue(1, 0, response.job_reference().job_id());
-    output.SetValue(2, 0, response.job_reference().project_id());
-    output.SetValue(3, 0, response.job_reference().location().value());
-    output.SetValue(4, 0, Value::UBIGINT(response.total_rows().value()));
-    output.SetValue(5, 0, Value::BIGINT(response.total_bytes_processed().value()));
-    output.SetValue(6, 0, Value::BIGINT(response.num_dml_affected_rows().value()));
+
+	if (!data.dry_run) {
+		output.SetValue(0, 0, true);
+		output.SetValue(1, 0, response.job_reference().job_id());
+		output.SetValue(2, 0, response.job_reference().project_id());
+		output.SetValue(3, 0, response.job_reference().location().value());
+		output.SetValue(4, 0, Value::UBIGINT(response.total_rows().value()));
+		output.SetValue(5, 0, Value::BIGINT(response.total_bytes_processed().value()));
+		output.SetValue(6, 0, Value::BIGINT(response.num_dml_affected_rows().value()));
+	} else {
+		output.SetValue(0, 0, Value::BIGINT(response.total_bytes_processed().value()));
+		output.SetValue(1, 0, Value::BOOLEAN(response.cache_hit().value()));
+		output.SetValue(2, 0, response.job_reference().location().value());
+	}
     output.SetCardinality(1);
 }
 
@@ -113,6 +133,7 @@ BigQueryExecuteFunction::BigQueryExecuteFunction()
 
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
+	named_parameters["dry_run"] = LogicalType::BOOLEAN;
 }
 
 } // namespace bigquery
