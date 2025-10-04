@@ -7,6 +7,7 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_attach.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_clear_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_query.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_execute.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_extension.cpp

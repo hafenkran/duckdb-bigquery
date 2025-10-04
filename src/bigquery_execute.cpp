@@ -18,19 +18,6 @@ struct BigQueryExecuteBindData : public TableFunctionData {
     bool finished = false;
 };
 
-static void SetFromNamedParameters(const TableFunctionBindInput &input, string &api_endpoint, string &grpc_endpoint, bool &dry_run) {
-    for (auto &kv : input.named_parameters) {
-        auto loption = StringUtil::Lower(kv.first);
-        if (loption == "api_endpoint") {
-            api_endpoint = kv.second.GetValue<string>();
-        } else if (loption == "grpc_endpoint") {
-            grpc_endpoint = kv.second.GetValue<string>();
-        } else if (loption == "dry_run") {
-			dry_run = BooleanValue::Get(kv.second);
-		}
-    }
-}
-
 static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &context,
                                                             TableFunctionBindInput &input,
                                                             vector<LogicalType> &return_types,
@@ -38,13 +25,12 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
-    string api_endpoint, grpc_endpoint;
-	bool dry_run = false;
-    SetFromNamedParameters(input, api_endpoint, grpc_endpoint, dry_run);
+    // Parse named parameters using centralized function
+    auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
 
     auto result = make_uniq<BigQueryExecuteBindData>();
     result->query = query_string;
-	result->dry_run = dry_run;
+	result->dry_run = params.dry_run;
 
     auto &database_manager = DatabaseManager::Get(context);
     auto database = database_manager.GetDatabase(context, dbname_or_project_id);
@@ -54,7 +40,7 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
         if (catalog.GetCatalogType() != "bigquery") {
             throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
         }
-        if (!api_endpoint.empty() || !grpc_endpoint.empty()) {
+        if (!params.api_endpoint.empty() || !params.grpc_endpoint.empty()) {
             throw BinderException("Named parameters are not supported for attached databases");
         }
 
@@ -69,12 +55,12 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
     } else {
         // Use the provided project_id of the gcp project
         result->config = BigqueryConfig(dbname_or_project_id) //
-                             .SetApiEndpoint(api_endpoint)
-                             .SetGrpcEndpoint(grpc_endpoint);
+                             .SetApiEndpoint(params.api_endpoint)
+                             .SetGrpcEndpoint(params.grpc_endpoint);
         result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
     }
 
-	if (!dry_run) {
+	if (!params.dry_run) {
 		return_types.emplace_back(LogicalTypeId::BOOLEAN);
 		names.emplace_back("success");
 		return_types.emplace_back(LogicalTypeId::VARCHAR);

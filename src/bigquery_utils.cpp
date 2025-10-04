@@ -972,5 +972,35 @@ uint64_t Iso8601ToMillis(const string &iso8601) {
     return timestamp_ms;
 }
 
+BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
+    const named_parameter_map_t &named_parameters) {
+
+    BigQueryCommonParameters params;
+    for (auto &kv : named_parameters) {
+        auto loption = StringUtil::Lower(kv.first);
+
+        if (loption == "billing_project") {
+            params.billing_project = kv.second.GetValue<string>();
+        } else if (loption == "api_endpoint") {
+            params.api_endpoint = kv.second.GetValue<string>();
+        } else if (loption == "grpc_endpoint") {
+            params.grpc_endpoint = kv.second.GetValue<string>();
+        } else if (loption == "filter") {
+            params.filter = kv.second.GetValue<string>();
+        } else if (loption == "use_legacy_scan") {
+            params.use_legacy_scan = BooleanValue::Get(kv.second);
+        } else if (loption == "dry_run") {
+            params.dry_run = BooleanValue::Get(kv.second);
+        }
+        // otherwise, ignore
+    }
+
+    if (!named_parameters.count("use_legacy_scan") && !named_parameters.count("USE_LEGACY_SCAN")) {
+        params.use_legacy_scan = BigquerySettings::UseLegacyScan();
+    }
+    return params;
+}
+
+
 } // namespace bigquery
 } // namespace duckdb
