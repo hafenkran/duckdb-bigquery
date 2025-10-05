@@ -45,6 +45,11 @@ cities(name, id, country_code);
 statement ok
 CALL bigquery_execute('bq', 'CREATE VIEW ${BQ_TEST_DATASET}.test_cities_view AS SELECT * FROM ${BQ_TEST_DATASET}.test_cities');
 
+query III
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view;', dry_run=true);
+----
+0	false	<REGEX>:.+
+
 query I
 SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view');
 ----
