@@ -668,14 +668,6 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
         throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
     }
 
-	std::cout << "Query executed successfully." << std::endl;
-	std::cout << "Total bytes processed: " << response->total_bytes_processed().value() << std::endl;
-	std::cout << "Total bytes billed: " << response->total_bytes_billed() << std::endl;
-	std::cout << "Total rows: " << response->total_rows().value() << std::endl;
-	std::cout << "Cache hit: " << (response->cache_hit().value() ? "true" : "false") << std::endl;
-	// std::cout << "total_partitions_processed: " << response->total_partitions_processed().value() << std::endl
-	std::cout << "DebugString: " << response->DebugString() << std::endl;
-
     return *response;
 }
 
