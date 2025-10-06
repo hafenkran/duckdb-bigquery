@@ -484,16 +484,8 @@ jobs:
   macos:
     name: MacOS
     runs-on: macos-latest
-    needs:
-      - generate_matrix
-      - linux
-    if: |
-      always() &&
-      !cancelled() &&
-      needs.generate_matrix.outputs.osx_matrix != '{}' &&
-      needs.generate_matrix.outputs.osx_matrix != '' &&
-      needs.generate_matrix.result == 'success' &&
-      (needs.linux.result == 'success' || needs.linux.result == 'skipped')
+    needs: generate_matrix
+    if: ${{ needs.generate_matrix.outputs.osx_matrix != '{}' && needs.generate_matrix.outputs.osx_matrix != '' }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.osx_matrix)}}
     env:
@@ -721,16 +713,8 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-latest
-    needs:
-      - generate_matrix
-      - linux
-    if: |
-      always() &&
-      !cancelled() &&
-      needs.generate_matrix.outputs.windows_matrix != '{}' &&
-      needs.generate_matrix.outputs.windows_matrix != '' &&
-      needs.generate_matrix.result == 'success' &&
-      (needs.linux.result == 'success' || needs.linux.result == 'skipped')
+    needs: generate_matrix
+    if: ${{ needs.generate_matrix.outputs.windows_matrix != '{}' && needs.generate_matrix.outputs.windows_matrix != '' }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.windows_matrix)}}
     env:
@@ -989,16 +973,8 @@ jobs:
   wasm:
     name: DuckDB-Wasm
     runs-on: ubuntu-latest
-    needs:
-      - generate_matrix
-      - linux
-    if: |
-      always() &&
-      !cancelled() &&
-      needs.generate_matrix.outputs.wasm_matrix != '{}' &&
-      needs.generate_matrix.outputs.wasm_matrix != '' &&
-      needs.generate_matrix.result == 'success' &&
-      (needs.linux.result == 'success' || needs.linux.result == 'skipped')
+    needs: generate_matrix
+    if: ${{ needs.generate_matrix.outputs.wasm_matrix != '{}' && needs.generate_matrix.outputs.wasm_matrix != '' }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.wasm_matrix)}}
     env:
