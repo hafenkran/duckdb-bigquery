@@ -33,6 +33,9 @@
 #include "google/cloud/idempotency.h"
 #include "google/cloud/internal/curl_options.h"
 
+#include "duckdb/main/secret/secret_manager.hpp"
+#include "duckdb/catalog/catalog_transaction.hpp"
+
 #include "arrow/api.h"
 #include "arrow/io/api.h"
 #include "arrow/ipc/api.h"
@@ -93,10 +96,16 @@ public:
     }
 };
 
-BigqueryClient::BigqueryClient(const BigqueryConfig &config) : config(config) {
+BigqueryClient::BigqueryClient(const BigqueryConfig &config, optional_ptr<ClientContext> context_p)
+    : config(config), context(context_p) {
     if (config.project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
     }
+    
+    // NOTE: We cannot check for DuckDB secrets here because we may be inside an active
+    // transaction (e.g., during ATTACH), and calling GetSystemCatalogTransaction would
+    // cause a deadlock. Credential checking is deferred to OptionsAPI() where it's
+    // needed for the actual API calls.
 }
 
 google::cloud::Options BigqueryClient::OptionsAPI() {
@@ -107,9 +116,28 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     auto ca_path = BigquerySettings::CurlCaBundlePath();
     if (!ca_path.empty()) {
         options.set<google::cloud::v2_38::CARootsFilePathOption>(ca_path);
-        options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
-            google::cloud::MakeGoogleDefaultCredentials(options));
     }
+
+    // Try to get credentials from DuckDB secret first
+    bool has_credentials = GetCredentialsFromSecret(options);
+
+    // If no credentials from secret, we MUST set credentials to avoid the library
+    // auto-discovering them (which can hang trying to contact metadata server)
+    if (!has_credentials) {
+        // Only call MakeGoogleDefaultCredentials if we have clear indicators credentials exist
+        const char* creds_env = std::getenv("GOOGLE_APPLICATION_CREDENTIALS");
+        
+        if ((creds_env != nullptr && strlen(creds_env) > 0)) {
+            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
+                google::cloud::MakeGoogleDefaultCredentials(options));
+        } else {
+            // No credentials found - set insecure credentials to force a fast auth failure
+            // rather than hanging while trying to discover credentials
+            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
+                google::cloud::MakeInsecureCredentials());
+        }
+    }
+
     return options;
 }
 
@@ -142,6 +170,19 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
             if (CheckSSLError(dataset.status())) {
                 return GetDatasets();
             }
+            
+            // Check if this is an authentication/authorization error
+            if (dataset.status().code() == google::cloud::StatusCode::kUnauthenticated ||
+                dataset.status().code() == google::cloud::StatusCode::kPermissionDenied) {
+                throw InvalidInputException(
+                    "BigQuery authentication failed: " + dataset.status().message() + "\n\n" +
+                    "Please provide credentials using one of:\n" +
+                    "1. CREATE SECRET (TYPE bigquery, ...)\n" +
+                    "2. Set GOOGLE_APPLICATION_CREDENTIALS environment variable\n" +
+                    "3. Run 'gcloud auth application-default login'"
+                );
+            }
+            
             throw BinderException(dataset.status().message());
         }
 
@@ -192,29 +233,50 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
 }
 
 BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
-    auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::DatasetServiceClient>(
-        google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(OptionsAPI()));
+    try {
+        auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::DatasetServiceClient>(
+            google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(OptionsAPI()));
 
-    auto request = google::cloud::bigquery::v2::GetDatasetRequest();
-    request.set_project_id(config.project_id);
-    request.set_dataset_id(dataset_id);
+        auto request = google::cloud::bigquery::v2::GetDatasetRequest();
+        request.set_project_id(config.project_id);
+        request.set_dataset_id(dataset_id);
 
-    auto response = client->GetDataset(request);
-    if (!response.ok()) {
-        if (CheckSSLError(response.status())) {
-            return GetDataset(dataset_id);
+        auto response = client->GetDataset(request);
+        if (!response.ok()) {
+            if (CheckSSLError(response.status())) {
+                return GetDataset(dataset_id);
+            }
+            
+            // Check if this is an authentication/authorization error
+            if (response.status().code() == google::cloud::StatusCode::kUnauthenticated ||
+                response.status().code() == google::cloud::StatusCode::kPermissionDenied) {
+                throw InvalidInputException(
+                    "BigQuery authentication failed: " + response.status().message() + "\n\n" +
+                    "Please provide credentials using one of:\n" +
+                    "1. CREATE SECRET (TYPE bigquery, ...)\n" +
+                    "2. Set GOOGLE_APPLICATION_CREDENTIALS environment variable\n" +
+                    "3. Run 'gcloud auth application-default login'"
+                );
+            }
+            
+            throw InternalException(response.status().message());
         }
-        throw InternalException(response.status().message());
+
+        const auto& dataset = response.value();
+        const auto &dataset_ref = dataset.dataset_reference();
+
+        BigqueryDatasetRef info;
+        info.project_id = dataset_ref.project_id();
+        info.dataset_id = dataset_ref.dataset_id();
+        info.location = dataset.location();
+        return info;
+    } catch (const InvalidInputException &) {
+        // Re-throw authentication errors as-is
+        throw;
+    } catch (const std::exception &e) {
+        // Catch any other exceptions from the Google Cloud library
+        throw InternalException(e.what());
     }
-
-    auto dataset = response.value();
-    const auto &dataset_ref = dataset.dataset_reference();
-
-    BigqueryDatasetRef info;
-    info.project_id = dataset_ref.project_id();
-    info.dataset_id = dataset_ref.dataset_id();
-    info.location = dataset.location();
-    return info;
 }
 
 vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(const ListJobsParams &params) {
@@ -372,7 +434,7 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
         throw InternalException(response.status().message());
     }
 
-    auto table = response.value();
+    const auto& table = response.value();
     const auto &table_ref = table.table_reference();
 
     BigqueryTableRef info;
@@ -494,7 +556,7 @@ void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> 
         google::protobuf::RepeatedPtrField<::google::protobuf::Struct> all_rows = query_response.rows();
 
         string page_token = query_response.page_token();
-        auto job_ref = query_response.job_reference();
+        const auto& job_ref = query_response.job_reference();
         while (!page_token.empty()) {
             auto next_page_response = GetQueryResults(job_ref, page_token);
             const auto &next_rows = next_page_response.rows();
@@ -576,7 +638,7 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
         throw InternalException(response.status().message());
     }
 
-    auto table = response.value();
+    const auto& table = response.value();
     MapTableSchema(table.schema(), res_columns, res_constraints);
 }
 
@@ -587,7 +649,7 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
-    auto schema = query_response.schema();
+    const auto& schema = query_response.schema();
     MapTableSchema(schema, res_columns, res_constraints);
 }
 
@@ -862,6 +924,61 @@ void BigqueryClient::MapInformationSchemaRows(
     }
 }
 
+bool BigqueryClient::GetCredentialsFromSecret(google::cloud::Options &options) {
+    if (!context) {
+        return false;
+    }
+
+    auto &secret_manager = SecretManager::Get(*context);
+    
+    // Try to get the active transaction, or create a system transaction if needed
+    CatalogTransaction transaction = CatalogTransaction::GetSystemCatalogTransaction(*context);
+
+    // Look up secret with scope matching the project
+    string lookup_path = "bigquery://" + config.project_id;
+    auto secret_match = secret_manager.LookupSecret(transaction, lookup_path, "bigquery");
+
+    if (!secret_match.HasMatch()) {
+        // No secret found, return without setting credentials
+        return false;
+    }
+
+    const auto &kv_secret = dynamic_cast<const KeyValueSecret &>(*secret_match.secret_entry->secret);
+
+    // Check if this is a service_account provider (has 'json' key)
+    Value json_value;
+    if (kv_secret.TryGetValue("json", json_value)) {
+        string json_content = json_value.ToString();
+
+        // Create credentials from service account JSON content
+        auto credentials = google::cloud::MakeServiceAccountCredentials(json_content);
+        options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+        return true;
+    }
+
+    // Check if this is a config provider (has individual keys)
+    Value key_id_value, secret_value;
+    if (kv_secret.TryGetValue("key_id", key_id_value) && kv_secret.TryGetValue("secret", secret_value)) {
+        // Build service account JSON from components
+        string key_id = key_id_value.ToString();
+        string private_key = secret_value.ToString();
+
+        // Create minimal service account JSON
+        string json_content = R"({
+            "type": "service_account",
+            "client_email": ")" +
+                              key_id + R"(",
+            "private_key": ")" +
+                              private_key + R"("
+        })";
+
+        auto credentials = google::cloud::MakeServiceAccountCredentials(json_content);
+        options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+        return true;
+    }
+    
+    return false;
+}
 
 } // namespace bigquery
 } // namespace duckdb

@@ -247,7 +247,7 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
 	} else {
 		// Use the provided project_id of the gcp project
 		auto bq_config = BigqueryConfig(dbname_or_project_id).SetApiEndpoint(api_endpoint);
-		auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+		auto bq_client = make_shared_ptr<BigqueryClient>(bq_config, &context);
 		bind_data = make_uniq<ListJobsBindData>(bq_client, params);
 	}
 

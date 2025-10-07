@@ -38,7 +38,7 @@ struct ListJobsParams {
 
 class BigqueryClient {
 public:
-    explicit BigqueryClient(const BigqueryConfig &config);
+    explicit BigqueryClient(const BigqueryConfig &config, optional_ptr<ClientContext> context = nullptr);
     ~BigqueryClient() {};
 
 public:
@@ -142,8 +142,11 @@ private:
     }
 
 private:
+    bool GetCredentialsFromSecret(google::cloud::Options &options);
+
     BigqueryConfig config;
     bool uses_custom_ca_bundle_path = false;
+    optional_ptr<ClientContext> context;
 };
 
 } // namespace bigquery

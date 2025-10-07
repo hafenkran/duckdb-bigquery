@@ -10,6 +10,8 @@ require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
+require-env GOOGLE_APPLICATION_CREDENTIALS
+
 statement ok
 SET bq_experimental_enable_bigquery_options=TRUE
 

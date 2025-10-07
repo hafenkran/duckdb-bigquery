@@ -50,7 +50,7 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
         return;
     }
 
-    auto client = BigqueryClient(BigqueryConfig(data.project_id));
+    auto client = BigqueryClient(BigqueryConfig(data.project_id), &context);
     auto dconn = Connection(context.db->GetDatabase(context));
     {
         auto tables_ref = client.GetTables(data.dataset_id);

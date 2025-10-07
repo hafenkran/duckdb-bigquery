@@ -11,6 +11,7 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_execute.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_extension.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_secret.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_storage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_sql.cpp

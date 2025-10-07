@@ -10,6 +10,8 @@ require-env BQ_TEST_BILLING_PROJECT
 
 require-env BQ_TEST_DATASET
 
+require-env GOOGLE_APPLICATION_CREDENTIALS
+
 statement ok
 SET bq_debug_show_queries = true;
 

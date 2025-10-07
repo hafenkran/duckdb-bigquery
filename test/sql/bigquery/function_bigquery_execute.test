@@ -8,6 +8,8 @@ require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
+require-env GOOGLE_APPLICATION_CREDENTIALS
+
 statement ok
 SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table`')
 

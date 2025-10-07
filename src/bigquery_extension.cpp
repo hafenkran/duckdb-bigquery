@@ -18,6 +18,7 @@
 #include "bigquery_jobs.hpp"
 #include "bigquery_parser.hpp"
 #include "bigquery_scan.hpp"
+#include "bigquery_secret.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
 #include "bigquery_geometry_cast.hpp"
@@ -28,6 +29,19 @@
 namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
+
+    // Register BigQuery secret types and providers
+    auto &secret_manager = SecretManager::Get(loader.GetDatabaseInstance());
+
+    auto secret_types = bigquery::BigQuerySecretFunctions::GetSecretTypes();
+    for (auto &secret_type : secret_types) {
+        secret_manager.RegisterSecretType(secret_type);
+    }
+
+    auto secret_functions = bigquery::BigQuerySecretFunctions::GetSecretFunctions();
+    for (auto &secret_function : secret_functions) {
+        secret_manager.RegisterSecretFunction(secret_function, OnCreateConflict::ERROR_ON_CONFLICT);
+    }
 
     bigquery::BigqueryAttachFunction bigquery_attach_function;
     loader.RegisterFunction(bigquery_attach_function);

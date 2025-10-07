@@ -16,9 +16,52 @@ After installation, run the following command to authenticate and follow the ste
 gcloud auth application-default login
 ```
 
-### Authentication Option 2: Configure Service account keys
+### Authentication Option 2: DuckDB Secrets (Recommended)
 
-Alternatively, you can authenticate using a service account. First, create a service account in the Google Cloud Console, assign the necessary roles, and download the JSON key file. Next, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the file path. For example:
+You can store your BigQuery credentials securely using DuckDB's built-in secrets management system. This eliminates the need to manage environment variables and provides better security through encrypted storage.
+
+**Using Service Account JSON:**
+
+```sql
+-- Store service account credentials as a persistent secret
+CREATE SECRET my_bigquery_secret (
+    TYPE bigquery,
+    PROVIDER service_account,
+    SCOPE 'bigquery://my-project-id',
+    json '{ "type": "service_account", "project_id": "....", "private_key_id": "...." }'
+);
+
+-- Now use BigQuery normally - credentials are automatically used
+ATTACH 'project=my-project-id' AS bq (TYPE bigquery);
+```
+
+**Using Individual Credentials:**
+
+```sql
+-- Store individual credential components
+CREATE SECRET my_bigquery_secret (
+    TYPE bigquery,
+    PROVIDER config,
+    SCOPE 'bigquery://my-project-id',
+    project_id 'my-project-id',
+    key_id 'my-service-account@my-project.iam.gserviceaccount.com',
+    secret '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n'
+);
+```
+
+**Benefits of DuckDB Secrets:**
+
+- No environment variable management required
+- Credentials stored encrypted in DuckDB
+- Project-specific secrets with scope matching
+- Persistent across sessions
+- Seamless integration with all BigQuery functions
+
+For more details on using secrets, see the [Authentication with Secrets](#authentication-with-secrets) section below.
+
+### Authentication Option 3: Service Account Environment Variable
+
+Alternatively, you can authenticate using a service account JSON file with an environment variable. First, create a service account in the Google Cloud Console, assign the necessary roles, and download the JSON key file. Next, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the file path. For example:
 
 ```bash
 # On Linux or macOS
@@ -132,7 +175,7 @@ CREATE SCHEMA bq.some_dataset;
 -- Create a BigQuery table in some dataset
 CREATE TABLE bq.some_dataset.tbl(id INTEGER, some_string VARCHAR);
 
--- Insert values into the table 
+-- Insert values into the table
 INSERT INTO bq.some_dataset.tbl VALUES (42, "my quacking string");
 
 -- Retrieves rows from the table
@@ -194,7 +237,7 @@ D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl', filter
 └───────┴────────────────┴──────────────────────────┘
 ```
 
-The filter syntax follows the same rules as the `row_restriction` field in BigQuery's Storage Read API.                                          |
+The filter syntax follows the same rules as the `row_restriction` field in BigQuery's Storage Read API. |
 
 While `bigquery_scan` offers high-speed data retrieval, it does not support reading from views or external tables due to limitations of the Storage Read API. For those cases, consider using the `bigquery_query` function, which allows more complex querying capabilities.
 
@@ -239,13 +282,13 @@ D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.
 
 The `bigquery_query` function supports the following named parameters:
 
-| Parameter         | Type      | Description                                                                                                        |
-| ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default).                                   |
+| Parameter         | Type      | Description                                                                                                                    |
+| ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default).                                               |
 | `dry_run`         | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                               |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
+| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                                           |
+| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                              |
+| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                                     |
 
 ### `bigquery_execute` Function
 
@@ -283,11 +326,11 @@ D CALL bigquery_execute('my_gcp_project', 'SELECT * FROM `my_gcp_project.quackin
 
 The `bigquery_execute` function supports the following named parameters:
 
-| Parameter       | Type      | Description                                                                                                        |
-| --------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| Parameter       | Type      | Description                                                                                                                    |
+| --------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `dry_run`       | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
-| `api_endpoint`  | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
-| `grpc_endpoint` | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
+| `api_endpoint`  | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                              |
+| `grpc_endpoint` | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                                     |
 
 ### `bigquery_jobs` Function
 
@@ -371,13 +414,12 @@ D SELECT name, geography_column FROM bq.dataset.geo_table;
 └──────────────┴──────────────────────────────────────────┘
 
 -- Write GEOMETRY data - automatically converted to BigQuery GEOGRAPHY
-D INSERT INTO bq.dataset.geo_table VALUES 
+D INSERT INTO bq.dataset.geo_table VALUES
     ('New Point', ST_Point(-122.2, 37.8)),
     ('Buffer Zone', ST_Buffer(ST_Point(-122.0, 37.9), 0.01));
 ```
 
 > **⚠️ Spatial Extension Loading Order**: The spatial extension must be installed and loaded **before** setting `bq_geography_as_geometry=true` and **before** using `ATTACH`. Otherwise, the internal catalog will be configured for `VARCHAR` types and geometry conversion will not work properly.
-
 
 ### Additional Extension Settings
 
@@ -399,13 +441,13 @@ D INSERT INTO bq.dataset.geo_table VALUES
 
 There are some limitations that arise from the combination of DuckDB and BigQuery. These include:
 
-* **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported. To mitigate these limitations, you can use the `bigquery_query` function to execute the query directly in BigQuery.
+- **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported. To mitigate these limitations, you can use the `bigquery_query` function to execute the query directly in BigQuery.
 
-* **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
+- **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 
-* **BIGNUMERIC Type Support**: The `bq_bignumeric_as_varchar` setting is only supported with the legacy scan implementation. If you need to read BIGNUMERIC columns as VARCHAR, ensure you use `use_legacy_scan=true` in scan functions or set `bq_use_legacy_scan=true` globally. The optimized Arrow-based scan does not currently support this conversion.
+- **BIGNUMERIC Type Support**: The `bq_bignumeric_as_varchar` setting is only supported with the legacy scan implementation. If you need to read BIGNUMERIC columns as VARCHAR, ensure you use `use_legacy_scan=true` in scan functions or set `bq_use_legacy_scan=true` globally. The optimized Arrow-based scan does not currently support this conversion.
 
-* **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
+- **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
 
 ## Install Latest Updates from Custom Repository
 
@@ -483,6 +525,71 @@ docker run \
     -e GOOGLE_APPLICATION_CREDENTIALS=/creds/service-account-credentials.json \
     duckdb-bigquery:v1.4.0
 ```
+
+## Testing
+
+The extension includes two test suites designed for different testing scenarios:
+
+### Testing Against Real BigQuery
+
+The `test/sql/bigquery/` directory contains tests that run against a real Google BigQuery project. These tests verify the extension's behavior with the actual BigQuery API.
+
+**Prerequisites:**
+
+- A Google Cloud project with BigQuery enabled
+- Valid service account credentials or Application Default Credentials
+- A test dataset in your project
+
+**Running BigQuery Tests:**
+
+```bash
+# Run all BigQuery tests
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json \
+BQ_TEST_PROJECT=your-project-id \
+BQ_TEST_DATASET=your-dataset \
+./build/release/test/unittest 'test/sql/bigquery/*.test'
+
+# Run a specific test
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json \
+BQ_TEST_PROJECT=your-project-id \
+BQ_TEST_DATASET=your-dataset \
+./build/release/test/unittest 'test/sql/bigquery/attach_default.test'
+```
+
+**Environment Variables:**
+
+- `GOOGLE_APPLICATION_CREDENTIALS`: Path to your service account JSON file
+- `BQ_TEST_PROJECT`: Your Google Cloud project ID
+- `BQ_TEST_DATASET`: A test dataset in your project (will be used for read/write operations)
+- `BQ_SERVICE_ACCOUNT_JSON`: Full JSON content for secret authentication tests
+
+### Testing Against BigQuery Emulator
+
+The `test/sql/local/` directory contains tests that run against the [BigQuery Emulator](https://github.com/goccy/bigquery-emulator), a local BigQuery-compatible server. These tests are ideal for CI/CD pipelines and development without incurring BigQuery costs.
+
+```bash
+# Start the emulator
+./bigquery-emulator --project=test --dataset=dataset1
+```
+
+**Running Emulator Tests:**
+
+```bash
+BQ_API_ENDPOINT=0.0.0.0:9050 \
+BQ_GRPC_ENDPOINT=0.0.0.0:9060 \
+./build/release/test/unittest 'test/sql/local/*.test'
+
+# Run a specific local test
+BQ_API_ENDPOINT=0.0.0.0:9050 \
+BQ_GRPC_ENDPOINT=0.0.0.0:9060 \
+./build/release/test/unittest 'test/sql/local/attach_insert_table.test'
+```
+
+**Limitations:**
+
+- The emulator may not support all BigQuery features
+- Some advanced SQL functions might behave differently
+- Performance characteristics will differ from production BigQuery
 
 ## Important Notes on Using Google BigQuery
 

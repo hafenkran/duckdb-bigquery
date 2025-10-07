@@ -47,7 +47,7 @@ unique_ptr<FunctionData> BigqueryArrowScanFunction::BigqueryArrowScanBind(Client
                                .SetBillingProjectId(params.billing_project)
                                .SetApiEndpoint(params.api_endpoint)
                                .SetGrpcEndpoint(params.grpc_endpoint);
-    bind_data->bq_client = make_shared_ptr<BigqueryClient>(bind_data->bq_config);
+    bind_data->bq_client = make_shared_ptr<BigqueryClient>(bind_data->bq_config, &context);
 
     ColumnList columns;
     vector<unique_ptr<Constraint>> constraints;

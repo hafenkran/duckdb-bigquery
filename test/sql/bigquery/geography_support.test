@@ -8,6 +8,8 @@ require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
+require-env GOOGLE_APPLICATION_CREDENTIALS
+
 # Create a simple table with GEOGRAPHY columns using bigquery_execute
 statement ok
 FROM bigquery_execute('${BQ_TEST_PROJECT}', '

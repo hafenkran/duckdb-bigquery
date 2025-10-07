@@ -10,6 +10,8 @@ require-env BQ_TEST_BILLING_PROJECT
 
 require-env BQ_TEST_DATASET
 
+require-env GOOGLE_APPLICATION_CREDENTIALS
+
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET} billing_project=${BQ_TEST_BILLING_PROJECT}' AS bq (TYPE bigquery);
 
