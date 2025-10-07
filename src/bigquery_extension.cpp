@@ -21,6 +21,7 @@
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
 #include "bigquery_geometry_cast.hpp"
+#include "bigquery_query.hpp"
 
 #include <iostream>
 

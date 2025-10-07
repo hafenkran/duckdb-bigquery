@@ -16,6 +16,11 @@ SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `$
 ----
 1	<REGEX>:job_.+	<REGEX>:.+	<REGEX>:.+	0	0	0
 
+query III
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table`', dry_run=true)
+----
+0	false	<REGEX>:.+
+
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 

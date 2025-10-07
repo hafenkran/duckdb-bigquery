@@ -39,6 +39,8 @@
 #include "arrow/ipc/writer.h"
 #include "grpcpp/grpcpp.h"
 
+#include <iostream>
+
 
 namespace duckdb {
 namespace bigquery {

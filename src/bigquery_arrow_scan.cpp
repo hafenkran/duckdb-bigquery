@@ -20,25 +20,6 @@
 namespace duckdb {
 namespace bigquery {
 
-static void SetFromNamedParameters(const TableFunctionBindInput &input,
-                                   string &billing_project_id,
-                                   string &api_endpoint,
-                                   string &grpc_endpoint,
-                                   string &filter_condition) {
-    for (auto &kv : input.named_parameters) {
-        auto loption = StringUtil::Lower(kv.first);
-        if (loption == "billing_project") {
-            billing_project_id = kv.second.GetValue<string>();
-        } else if (loption == "api_endpoint") {
-            api_endpoint = kv.second.GetValue<string>();
-        } else if (loption == "grpc_endpoint") {
-            grpc_endpoint = kv.second.GetValue<string>();
-        } else if (loption == "filter") {
-            filter_condition = kv.second.GetValue<string>();
-        }
-    }
-}
-
 unique_ptr<FunctionData> BigqueryArrowScanFunction::BigqueryArrowScanBind(ClientContext &context,
                                                                           TableFunctionBindInput &input,
                                                                           vector<LogicalType> &return_types,
@@ -54,19 +35,18 @@ unique_ptr<FunctionData> BigqueryArrowScanFunction::BigqueryArrowScanBind(Client
         throw BinderException("Invalid table string: %s", table_string);
     }
 
-    // Parse named parameters
-    string billing_project_id, api_endpoint, grpc_endpoint, filter_condition;
-    SetFromNamedParameters(input, billing_project_id, api_endpoint, grpc_endpoint, filter_condition);
+    // Parse named parameters using centralized function
+    auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
 
     // Initialize bind data
     auto bind_data = make_uniq<BigqueryArrowScanBindData>();
     bind_data->table_ref = table_ref;
-    bind_data->filter_condition = filter_condition;
+    bind_data->filter_condition = params.filter;
     bind_data->bq_config = BigqueryConfig(table_ref.project_id)
                                .SetDatasetId(table_ref.dataset_id)
-                               .SetBillingProjectId(billing_project_id)
-                               .SetApiEndpoint(api_endpoint)
-                               .SetGrpcEndpoint(grpc_endpoint);
+                               .SetBillingProjectId(params.billing_project)
+                               .SetApiEndpoint(params.api_endpoint)
+                               .SetGrpcEndpoint(params.grpc_endpoint);
     bind_data->bq_client = make_shared_ptr<BigqueryClient>(bind_data->bq_config);
 
     ColumnList columns;

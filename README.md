@@ -214,18 +214,38 @@ The `bigquery_query` function allows you to run custom [GoogleSQL](https://cloud
 
 ```sql
 D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`');
+┌───────┬────────────────┐
+│   i   │       s        │
+│ int32 │    varchar     │
+├───────┼────────────────┤
+│    12 │ quack 🦆       │
+│    13 │ quack quack 🦆 │
+└───────┴────────────────┘
 ```
 
 > **Note**: If your goal is straightforward table reads, `bigquery_scan` is often more efficient, as it bypasses the SQL layer for direct data access. However, `bigquery_query` is ideal when you need to execute custom SQL that requires the full querying capabilities of BigQuery expressed in GoogleSQL. In this case, BigQuery transparently creates an anonymous temporary result table, which is fetched using the selected scan engine.
 
+The `dry_run` parameter allows you to validate a query without executing it. This is useful for estimating query costs and checking syntax before running expensive queries:
+
+```sql
+D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`', dry_run=true);
+┌───────────────────────┬───────────┬──────────┐
+│ total_bytes_processed │ cache_hit │ location │
+│        int64          │  boolean  │ varchar  │
+├───────────────────────┼───────────┼──────────┤
+│                    54 │ false     │ US       │
+└───────────────────────┴───────────┴──────────┘
+```
+
 The `bigquery_query` function supports the following named parameters:
 
-| Parameter         | Type      | Description                                                          |
-| ----------------- | --------- | -------------------------------------------------------------------- |
-| `engine`          | `VARCHAR` | Scan engine to use: `'v1'` (legacy) or `'v2'` (optimized, default).  |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets). |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                    |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                           |
+| Parameter         | Type      | Description                                                                                                        |
+| ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default).                                   |
+| `dry_run`         | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
+| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                               |
+| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
+| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
 
 ### `bigquery_execute` Function
 
@@ -248,6 +268,26 @@ D CALL bigquery_execute('bq', '
 │ true    │ job_-Xu_D2wxe2Xjh-ArZNwZ6gut5ggi │ my_gcp_project  │ US       │          0 │                     0 │ 0                     │
 └─────────┴──────────────────────────────────┴─────────────────┴──────────┴────────────┴───────────────────────┴───────────────────────┘
 ```
+
+Similar to `bigquery_query`, the `dry_run` parameter allows you to validate queries without executing them:
+
+```sql
+D CALL bigquery_execute('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`', dry_run=true);
+┌───────────────────────┬───────────┬──────────┐
+│ total_bytes_processed │ cache_hit │ location │
+│        int64          │  boolean  │ varchar  │
+├───────────────────────┼───────────┼──────────┤
+│                    54 │ false     │ US       │
+└───────────────────────┴───────────┴──────────┘
+```
+
+The `bigquery_execute` function supports the following named parameters:
+
+| Parameter       | Type      | Description                                                                                                        |
+| --------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| `dry_run`       | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
+| `api_endpoint`  | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
+| `grpc_endpoint` | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
 
 ### `bigquery_jobs` Function
 
@@ -322,13 +362,13 @@ D ATTACH 'project=my_gcp_project' AS bq (TYPE bigquery);
 
 -- Read GEOGRAPHY columns as native GEOMETRY
 D SELECT name, geography_column FROM bq.dataset.geo_table;
-┌──────────────┬────────────────────────────────────────┐
-│     name     │           geography_column             │
-│   varchar    │               geometry                 │
-├──────────────┼────────────────────────────────────────┤
-│ Location A   │ POINT(-122.4194 37.7749)              │
+┌──────────────┬──────────────────────────────────────────┐
+│     name     │            geography_column              │
+│   varchar    │                geometry                  │
+├──────────────┼──────────────────────────────────────────┤
+│ Location A   │ POINT(-122.4194 37.7749)                 │
 │ Location B   │ POLYGON((-122.5 37.7, -122.3 37.8, ...)) │
-└──────────────┴────────────────────────────────────────┘
+└──────────────┴──────────────────────────────────────────┘
 
 -- Write GEOMETRY data - automatically converted to BigQuery GEOGRAPHY
 D INSERT INTO bq.dataset.geo_table VALUES 

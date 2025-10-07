@@ -152,6 +152,8 @@ struct BigqueryType {
     vector<BigqueryType> children;
 };
 
+
+
 struct BigqueryUtils {
 public:
     // static ConnectionDetails ParseConnectionString(const string &connection_string);
@@ -225,6 +227,18 @@ inline std::vector<column_t> CalculateRanks(const std::vector<column_t> &nums) {
     }
     return ranks;
 }
+
+struct BigQueryCommonParameters {
+    string billing_project;
+    string api_endpoint;
+    string grpc_endpoint;
+    string filter;
+    bool use_legacy_scan = false;
+    bool dry_run = false;
+
+    //! Parse common parameters from named_parameters map
+    static BigQueryCommonParameters ParseFromNamedParameters(const named_parameter_map_t &named_parameters);
+};
 
 template <typename FUNC>
 bool RetryOperation(FUNC op, int max_attempts, int initial_delay_mss) {
