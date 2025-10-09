@@ -5,6 +5,8 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/main/secret/secret.hpp"
+#include "duckdb/main/secret/secret_manager.hpp"
 
 // OpenSSL linked through vcpkg
 #include <openssl/opensslv.h>
@@ -15,13 +17,14 @@
 #include "bigquery_client.hpp"
 #include "bigquery_execute.hpp"
 #include "bigquery_extension.hpp"
+#include "bigquery_geometry_cast.hpp"
 #include "bigquery_jobs.hpp"
 #include "bigquery_parser.hpp"
+#include "bigquery_query.hpp"
 #include "bigquery_scan.hpp"
+#include "bigquery_secrets.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
-#include "bigquery_geometry_cast.hpp"
-#include "bigquery_query.hpp"
 
 #include <iostream>
 
@@ -52,6 +55,8 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
+
+	bigquery::RegisterBigquerySecretType(loader.GetDatabaseInstance());
 
     // Register WKT->GEOMETRY cast (runtime lookup of spatial extension's ST_GeomFromText)
     bigquery::RegisterWKTGeometryCast(loader.GetDatabaseInstance());
@@ -145,14 +150,14 @@ void BigqueryExtension::Load(ExtensionLoader &loader) {
 }
 
 std::string BigqueryExtension::Name() {
-	return "bigquery";
+    return "bigquery";
 }
 
 std::string BigqueryExtension::Version() const {
 #ifdef EXT_VERSION_BIGQUERY
-	return EXT_VERSION_BIGQUERY;
+    return EXT_VERSION_BIGQUERY;
 #else
-	return "";
+    return "";
 #endif
 }
 
@@ -161,7 +166,6 @@ std::string BigqueryExtension::Version() const {
 extern "C" {
 
 DUCKDB_CPP_EXTENSION_ENTRY(bigquery, loader) {
-	duckdb::LoadInternal(loader);
+    duckdb::LoadInternal(loader);
 }
-
 }
