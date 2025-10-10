@@ -149,6 +149,28 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
             options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
         }
     }
+    
+    // Set credentials for gRPC operations (same logic as OptionsAPI)
+    // Try to get credentials from DuckDB secret first
+    bool has_credentials = GetCredentialsFromSecret(options);
+    
+    // If no credentials from secret, we MUST set credentials to avoid the library
+    // auto-discovering them (which can hang trying to contact metadata server)
+    if (!has_credentials) {
+        // Only call MakeGoogleDefaultCredentials if we have clear indicators credentials exist
+        const char* creds_env = std::getenv("GOOGLE_APPLICATION_CREDENTIALS");
+        
+        if ((creds_env != nullptr && strlen(creds_env) > 0)) {
+            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
+                google::cloud::MakeGoogleDefaultCredentials(options));
+        } else {
+            // No credentials found - set insecure credentials to force a fast auth failure
+            // rather than hanging while trying to discover credentials
+            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
+                google::cloud::MakeInsecureCredentials());
+        }
+    }
+    
     return options;
 }
 
