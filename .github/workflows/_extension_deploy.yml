@@ -1,9 +1,10 @@
 #
-# Reusable workflow that deploys the artifacts produced by github.com/duckdb/duckdb/.github/workflows/_extension_distribution.yml
+# Reusable workflow that deploys the artifacts produced by .github/workflows/_extension_distribution.yml
 #
-# note: this workflow needs to be located in the extension repository, as it requires secrets to be passed to the
-# deploy script. However, it should generally not be necessary to modify this workflow in your extension repository, as
-# this workflow can be configured to use a custom deploy script.
+# Note: this workflow can be used to deploy an extension from a GH artifact. It is intended for Out-of-tree
+#       extensions that live the duckdb GitHub organisation (only repo's within the same organisation can share secrets
+#       through reusable workflows)
+
 
 name: Extension Deployment
 on:
@@ -47,11 +48,6 @@ on:
         required: false
         type: string
         default: ""
-      # Override the default deploy script with a custom script
-      deploy_script:
-        required: false
-        type: string
-        default: "./duckdb/scripts/extension-upload-single.sh"
       # Override the default GCS deploy script with a custom script
       deploy_gcs_script:
         required: false
@@ -121,31 +117,7 @@ jobs:
             credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
 
       - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v2'
-
-      # - name: Deploy
-      #   shell: bash
-      #   env:
-      #     AWS_ACCESS_KEY_ID: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_ID }}
-      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_KEY }}
-      #     AWS_DEFAULT_REGION: ${{ secrets.S3_DUCKDB_ORG_REGION }}
-      #     BUCKET_NAME: ${{ secrets.S3_DUCKDB_ORG_BUCKET }}
-      #     DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.S3_DUCKDB_ORG_EXTENSION_SIGNING_PK }}
-      #     DUCKDB_DEPLOY_SCRIPT_MODE: for_real
-      #     PIP_BREAK_SYSTEM_PACKAGES: 1
-      #   run: |
-      #     pwd
-      #     python3 -m pip install awscli
-      #     git config --global --add safe.directory '*'
-      #     cd duckdb
-      #     git fetch --tags
-      #     export DUCKDB_VERSION=`git tag --points-at HEAD`
-      #     export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
-      #     cd ..
-      #     git fetch --tags
-      #     export EXT_VERSION=`git tag --points-at HEAD`
-      #     export EXT_VERSION=${EXT_VERSION:=`git log -1 --format=%h`}
-      #     ${{ inputs.deploy_script }} ${{ inputs.extension_name }} $EXT_VERSION $DUCKDB_VERSION ${{ matrix.duckdb_arch }} $BUCKET_NAME ${{inputs.deploy_latest || 'true' && 'false'}} ${{inputs.deploy_versioned || 'true' && 'false'}}
+        uses: 'google-github-actions/setup-gcloud@v3'
 
       - name: Deploy GCP
         shell: bash
