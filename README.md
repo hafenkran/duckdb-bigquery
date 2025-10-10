@@ -481,7 +481,7 @@ docker run \
     -it \
     -v /path/to/my/service-account-credentials.json:/creds \
     -e GOOGLE_APPLICATION_CREDENTIALS=/creds/service-account-credentials.json \
-    duckdb-bigquery:v1.4.0
+    duckdb-bigquery:v1.4.1
 ```
 
 ## Important Notes on Using Google BigQuery
