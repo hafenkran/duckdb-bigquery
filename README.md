@@ -16,7 +16,7 @@ After installation, run the following command to authenticate and follow the ste
 gcloud auth application-default login
 ```
 
-### Authentication Option 2: Configure Service account keys
+### Authentication Option 2: Configure ADC with Service Account Keys
 
 Alternatively, you can authenticate using a service account. First, create a service account in the Google Cloud Console, assign the necessary roles, and download the JSON key file. Next, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the file path. For example:
 

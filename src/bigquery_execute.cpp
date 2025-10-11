@@ -57,7 +57,7 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
         result->config = BigqueryConfig(dbname_or_project_id) //
                              .SetApiEndpoint(params.api_endpoint)
                              .SetGrpcEndpoint(params.grpc_endpoint);
-        result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
+        result->bq_client = make_shared_ptr<BigqueryClient>(context, result->config);
     }
 
 	if (!params.dry_run) {

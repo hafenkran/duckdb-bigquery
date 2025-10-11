@@ -134,7 +134,7 @@ unique_ptr<FunctionData> BigqueryLegacyScanFunction::BigqueryLegacyScanBind(Clie
                          .SetBillingProjectId(params.billing_project)
                          .SetApiEndpoint(params.api_endpoint)
                          .SetGrpcEndpoint(params.grpc_endpoint);
-    result->bq_client = make_shared_ptr<BigqueryClient>(result->config);
+    result->bq_client = make_shared_ptr<BigqueryClient>(context, result->config);
 
     ColumnList columns;
     vector<unique_ptr<Constraint>> constraints;
