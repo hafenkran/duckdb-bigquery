@@ -1,12 +1,14 @@
 #include "bigquery_client.hpp"
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_proto_writer.hpp"
+#include "bigquery_secrets.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
 #include "storage/bigquery_catalog.hpp"
 
 #include "duckdb.hpp"
+#include "duckdb/common/exception.hpp"
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
@@ -32,6 +34,7 @@
 #include "google/cloud/grpc_options.h"
 #include "google/cloud/idempotency.h"
 #include "google/cloud/internal/curl_options.h"
+#include "google/cloud/internal/oauth2_google_application_default_credentials_file.h"
 
 #include "arrow/api.h"
 #include "arrow/io/api.h"
@@ -39,6 +42,8 @@
 #include "arrow/ipc/writer.h"
 #include "grpcpp/grpcpp.h"
 
+#include <cstring>
+#include <fstream>
 #include <iostream>
 
 
@@ -93,7 +98,8 @@ public:
     }
 };
 
-BigqueryClient::BigqueryClient(const BigqueryConfig &config) : config(config) {
+BigqueryClient::BigqueryClient(ClientContext &context, const BigqueryConfig &config)
+    : config(config), context(&context) {
     if (config.project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
     }
@@ -101,30 +107,81 @@ BigqueryClient::BigqueryClient(const BigqueryConfig &config) : config(config) {
 
 google::cloud::Options BigqueryClient::OptionsAPI() {
     auto options = google::cloud::Options{};
+
+    // Set custom API endpoint if provided
     if (!config.api_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.api_endpoint);
     }
+
+    bool credentials_set = false;
+
+    // Try to use secrets for authentication if context is available
+    if (context) {
+        auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+        if (secret_match.HasMatch()) {
+            auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+            auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+            if (credentials) {
+                options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+                credentials_set = true;
+            }
+        }
+    }
+
+    // Set CA bundle path if provided
     auto ca_path = BigquerySettings::CurlCaBundlePath();
     if (!ca_path.empty()) {
         options.set<google::cloud::v2_38::CARootsFilePathOption>(ca_path);
+    }
+
+    // Set default credentials if no secret credentials were set
+    if (!credentials_set) {
         options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
             google::cloud::MakeGoogleDefaultCredentials(options));
     }
+
     return options;
 }
 
 google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto options = google::cloud::Options{};
+
+    // Set custom gRPC endpoint if provided
     if (!config.grpc_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.grpc_endpoint);
         if (config.IsDevEnv()) {
             options.set<google::cloud::GrpcCredentialOption>(grpc::InsecureChannelCredentials());
         }
     }
+
+    bool credentials_set = false;
+
+    // Try to use secrets for authentication if context is available
+    if (context) {
+        auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+        if (secret_match.HasMatch()) {
+            auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+            auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+            if (credentials) {
+                options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+                credentials_set = true;
+            }
+        }
+    }
+
+    // Set default credentials if no secret credentials were set
+    if (!credentials_set) {
+        options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
+            google::cloud::MakeGoogleDefaultCredentials(options));
+    }
+
     return options;
 }
 
 vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
+    // Check authentication before making any API calls to avoid blocking
+    CheckAuthentication();
+
     auto request = google::cloud::bigquery::v2::ListDatasetsRequest();
     request.set_project_id(config.project_id);
 
@@ -135,7 +192,7 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
     vector<BigqueryDatasetRef> result;
     for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatDataset> const &dataset : datasets) {
         if (!dataset.ok()) {
-            // Special case for empty projects. The "empty" result object seems to be unparseable by the lib.
+            ThrowOnErrorStatus(dataset.status());
             if (CheckInvalidJsonError(dataset.status())) {
                 return result;
             }
@@ -158,6 +215,8 @@ vector<BigqueryDatasetRef> BigqueryClient::GetDatasets() {
 }
 
 vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
+    CheckAuthentication();
+
     auto request = google::cloud::bigquery::v2::ListTablesRequest();
     request.set_project_id(config.project_id);
     request.set_dataset_id(dataset_id);
@@ -169,7 +228,7 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
     vector<BigqueryTableRef> table_names;
     for (google::cloud::StatusOr<google::cloud::bigquery::v2::ListFormatTable> const &table : tables) {
         if (!table.ok()) {
-            // Special case for empty datasets. The "empty" result object seems to be unparseable by the lib.
+            ThrowOnErrorStatus(table.status());
             if (CheckInvalidJsonError(table.status())) {
                 return table_names;
             }
@@ -218,6 +277,8 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
 }
 
 vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(const ListJobsParams &params) {
+    CheckAuthentication();
+
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
@@ -301,31 +362,32 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     return result;
 }
 
-google::cloud::bigquery::v2::Job BigqueryClient::GetJobByReference(const google::cloud::bigquery::v2::JobReference &job_ref) {
-	if (job_ref.job_id().empty()) {
-		throw BinderException("Job ID cannot be empty");
-	}
+google::cloud::bigquery::v2::Job BigqueryClient::GetJobByReference(
+    const google::cloud::bigquery::v2::JobReference &job_ref) {
+    if (job_ref.job_id().empty()) {
+        throw BinderException("Job ID cannot be empty");
+    }
 
-	auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-		google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-	auto request = google::cloud::bigquery::v2::GetJobRequest();
-	request.set_project_id(job_ref.project_id());
-	request.set_job_id(job_ref.job_id());
-	if (job_ref.has_location()) {
-		request.set_location(job_ref.location().value());
-	}
+    auto request = google::cloud::bigquery::v2::GetJobRequest();
+    request.set_project_id(job_ref.project_id());
+    request.set_job_id(job_ref.job_id());
+    if (job_ref.has_location()) {
+        request.set_location(job_ref.location().value());
+    }
 
-	auto response = client.GetJob(request);
-	if (!response.ok()) {
-		if (CheckSSLError(response.status())) {
-			return GetJobByReference(job_ref);
-		}
-		throw BinderException(response.status().message());
-	}
+    auto response = client.GetJob(request);
+    if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return GetJobByReference(job_ref);
+        }
+        throw BinderException(response.status().message());
+    }
 
-	auto job = response.value();
-	return job;
+    auto job = response.value();
+    return job;
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, const string &location) {
@@ -555,6 +617,7 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
                                   const string &table_id,
                                   ColumnList &res_columns,
                                   vector<unique_ptr<Constraint>> &res_constraints) {
+    CheckAuthentication();
 
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
         google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
@@ -595,6 +658,8 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const Bigquery
                                                                   const idx_t num_streams,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
+    CheckAuthentication();
+
     auto options =
         OptionsGRPC()
             .set<google::cloud::bigquery_storage_v1::BigQueryReadConnectionIdempotencyPolicyOption>(
@@ -618,6 +683,8 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const Bigquery
 }
 
 shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableEntry *entry) {
+    CheckAuthentication();
+
     if (entry == nullptr) {
         throw InternalException("Error while initializing proto writer: entry is null");
     }
@@ -651,14 +718,19 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query,
                                                                         const string &location,
                                                                         const bool &dry_run) {
+    CheckAuthentication();
+
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     auto response = PostQueryJobInternal(client, query, location, dry_run);
     if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
+
         if (CheckSSLError(response.status())) {
             return ExecuteQuery(query, location, dry_run);
         }
+
         throw BinderException("Query execution failed: " + response.status().message());
     }
 
@@ -860,6 +932,119 @@ void BigqueryClient::MapInformationSchemaRows(
     for (const auto &table_name : tables_with_errornous_columns) {
         table_infos.erase(table_name);
     }
+}
+
+void BigqueryClient::CheckAuthentication() {
+	if (authentication_checked) {
+		return;
+	}
+
+	// Check if we have a DuckDB secret for this project
+	auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+	if (secret_match.HasMatch()) {
+		authentication_checked = true;
+		return; // If we have a secret, we assume being able to authenticate
+	}
+
+    // Check if ADC environment variables are set
+	auto adc_credential = google::cloud::oauth2_internal::GoogleAdcFilePathFromEnvVarOrEmpty();
+	if (!adc_credential.empty()) {
+		std::ifstream creds_file(adc_credential);
+		if (creds_file.good()) {
+			authentication_checked = true;
+			return; // ADC file exists
+		}
+	}
+
+	// Check if gcloud CLI credentials exist
+	auto gcloud_creds_path = google::cloud::oauth2_internal::GoogleAdcFilePathFromWellKnownPathOrEmpty();
+	if (!gcloud_creds_path.empty()) {
+		std::ifstream creds_file(gcloud_creds_path);
+		if (creds_file.good()) {
+			authentication_checked = true;
+			return; // gcloud ADC file exists
+		}
+	}
+
+	// Check if we're in a GCP environment (i.e., metadata server set)
+    const char *gcp_project = std::getenv("GOOGLE_CLOUD_PROJECT");
+    const char *gce_metadata = std::getenv("GCE_METADATA_ROOT");
+    if (gcp_project || gce_metadata) {
+		authentication_checked = true;
+        return; // Likely running on GCP, should have automatic credentials
+    }
+
+	// No authentication method found
+    throw InvalidInputException(
+        "BigQuery Authentication Failed\n"
+        "\n"
+        "No authentication credentials found. Please configure one of the following:\n"
+        "\n"
+        "Authentication options:\n"
+        "  1. User credentials via Application Default Credentials (ADC):\n"
+        "     • Run: gcloud auth application-default login\n"
+        "  2. Service account key file via environment variable:\n"
+        "     • Set GOOGLE_APPLICATION_CREDENTIALS to your service account key file path\n"
+        "  3. DuckDB secret for this project:\n"
+        "     • Run: CREATE SECRET (TYPE bigquery, SCOPE 'bq://your-project', ACCESS_TOKEN 'your-token')");
+}
+
+void BigqueryClient::ThrowOnErrorStatus(const google::cloud::Status &status) {
+    if (status.code() == google::cloud::StatusCode::kUnauthenticated) {
+        throw IOException( //
+            "BigQuery Authentication Failed\n"
+            "\n"
+            "The provided credentials are invalid or have expired.\n"
+            "\n"
+            "Possible solutions:\n"
+            "  1. Verify you are using the correct credentials for this project\n"
+            "  2. Refresh your credentials:\n"
+            "     • For user credentials: gcloud auth application-default login\n"
+            "     • For service accounts: Update your service account key\n"
+            "     • For DuckDB secrets: Update with CREATE OR REPLACE SECRET\n"
+            "  3. Check if your access token has expired\n"
+            "\n"
+            "Error details from BigQuery API:\n"
+            "  %s",
+            status.message().c_str());
+    }
+
+    if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
+        throw PermissionException( //
+            "BigQuery Permission Denied\n"
+            "\n"
+            "Your credentials are valid, but lack the necessary permissions for this operation.\n"
+            "\n"
+            "Required actions:\n"
+			"  1. Verify you are using the correct credentials for this project"
+            "  2. Verify your credentials have the required BigQuery roles:\n"
+            "     • BigQuery Data Viewer (roles/bigquery.dataViewer) - for read access\n"
+            "     • BigQuery Data Editor (roles/bigquery.dataEditor) - for write access\n"
+            "     • BigQuery Job User (roles/bigquery.jobUser) - for running queries\n"
+            "  3. Check project-level and dataset-level permissions\n"
+            "\n"
+            "Error details from BigQuery API:\n"
+            "  %s",
+            status.message().c_str());
+    }
+}
+
+bool BigqueryClient::CheckSSLError(const google::cloud::Status &status) {
+    if (status.message().find("Problem with the SSL CA cert") != std::string::npos) {
+        if (!uses_custom_ca_bundle_path && BigquerySettings::CurlCaBundlePath().empty()) {
+            uses_custom_ca_bundle_path = true;
+            BigquerySettings::TryDetectCurlCaBundlePath();
+            return true;
+        }
+    }
+    return false;
+}
+
+bool BigqueryClient::CheckInvalidJsonError(const google::cloud::Status &status) {
+    if (status.message().find("Not a valid Json") != std::string::npos) {
+        return true;
+    }
+    return false;
 }
 
 
