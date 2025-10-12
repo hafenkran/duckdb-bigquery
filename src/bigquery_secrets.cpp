@@ -24,13 +24,13 @@ namespace oauth2 = google::cloud::oauth2_internal;
 BigquerySecret::BigquerySecret(const vector<string> &prefix_paths, const string &provider, const string &name)
     : KeyValueSecret(prefix_paths, "bigquery", provider, name) {
     serializable = true;
-    redact_keys = {"access_token", "sa_key_json", "sa_key_path"};
+    redact_keys = {"access_token", "sa_key_json", "sa_key_path", "ea_config_json", "ea_config_path"};
 }
 
 BigquerySecret::BigquerySecret(const BaseSecret &base_secret)
     : KeyValueSecret(base_secret.GetScope(), base_secret.GetType(), base_secret.GetProvider(), base_secret.GetName()) {
     serializable = true;
-    redact_keys = {"access_token", "sa_key_json", "sa_key_path"};
+    redact_keys = {"access_token", "sa_key_json", "sa_key_path", "ea_config_json", "ea_config_path"};
     if (auto kv_secret = dynamic_cast<const KeyValueSecret *>(&base_secret)) {
         secret_map = kv_secret->secret_map;
     }
@@ -54,6 +54,22 @@ string BigquerySecret::GetServiceAccountKeyJson() const {
 
 string BigquerySecret::GetServiceAccountKeyPath() const {
     auto it = secret_map.find("sa_key_path");
+    if (it != secret_map.end()) {
+        return it->second.GetValue<string>();
+    }
+    return "";
+}
+
+string BigquerySecret::GetExternalAccountCredsJson() const {
+    auto it = secret_map.find("ea_config_json");
+    if (it != secret_map.end()) {
+        return it->second.GetValue<string>();
+    }
+    return "";
+}
+
+string BigquerySecret::GetExternalAccountCredsPath() const {
+    auto it = secret_map.find("ea_config_path");
     if (it != secret_map.end()) {
         return it->second.GetValue<string>();
     }
@@ -112,8 +128,12 @@ KeyKind ClassifyCredentialInput(const string &input) {
             json_file.close();
 
             // Try to parse the loaded content as service account credentials
-            auto sa = oauth2::ParseServiceAccountCredentials(json_content, "duckdb_secret");
-            if (sa.ok()) return KeyKind::kServiceAccountPath;
+            auto sa_file = oauth2::ParseServiceAccountCredentials(json_content, "duckdb_secret");
+            if (sa_file.ok()) return KeyKind::kServiceAccountPath;
+
+            // Try to parse the loaded content as external account credentials
+            auto ext_file = oauth2::ParseExternalAccountConfiguration(json_content, google::cloud::internal::ErrorContext{});
+            if (ext_file.ok()) return KeyKind::kExternalAccountPath;
 
             return KeyKind::kInvalidFile;
         }
@@ -130,7 +150,6 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
 
     auto sa_key_path = secret.GetServiceAccountKeyPath();
     if (!sa_key_path.empty()) {
-        // Read the JSON file and pass its contents to MakeServiceAccountCredentials
         std::ifstream json_file(sa_key_path);
         if (!json_file.is_open()) {
             std::cerr << "Failed to open service account key file: " << sa_key_path << std::endl;
@@ -144,6 +163,23 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
     auto sa_key_json = secret.GetServiceAccountKeyJson();
     if (!sa_key_json.empty()) {
         return google::cloud::MakeServiceAccountCredentials(sa_key_json);
+    }
+
+    auto ea_config_path = secret.GetExternalAccountCredsPath();
+    if (!ea_config_path.empty()) {
+        std::ifstream json_file(ea_config_path);
+        if (!json_file.is_open()) {
+            std::cerr << "Failed to open external account credentials file: " << ea_config_path << std::endl;
+            return nullptr;
+        }
+        std::string json_content((std::istreambuf_iterator<char>(json_file)), std::istreambuf_iterator<char>());
+        json_file.close();
+        return google::cloud::MakeExternalAccountCredentials(json_content);
+    }
+
+    auto ea_config_json = secret.GetExternalAccountCredsJson();
+    if (!ea_config_json.empty()) {
+        return google::cloud::MakeExternalAccountCredentials(ea_config_json);
     }
 
     return nullptr;
@@ -177,7 +213,7 @@ unique_ptr<BaseSecret> CreateBigquerySecretFunction(ClientContext &context, Crea
     auto bigquery_secret = make_uniq<BigquerySecret>(input.scope, input.provider, input.name);
 
     int auth_methods_count = 0;
-    vector<string> auth_methods = {"access_token", "sa_key_path", "sa_key_json"};
+    vector<string> auth_methods = {"access_token", "sa_key_path", "sa_key_json", "ea_config_path", "ea_config_json"};
 
     for (const auto &method : auth_methods) {
         if (bigquery_secret->TrySetValue(method, input)) {
@@ -186,11 +222,14 @@ unique_ptr<BaseSecret> CreateBigquerySecretFunction(ClientContext &context, Crea
     }
 
     if (auth_methods_count == 0) {
-        throw InvalidInputException("BigQuery secret must contain one of: 'access_token', 'sa_key_path',"
-                                    "or 'sa_key_json'");
+        throw InvalidInputException( //
+            "BigQuery secret must contain one of: 'access_token', 'sa_key_path', "
+            "'sa_key_json', 'ea_config_path', or 'ea_config_json'");
     } else if (auth_methods_count > 1) {
-        throw InvalidInputException("BigQuery secret must contain exactly one authentication method. Please provide "
-                                    "only one of: 'access_token', 'sa_key_path', or 'sa_key_json'");
+        throw InvalidInputException( //
+            "BigQuery secret must contain exactly one authentication method. Please provide "
+            "only one of: 'access_token', 'sa_key_path', 'sa_key_json', 'ea_config_path', "
+            "or 'ea_config_json'");
     }
 
     // Validate sa_key_path
@@ -200,17 +239,24 @@ unique_ptr<BaseSecret> CreateBigquerySecretFunction(ClientContext &context, Crea
         case KeyKind::kServiceAccountPath:
             break;
         case KeyKind::kServiceAccount:
-            throw InvalidInputException("The 'sa_key_path' parameter must be a file path, not JSON content. "
-                                        "Use 'sa_key_json' for inline JSON credentials.");
+            throw InvalidInputException( //
+                "The 'sa_key_path' parameter must be a file path, not JSON content. "
+                "Use 'sa_key_json' for inline JSON credentials.");
         case KeyKind::kExternalAccount:
-            throw InvalidInputException("The 'sa_key_path' parameter must be a file path, not external account JSON "
-                                        "content. Use 'sa_key_json' for inline JSON credentials.");
+            throw InvalidInputException( //
+                "The 'sa_key_path' parameter must be a file path, not external account JSON "
+                "content. Use 'sa_key_json' for inline JSON credentials.");
+        case KeyKind::kExternalAccountPath:
+            throw InvalidInputException( //
+                "The 'sa_key_path' parameter points to an external account credentials file. "
+                "Use 'ea_config_path' for external account credentials.");
         case KeyKind::kInvalidFile:
-            throw InvalidInputException("The service account key file is not valid JSON or has an invalid format: '" +
-                                        sa_key_path + "'");
+            throw InvalidInputException( //
+                "The service account key file is not valid JSON or has an invalid format: '" + sa_key_path + "'");
         case KeyKind::kInvalid:
-            throw InvalidInputException("The 'sa_key_path' parameter must be a valid file path (e.g., "
-                                        "'/path/to/key.json')");
+            throw InvalidInputException( //
+                "The 'sa_key_path' parameter must be a valid file path (e.g., "
+                "'/path/to/key.json')");
         }
     }
 
@@ -220,18 +266,82 @@ unique_ptr<BaseSecret> CreateBigquerySecretFunction(ClientContext &context, Crea
         switch (ClassifyCredentialInput(sa_key_json)) {
         case KeyKind::kServiceAccount:
             break;
-        case KeyKind::kExternalAccount:
-            throw InvalidInputException("The 'sa_key_json' parameter must be JSON content for service account, not "
-                                        "external account credentials. Use 'sa_key_path' for file paths.");
         case KeyKind::kServiceAccountPath:
-            throw InvalidInputException("The 'sa_key_json' parameter must be JSON content, not a file path. "
-                                        "Use 'sa_key_path' for file paths.");
+            throw InvalidInputException( //
+                "The 'sa_key_json' parameter must be JSON content, not a file path. "
+                "Use 'sa_key_path' for file paths.");
+        case KeyKind::kExternalAccount:
+            throw InvalidInputException(
+                "The 'sa_key_json' parameter must be JSON content for service account, not "
+                "external account credentials. Use 'ea_config_json' for external account credentials.");
+        case KeyKind::kExternalAccountPath:
+            throw InvalidInputException( //
+                "The 'sa_key_json' parameter must be JSON content, not a file path. "
+                "Use 'sa_key_path' for file paths.");
         case KeyKind::kInvalidFile:
-            throw InvalidInputException("The 'sa_key_json' parameter contains a file path, but the file is not "
-                                        "valid JSON or has an invalid format. Use 'sa_key_path' for file paths.");
+            throw InvalidInputException( //
+                "The 'sa_key_json' parameter contains a file path, but the file is not "
+                "valid JSON or has an invalid format. Use 'sa_key_path' for file paths.");
         case KeyKind::kInvalid:
-            throw InvalidInputException("The 'sa_key_json' parameter must be valid JSON content for service "
-                                        "account or external account credentials.");
+            throw InvalidInputException(
+                "The 'sa_key_json' parameter must be valid JSON content for service account credentials.");
+        }
+    }
+
+    // Validate ea_config_path
+    auto ea_config_path = bigquery_secret->GetExternalAccountCredsPath();
+    if (!ea_config_path.empty()) {
+        switch (ClassifyCredentialInput(ea_config_path)) {
+        case KeyKind::kExternalAccountPath:
+            break;
+        case KeyKind::kServiceAccountPath:
+            throw InvalidInputException( //
+                "The 'ea_config_path' parameter points to a service account key file. "
+                "Use 'sa_key_path' for service account credentials.");
+        case KeyKind::kServiceAccount:
+            throw InvalidInputException( //
+                "The 'ea_config_path' parameter must be a file path, not JSON content. "
+                "Use 'ea_config_json' for inline JSON credentials.");
+        case KeyKind::kExternalAccount:
+            throw InvalidInputException( //
+                "The 'ea_config_path' parameter must be a file path, not JSON content. "
+                "Use 'ea_config_json' for inline JSON credentials.");
+        case KeyKind::kInvalidFile:
+            throw InvalidInputException(
+                "The external account credentials file is not valid JSON or has an invalid format: '" + ea_config_path +
+                "'");
+        case KeyKind::kInvalid:
+            throw InvalidInputException( //
+                "The 'ea_config_path' parameter must be a valid file path (e.g., "
+                "'/path/to/credentials.json')");
+        }
+    }
+
+    // Validate ea_config_json
+    auto ea_config_json = bigquery_secret->GetExternalAccountCredsJson();
+    if (!ea_config_json.empty()) {
+        switch (ClassifyCredentialInput(ea_config_json)) {
+        case KeyKind::kExternalAccount:
+            break;
+        case KeyKind::kServiceAccount:
+            throw InvalidInputException( //
+                "The 'ea_config_json' parameter must be JSON content for external account, not "
+                "service account credentials. Use 'sa_key_json' for service account credentials.");
+        case KeyKind::kServiceAccountPath:
+            throw InvalidInputException( //
+                "The 'ea_config_json' parameter must be JSON content, not a file path. Use "
+                "'ea_config_path' for file paths.");
+        case KeyKind::kExternalAccountPath:
+            throw InvalidInputException( //
+                "The 'ea_config_json' parameter must be JSON content, not a file path. Use "
+                "'ea_config_path' for file paths.");
+        case KeyKind::kInvalidFile:
+            throw InvalidInputException( //
+                "The 'ea_config_json' parameter contains a file path, but the file is not "
+                "valid JSON or has an invalid format. Use 'ea_config_path' for file paths.");
+        case KeyKind::kInvalid:
+            throw InvalidInputException(
+                "The 'ea_config_json' parameter must be valid JSON content for external account credentials.");
         }
     }
 
@@ -255,6 +365,8 @@ void RegisterBigquerySecretType(DatabaseInstance &db) {
     create_func.named_parameters["access_token"] = LogicalType::VARCHAR;
     create_func.named_parameters["sa_key_json"] = LogicalType::VARCHAR;
     create_func.named_parameters["sa_key_path"] = LogicalType::VARCHAR;
+    create_func.named_parameters["ea_config_json"] = LogicalType::VARCHAR;
+    create_func.named_parameters["ea_config_path"] = LogicalType::VARCHAR;
 
     secret_mgr.RegisterSecretFunction(create_func, OnCreateConflict::ERROR_ON_CONFLICT);
 }

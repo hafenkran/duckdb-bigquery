@@ -36,7 +36,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/my/service-account-credentials.j
 set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.json"
 ```
 
-### Authentication Option 3: Using DuckDB Secrets
+### Authentication Option 3: Using DuckDB Secrets (experimental)
 
 As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.org/docs/configuration/secrets_manager.html), which provide a secure way to manage credentials within your DuckDB session. First, create a secret with one of the three supported authentication parameters. The `SCOPE` parameter specifies which BigQuery project the secret applies to using the format `bq://project_id`.
 
@@ -46,7 +46,9 @@ The following authentication parameters are currently supported:
 
 - **`ACCESS_TOKEN`** - Temporary OAuth2 access token (obtainable via `gcloud auth print-access-token`)
 - **`SA_KEY_PATH`** - Path to a service account key file on your filesystem
-- **`SA_KEY_JSON`** - Inline JSON content of a service account key  
+- **`SA_KEY_JSON`** - Inline JSON content of a service account key
+- **`EA_CONFIG_PATH`** - Path to an external account credentials file (for Workload Identity Federation)
+- **`EA_CONFIG_JSON`** - Inline JSON content of external account credentials (for Workload Identity Federation)
 
 For example:
 
