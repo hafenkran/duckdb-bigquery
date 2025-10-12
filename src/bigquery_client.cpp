@@ -107,26 +107,20 @@ BigqueryClient::BigqueryClient(ClientContext &context, const BigqueryConfig &con
 
 google::cloud::Options BigqueryClient::OptionsAPI() {
     auto options = google::cloud::Options{};
-
-    // Set custom API endpoint if provided
     if (!config.api_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.api_endpoint);
     }
 
     bool credentials_set = false;
-
-    // Try to use secrets for authentication if context is available
-    if (context) {
-        auto secret_match = LookupBigQuerySecret(*context, config.project_id);
-        if (secret_match.HasMatch()) {
-            auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
-            auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
-            if (credentials) {
-                options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
-                credentials_set = true;
-            }
-        }
-    }
+	auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+	if (secret_match.HasMatch()) {
+		auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+		auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+		if (credentials) {
+			options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+			credentials_set = true;
+		}
+	}
 
     // Set CA bundle path if provided
     auto ca_path = BigquerySettings::CurlCaBundlePath();
@@ -145,8 +139,6 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
 
 google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto options = google::cloud::Options{};
-
-    // Set custom gRPC endpoint if provided
     if (!config.grpc_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.grpc_endpoint);
         if (config.IsDevEnv()) {
@@ -155,19 +147,15 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     }
 
     bool credentials_set = false;
-
-    // Try to use secrets for authentication if context is available
-    if (context) {
-        auto secret_match = LookupBigQuerySecret(*context, config.project_id);
-        if (secret_match.HasMatch()) {
-            auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
-            auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
-            if (credentials) {
-                options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
-                credentials_set = true;
-            }
-        }
-    }
+	auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+	if (secret_match.HasMatch()) {
+		auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+		auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+		if (credentials) {
+			options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+			credentials_set = true;
+		}
+	}
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
@@ -1021,6 +1009,7 @@ void BigqueryClient::ThrowOnErrorStatus(const google::cloud::Status &status) {
             "     • BigQuery Data Viewer (roles/bigquery.dataViewer) - for read access\n"
             "     • BigQuery Data Editor (roles/bigquery.dataEditor) - for write access\n"
             "     • BigQuery Job User (roles/bigquery.jobUser) - for running queries\n"
+            "     • BigQuery Read Session User (roles/bigquery.readSessionUser) - for creating read sessions\n"
             "  3. Check project-level and dataset-level permissions\n"
             "\n"
             "Error details from BigQuery API:\n"
