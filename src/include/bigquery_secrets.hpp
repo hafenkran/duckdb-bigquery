@@ -8,6 +8,13 @@
 namespace duckdb {
 namespace bigquery {
 
+// Secret parameter name constants
+static constexpr const char* kAccessToken = "access_token";
+static constexpr const char* kServiceAccountJson = "service_account_json";
+static constexpr const char* kServiceAccountPath = "service_account_path";
+static constexpr const char* kExternalAccountJson = "external_account_json";
+static constexpr const char* kExternalAccountPath = "external_account_path";
+
 class BigquerySecret : public KeyValueSecret {
 public:
     //! Constructor for creating a new BigQuery secret
@@ -42,19 +49,9 @@ public:
     unique_ptr<const BaseSecret> Clone() const override;
 };
 
-//! Enum to classify the type of credential input
-enum class KeyKind {
-    kServiceAccount,
-    kServiceAccountPath,
-    kExternalAccount,
-    kExternalAccountPath,
-    kInvalidFile,
-    kInvalid
-};
-
-//! Classify the type of credential input (JSON content, file path, or invalid)
-//! Uses Google Cloud OAuth2 parsers to validate service account and external account credentials
-KeyKind ClassifyCredentialInput(const string &input);
+//! Validate credential input based on parameter name
+//! Throws InvalidInputException with detailed error message if validation fails
+void ValidateCredentialInput(const string &param, const string &value);
 
 //! Helper function to create Google Cloud credentials from a BigQuery secret
 //! Returns nullptr if no credentials could be created

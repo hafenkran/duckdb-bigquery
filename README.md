@@ -45,10 +45,10 @@ As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.or
 The following authentication parameters are currently supported:
 
 - **`ACCESS_TOKEN`** - Temporary OAuth2 access token (obtainable via `gcloud auth print-access-token`)
-- **`SA_KEY_PATH`** - Path to a service account key file on your filesystem
-- **`SA_KEY_JSON`** - Inline JSON content of a service account key
-- **`EA_CONFIG_PATH`** - Path to an external account credentials file (for Workload Identity Federation)
-- **`EA_CONFIG_JSON`** - Inline JSON content of external account credentials (for Workload Identity Federation)
+- **`SERVICE_ACCOUNT_PATH`** - Path to a service account key file on your filesystem
+- **`SERVICE_ACCOUNT_JSON`** - Inline JSON content of a service account key
+- **`EXTERNAL_ACCOUNT_PATH`** - Path to an external account credentials file (for Workload Identity Federation)
+- **`EXTERNAL_ACCOUNT_JSON`** - Inline JSON content of external account credentials (for Workload Identity Federation)
 
 For example:
 
@@ -57,7 +57,7 @@ For example:
 CREATE PERSISTENT SECRET bigquery_secret (
     TYPE BIGQUERY,
     SCOPE 'bq://my_gcp_project',
-    SA_KEY_PATH '/path/to/service-account-key.json'
+    SERVICE_ACCOUNT_PATH '/path/to/service-account-key.json'
 );
 ```
 
