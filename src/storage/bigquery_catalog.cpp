@@ -43,10 +43,12 @@ void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
         if (!default_dataset) {
             auto bq_transaction = dynamic_cast<BigqueryTransaction *>(GetCatalogTransaction(context).transaction.get());
             auto bq_client = bq_transaction->GetBigqueryClient();
-            auto dataset_ref = bq_client->GetDataset(config.dataset_id);
 
+            BigqueryDatasetRef dataset_ref;
             vector<CreateTableInfo> table_infos_vec;
             std::map<string, CreateTableInfo> table_infos;
+
+            dataset_ref = bq_client->GetDataset(config.dataset_id);
             bq_client->GetTableInfosFromDataset(dataset_ref, table_infos);
 
             for (auto &table_info : table_infos) {

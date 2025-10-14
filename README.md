@@ -6,6 +6,14 @@ This community extension allows [DuckDB](https://duckdb.org) to query data from 
 
 ## Preliminaries
 
+You must configure authentication before using the BigQuery extension. The extension supports three methods. If more than one is available, it uses the first method that works, in this order:
+
+1. **DuckDB Secrets** ([Option 3](#authentication-option-3-using-duckdb-secrets)) - Best for multi-tenant or server use; per-connection isolation and easy rotation.
+2. **Environment Variable** ([Option 2](#authentication-option-2-configure-adc-with-service-account-keys)) - `GOOGLE_APPLICATION_CREDENTIALS` pointing to a service-account JSON key.
+3. **User Account** ([Option 1](#authentication-option-1-configure-adc-with-your-google-account)) - Application Default Credentials created by gcloud auth application-default login.
+
+This priority order prefers explicit, connection-scoped credentials (DuckDB Secrets) over machine-wide settings (environment variables) and developer-local user credentials (gcloud).
+
 ### Authentication Option 1: Configure ADC with your Google Account
 
 To authenticate using your Google Account, first install the [Google Cloud CLI (gcloud)](https://cloud.google.com/sdk/gcloud). Download the latest version from the [Google Cloud CLI installation page](https://cloud.google.com/sdk/docs/install) and follow the instructions to select and authenticate your Google Cloud project for using BigQuery.
@@ -16,7 +24,7 @@ After installation, run the following command to authenticate and follow the ste
 gcloud auth application-default login
 ```
 
-### Authentication Option 2: Configure Service account keys
+### Authentication Option 2: Configure ADC with Service Account Keys
 
 Alternatively, you can authenticate using a service account. First, create a service account in the Google Cloud Console, assign the necessary roles, and download the JSON key file. Next, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the file path. For example:
 
@@ -27,6 +35,33 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/my/service-account-credentials.j
 # On Windows
 set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.json"
 ```
+
+### Authentication Option 3: Using DuckDB Secrets (experimental)
+
+As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.org/docs/configuration/secrets_manager.html), which provide a secure way to manage credentials within your DuckDB session. First, create a secret with one of the three supported authentication parameters. The `SCOPE` parameter specifies which BigQuery project the secret applies to using the format `bq://project_id`.
+
+> **Note**: DuckDB Secrets are particularly useful for multi-tenant scenarios, where you need to authenticate with different credentials for different BigQuery projects within the same DuckDB session. Simply create multiple secrets with different `SCOPE` parameters, and each will be automatically applied to its respective project.
+
+The following authentication parameters are currently supported:
+
+- **`ACCESS_TOKEN`** - Temporary OAuth2 access token (obtainable via `gcloud auth print-access-token`)
+- **`SERVICE_ACCOUNT_PATH`** - Path to a service account key file on your filesystem
+- **`SERVICE_ACCOUNT_JSON`** - Inline JSON content of a service account key
+- **`EXTERNAL_ACCOUNT_PATH`** - Path to an external account credentials file (for Workload Identity Federation)
+- **`EXTERNAL_ACCOUNT_JSON`** - Inline JSON content of external account credentials (for Workload Identity Federation)
+
+For example:
+
+```sql
+-- Create a secret using a service account key file path
+CREATE PERSISTENT SECRET bigquery_secret (
+    TYPE BIGQUERY,
+    SCOPE 'bq://my_gcp_project',
+    SERVICE_ACCOUNT_PATH '/path/to/service-account-key.json'
+);
+```
+
+To update an existing secret when credentials change or expire, use `CREATE OR REPLACE SECRET`. Once created, the secret will be automatically used when you interact with the specified project.
 
 ### Windows gRPC Configuration
 

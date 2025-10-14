@@ -38,7 +38,7 @@ struct ListJobsParams {
 
 class BigqueryClient {
 public:
-    explicit BigqueryClient(const BigqueryConfig &config);
+    explicit BigqueryClient(ClientContext &context, const BigqueryConfig &config);
     ~BigqueryClient() {};
 
 public:
@@ -73,7 +73,7 @@ public:
 
     vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
     google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
-	google::cloud::bigquery::v2::Job GetJobByReference(const google::cloud::bigquery::v2::JobReference &job_ref);
+    google::cloud::bigquery::v2::Job GetJobByReference(const google::cloud::bigquery::v2::JobReference &job_ref);
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query,
                                                             const string &location = "",
@@ -96,6 +96,9 @@ public:
 private:
     string GenerateJobId(const string &prefix = "");
 
+    google::cloud::Options OptionsAPI();
+    google::cloud::Options OptionsGRPC();
+
     google::cloud::StatusOr<google::cloud::bigquery::v2::Job> GetJobInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const string &job_id,
@@ -112,9 +115,6 @@ private:
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
 
-    google::cloud::Options OptionsAPI();
-    google::cloud::Options OptionsGRPC();
-
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
                         ColumnList &res_columns,
                         vector<unique_ptr<Constraint>> &res_constraints);
@@ -123,27 +123,16 @@ private:
                                   const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
                                   std::map<std::string, CreateTableInfo> &table_infos);
 
-    bool CheckSSLError(const google::cloud::Status &status) {
-        if (status.message().find("Problem with the SSL CA cert") != std::string::npos) {
-            if (!uses_custom_ca_bundle_path && BigquerySettings::CurlCaBundlePath().empty()) {
-                uses_custom_ca_bundle_path = true;
-                BigquerySettings::TryDetectCurlCaBundlePath();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool CheckInvalidJsonError(const google::cloud::Status &status) {
-        if (status.message().find("Not a valid Json") != std::string::npos) {
-            return true;
-        }
-        return false;
-    }
+    void CheckAuthentication();
+    void ThrowOnErrorStatus(const google::cloud::Status &status);
+    bool CheckSSLError(const google::cloud::Status &status);
+    bool CheckInvalidJsonError(const google::cloud::Status &status);
 
 private:
     BigqueryConfig config;
     bool uses_custom_ca_bundle_path = false;
+    bool authentication_checked = false;
+    optional_ptr<ClientContext> context;
 };
 
 } // namespace bigquery

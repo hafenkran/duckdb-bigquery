@@ -966,12 +966,6 @@ pair<int, int> BigqueryUtils::ParseNumericPrecisionAndScale(const string &type) 
     throw std::invalid_argument("Invalid NUMERIC/BIGNUMERIC type format: " + type);
 }
 
-uint64_t Iso8601ToMillis(const string &iso8601) {
-    auto timestamp = Timestamp::FromString(iso8601, false);
-    auto timestamp_ms = Timestamp::GetEpochMs(timestamp);
-    return timestamp_ms;
-}
-
 BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
     const named_parameter_map_t &named_parameters) {
 

@@ -59,7 +59,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
             auto bq_config = BigqueryConfig(dbname_or_project_id)
                                  .SetApiEndpoint(params.api_endpoint)
                                  .SetGrpcEndpoint(params.grpc_endpoint);
-            auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+            auto bq_client = make_shared_ptr<BigqueryClient>(context, bq_config);
 
             result->config = bq_config;
             result->bq_client = bq_client;
@@ -91,7 +91,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                  .SetBillingProjectId(params.billing_project)
                                  .SetApiEndpoint(params.api_endpoint)
                                  .SetGrpcEndpoint(params.grpc_endpoint);
-            auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+            auto bq_client = make_shared_ptr<BigqueryClient>(context, bq_config);
 
             bind_data->bq_config = bq_config;
             bind_data->bq_client = bq_client;
@@ -164,7 +164,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                  .SetBillingProjectId(params.billing_project)
                                  .SetApiEndpoint(params.api_endpoint)
                                  .SetGrpcEndpoint(params.grpc_endpoint);
-            auto bq_client = make_shared_ptr<BigqueryClient>(bq_config);
+            auto bq_client = make_shared_ptr<BigqueryClient>(context, bq_config);
 
             bind_data->config = bq_config;
             bind_data->bq_client = bq_client;

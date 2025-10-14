@@ -59,7 +59,7 @@ void BigquerySchemaSet::LoadEntries(ClientContext &context) {
             CreateEntry(std::move(schema));
         }
     } else {
-        auto datasets = bqclient->GetDatasets();
+        vector<BigqueryDatasetRef> datasets = bqclient->GetDatasets();
         for (auto dataset : datasets) {
             CreateSchemaInfo info;
             info.catalog = dataset.project_id;
