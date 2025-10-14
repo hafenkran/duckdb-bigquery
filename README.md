@@ -38,7 +38,7 @@ set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.js
 
 ### Authentication Option 3: Using DuckDB Secrets (experimental)
 
-As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.org/docs/configuration/secrets_manager.html), which provide a secure way to manage credentials within your DuckDB session. First, create a secret with one of the three supported authentication parameters. The `SCOPE` parameter specifies which BigQuery project the secret applies to using the format `bq://project_id`.
+As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.org/docs/configuration/secrets_manager.html), which provide a way to manage credentials within your DuckDB session. First, create a secret with one of the three supported authentication parameters. The `SCOPE` parameter specifies which BigQuery project the secret applies to using the format `bq://project_id`.
 
 > **Note**: DuckDB Secrets are particularly useful for multi-tenant scenarios, where you need to authenticate with different credentials for different BigQuery projects within the same DuckDB session. Simply create multiple secrets with different `SCOPE` parameters, and each will be automatically applied to its respective project.
 
@@ -438,7 +438,9 @@ There are some limitations that arise from the combination of DuckDB and BigQuer
 
 * **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 
-* **BIGNUMERIC Type Support**: The `bq_bignumeric_as_varchar` setting is only supported with the legacy scan implementation. If you need to read BIGNUMERIC columns as VARCHAR, ensure you use `use_legacy_scan=true` in scan functions or set `bq_use_legacy_scan=true` globally. The optimized Arrow-based scan does not currently support this conversion.
+* **BIGNUMERIC Type Not Supported**: BigQuery's `BIGNUMERIC` type is **not supported** by this extension. `BIGNUMERIC` has a precision of up to 76 digits and a scale of up to 38 digits, which exceeds DuckDB's `DECIMAL` type maximum precision of 38 digits. Tables containing `BIGNUMERIC` columns will be automatically skipped during catalog queries (you can enable debug output with `SET bq_debug_print_queries=true` to see which tables are skipped). If you need to work with `BIGNUMERIC` data, consider converting it to `STRING` in BigQuery before querying, or use the `bigquery_query()` function to handle the data directly in BigQuery.
+
+  > **Note**: The legacy setting `bq_bignumeric_as_varchar` only works with the deprecated legacy scan (`use_legacy_scan=true`) and is not recommended for new projects. The modern Arrow-based scan does not support this conversion.
 
 * **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
 

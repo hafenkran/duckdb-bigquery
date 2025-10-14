@@ -872,10 +872,11 @@ void BigqueryClient::MapInformationSchemaRows(
             column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
         } catch (BinderException &ex) {
             ErrorData error(ex);
-            std::ostringstream oss;
-            oss << "Failed to map column type for table " << table_string << ". Error: " << error.RawMessage()
-                << " - skipping table.";
-            std::cout << oss.str() << std::endl;
+            if (BigquerySettings::DebugQueryPrint()) {
+                std::ostringstream oss;
+                oss << "Skipping table " << table_string << " due to unsupported column type: " << error.RawMessage();
+                std::cout << oss.str() << std::endl;
+            }
             continue;
         }
 
