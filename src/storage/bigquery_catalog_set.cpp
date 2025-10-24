@@ -86,8 +86,13 @@ void BigqueryCatalogSet::TryLoadEntries(ClientContext &context) {
         return;
     }
 
-    is_loaded = true;
-    LoadEntries(context);
+    try {
+        LoadEntries(context);
+        is_loaded = true;
+    } catch (...) {
+        is_loaded = false;
+        throw;
+    }
 }
 
 BigqueryInSchemaSet::BigqueryInSchemaSet(BigquerySchemaEntry &schema)
