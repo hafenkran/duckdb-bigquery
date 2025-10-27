@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/function_scan.test
+# name: test/sql/storage/attach_bq_pseudo_columns.test
 # description: Test altering tables
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 

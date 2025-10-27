@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/function_bigquery_query_billing_project.test
+# name: test/sql/functions/function_bigquery_query_billing_project.test
 # description: Test bigquery_query function with billing_project parameter
-# group: [bigquery]
+# group: [functions]
 
 require bigquery
 

@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/geography_support.test
+# name: test/sql/misc/geography_support.test
 # description: Test GEOGRAPHY to GEOMETRY type conversion feature
-# group: [bigquery]
+# group: [misc]
 
 require bigquery
 

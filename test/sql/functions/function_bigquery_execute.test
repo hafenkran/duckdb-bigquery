@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/function_bigquery_execute.test
+# name: test/sql/functions/function_bigquery_execute.test
 # description: Tests the bigquery_execute(...) function
-# group: [bigquery]
+# group: [functions]
 
 require bigquery
 

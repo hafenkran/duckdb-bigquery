@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/attach_dml_statements.test
+# name: test/sql/storage/attach_dml_statements.test
 # description: Test for the update statement
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 

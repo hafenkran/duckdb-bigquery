@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/attach_alter_table.test
+# name: test/sql/storage/attach_alter_table.test
 # description: Test altering tables
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 

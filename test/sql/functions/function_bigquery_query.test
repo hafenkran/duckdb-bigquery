@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/bigquery_query_simple.test
+# name: test/sql/functions/function_bigquery_query.test
 # description: Test selecting from a few simple tables
-# group: [bigquery]
+# group: [functions]
 
 require bigquery
 

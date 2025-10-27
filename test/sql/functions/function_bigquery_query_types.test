@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/function_bigquery_query_types.test
+# name: test/sql/functions/function_bigquery_query_types.test
 # description: Tests the bigquery_query(...) function with complex result types
-# group: [bigquery]
+# group: [functions]
 
 require bigquery
 

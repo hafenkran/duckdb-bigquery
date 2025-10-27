@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/attach_types_struct_list.test
+# name: test/sql/storage/attach_types_complex.test
 # description: Test inserting various basic types
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 

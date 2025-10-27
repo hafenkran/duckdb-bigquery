@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/attach_jobs_functions.test
+# name: test/sql/functions/function_bigquery_jobs.test
 # description: Test selection with filter pushdown
-# group: [bigquery]
+# group: [functions]
 
 require bigquery
 

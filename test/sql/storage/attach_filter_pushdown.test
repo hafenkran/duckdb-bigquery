@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/attach_filter_pushdown.test
+# name: test/sql/storage/attach_filter_pushdown.test
 # description: Test selection with filter pushdown
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 

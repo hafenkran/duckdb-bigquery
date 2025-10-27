@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/attach_defaults.test
+# name: test/sql/storage/attach_default.test
 # description: Testing DEFAULT statement
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 

@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/attach_types_unsupported.test
+# name: test/sql/storage/attach_types_unsupported.test
 # description: Tests various types that are not supported by BigQuery
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 
