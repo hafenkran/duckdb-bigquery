@@ -32,7 +32,7 @@ BigqueryInsert::BigqueryInsert(PhysicalPlan &physical_plan,
                                TableCatalogEntry &table,
                                physical_index_vector_t<idx_t> column_index_map_p)
     : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), //
-      table(&table),                                                  //
+      table(&table),                                                                 //
       column_index_map(std::move(column_index_map_p)) {
 }
 
@@ -41,7 +41,7 @@ BigqueryInsert::BigqueryInsert(PhysicalPlan &physical_plan,
                                SchemaCatalogEntry &schema,
                                unique_ptr<BoundCreateTableInfo> info_p)
     : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), //
-      schema(&schema),                                                //
+      schema(&schema),                                                               //
       info(std::move(info_p)) {
 }
 

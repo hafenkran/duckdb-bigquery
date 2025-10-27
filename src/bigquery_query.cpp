@@ -204,7 +204,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(input.bind_data.get())) {
         return make_uniq<GlobalTableFunctionState>();
     }
-	// New Scan
+    // New Scan
     if (dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
         // Arrow scan implementation
         auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
@@ -263,7 +263,7 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
     D_ASSERT(data.bind_data);
     const auto *base = data.bind_data.get();
 
-	// Dry run
+    // Dry run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(base)) {
         auto &bind_data = base->CastNoConst<BigqueryQueryDryRunBindData>();
         if (bind_data.finished) {

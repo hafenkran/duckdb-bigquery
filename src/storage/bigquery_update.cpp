@@ -16,7 +16,8 @@ struct BigqueryUpdateGlobalState : public GlobalSinkState {
 };
 
 BigqueryUpdate::BigqueryUpdate(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query)
-    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
+    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table),
+      query(std::move(query)) {
 }
 
 unique_ptr<GlobalSinkState> BigqueryUpdate::GetGlobalSinkState(ClientContext &context) const {

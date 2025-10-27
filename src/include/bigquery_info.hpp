@@ -25,7 +25,7 @@ struct BigqueryCreateTableInfo : public CreateTableInfo {
     BigqueryCreateTableInfo();
     BigqueryCreateTableInfo(string catalog, string schema, string name, unordered_map<string, string> options = {});
     BigqueryCreateTableInfo(const CreateTableInfo &info, unordered_map<string, string> options = {});
-	BigqueryCreateTableInfo(const BigqueryCreateTableInfo &other);
+    BigqueryCreateTableInfo(const BigqueryCreateTableInfo &other);
 
     unique_ptr<CreateInfo> Copy() const override;
     string ToString() const override;

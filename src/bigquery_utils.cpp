@@ -50,7 +50,7 @@ public:
 
     static BigqueryTypeException BignumericNotSupported() {
         return BigqueryTypeException("BIGNUMERIC type is not supported. "
-                                         "DuckDB's DECIMAL type supports precision 1-" +
+                                     "DuckDB's DECIMAL type supports precision 1-" +
                                          std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
                                          ", but BIGNUMERIC has precision " +
                                          std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".",

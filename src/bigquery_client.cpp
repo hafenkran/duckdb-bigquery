@@ -112,15 +112,15 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     }
 
     bool credentials_set = false;
-	auto secret_match = LookupBigQuerySecret(*context, config.project_id);
-	if (secret_match.HasMatch()) {
-		auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
-		auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
-		if (credentials) {
-			options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
-			credentials_set = true;
-		}
-	}
+    auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+    if (secret_match.HasMatch()) {
+        auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+        auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+        if (credentials) {
+            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+            credentials_set = true;
+        }
+    }
 
     // Set CA bundle path if provided
     auto ca_path = BigquerySettings::CurlCaBundlePath();
@@ -147,15 +147,15 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     }
 
     bool credentials_set = false;
-	auto secret_match = LookupBigQuerySecret(*context, config.project_id);
-	if (secret_match.HasMatch()) {
-		auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
-		auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
-		if (credentials) {
-			options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
-			credentials_set = true;
-		}
-	}
+    auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+    if (secret_match.HasMatch()) {
+        auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+        auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+        if (credentials) {
+            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+            credentials_set = true;
+        }
+    }
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
@@ -924,46 +924,46 @@ void BigqueryClient::MapInformationSchemaRows(
 }
 
 void BigqueryClient::CheckAuthentication() {
-	if (authentication_checked) {
-		return;
-	}
+    if (authentication_checked) {
+        return;
+    }
 
-	// Check if we have a DuckDB secret for this project
-	auto secret_match = LookupBigQuerySecret(*context, config.project_id);
-	if (secret_match.HasMatch()) {
-		authentication_checked = true;
-		return; // If we have a secret, we assume being able to authenticate
-	}
+    // Check if we have a DuckDB secret for this project
+    auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+    if (secret_match.HasMatch()) {
+        authentication_checked = true;
+        return; // If we have a secret, we assume being able to authenticate
+    }
 
     // Check if ADC environment variables are set
-	auto adc_credential = google::cloud::oauth2_internal::GoogleAdcFilePathFromEnvVarOrEmpty();
-	if (!adc_credential.empty()) {
-		std::ifstream creds_file(adc_credential);
-		if (creds_file.good()) {
-			authentication_checked = true;
-			return; // ADC file exists
-		}
-	}
+    auto adc_credential = google::cloud::oauth2_internal::GoogleAdcFilePathFromEnvVarOrEmpty();
+    if (!adc_credential.empty()) {
+        std::ifstream creds_file(adc_credential);
+        if (creds_file.good()) {
+            authentication_checked = true;
+            return; // ADC file exists
+        }
+    }
 
-	// Check if gcloud CLI credentials exist
-	auto gcloud_creds_path = google::cloud::oauth2_internal::GoogleAdcFilePathFromWellKnownPathOrEmpty();
-	if (!gcloud_creds_path.empty()) {
-		std::ifstream creds_file(gcloud_creds_path);
-		if (creds_file.good()) {
-			authentication_checked = true;
-			return; // gcloud ADC file exists
-		}
-	}
+    // Check if gcloud CLI credentials exist
+    auto gcloud_creds_path = google::cloud::oauth2_internal::GoogleAdcFilePathFromWellKnownPathOrEmpty();
+    if (!gcloud_creds_path.empty()) {
+        std::ifstream creds_file(gcloud_creds_path);
+        if (creds_file.good()) {
+            authentication_checked = true;
+            return; // gcloud ADC file exists
+        }
+    }
 
-	// Check if we're in a GCP environment (i.e., metadata server set)
+    // Check if we're in a GCP environment (i.e., metadata server set)
     const char *gcp_project = std::getenv("GOOGLE_CLOUD_PROJECT");
     const char *gce_metadata = std::getenv("GCE_METADATA_ROOT");
     if (gcp_project || gce_metadata) {
-		authentication_checked = true;
+        authentication_checked = true;
         return; // Likely running on GCP, should have automatic credentials
     }
 
-	// No authentication method found
+    // No authentication method found
     throw InvalidInputException(
         "BigQuery Authentication Failed\n"
         "\n"
@@ -1005,7 +1005,7 @@ void BigqueryClient::ThrowOnErrorStatus(const google::cloud::Status &status) {
             "Your credentials are valid, but lack the necessary permissions for this operation.\n"
             "\n"
             "Required actions:\n"
-			"  1. Verify you are using the correct credentials for this project"
+            "  1. Verify you are using the correct credentials for this project"
             "  2. Verify your credentials have the required BigQuery roles:\n"
             "     • BigQuery Data Viewer (roles/bigquery.dataViewer) - for read access\n"
             "     • BigQuery Data Editor (roles/bigquery.dataEditor) - for write access\n"

@@ -181,9 +181,8 @@ public:
         }
         const bool preserve_insertion_order = DBConfig::GetSetting<PreserveInsertionOrderSetting>(context);
         if (preserve_insertion_order && max_streams > 1) {
-            std::cout
-                << "Warning: preserve_insertion_order is set to true, but max_read_streams is set to " << max_streams
-                << ". This will effectively limit execution to a single stream." << std::endl;
+            std::cout << "Warning: preserve_insertion_order is set to true, but max_read_streams is set to "
+                      << max_streams << ". This will effectively limit execution to a single stream." << std::endl;
         }
         MaxReadStreams() = max_streams;
     }

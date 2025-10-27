@@ -23,15 +23,15 @@ struct BigqueryParseData : ParserExtensionParseData {
     unique_ptr<SQLStatement> statement;
     unordered_map<string, string> options;
 
-    BigqueryParseData(unique_ptr<SQLStatement> statement, unordered_map<string, string> options) :
-		statement(std::move(statement)), options(std::move(options)) {
+    BigqueryParseData(unique_ptr<SQLStatement> statement, unordered_map<string, string> options)
+        : statement(std::move(statement)), options(std::move(options)) {
     }
 
-	virtual string ToString() const override {
+    virtual string ToString() const override {
         return "BigQueryParseData";
     }
 
-	unique_ptr<ParserExtensionParseData> Copy() const override {
+    unique_ptr<ParserExtensionParseData> Copy() const override {
         return make_uniq_base<ParserExtensionParseData, BigqueryParseData>(statement->Copy(), options);
     }
 };
