@@ -133,8 +133,8 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowSca
     bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
 
     // Initialize global scan state
-   auto gstate = make_uniq<BigqueryArrowScanGlobalState>();
-   gstate->max_threads = max_read_streams;
+    auto gstate = make_uniq<BigqueryArrowScanGlobalState>();
+    gstate->max_threads = max_read_streams;
     bind_data.estimated_row_count = bq_arrow_reader->GetEstimatedRowCount();
 
     // Set up type mapping from physical to logical columns
