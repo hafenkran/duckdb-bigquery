@@ -2,6 +2,7 @@
 #include "duckdb/common/arrow/arrow.hpp"
 #include "duckdb/common/arrow/arrow_wrapper.hpp"
 #include "duckdb/common/atomic.hpp"
+#include "duckdb/common/limits.hpp"
 #include "duckdb/function/table/arrow.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database_manager.hpp"
@@ -14,8 +15,7 @@
 
 #include <arrow/c/bridge.h>
 #include <arrow/util/iterator.h>
-#include <iostream>
-#include <limits>
+#include <unordered_map>
 
 namespace duckdb {
 namespace bigquery {
@@ -58,7 +58,6 @@ unique_ptr<FunctionData> BigqueryArrowScanFunction::BigqueryArrowScanBind(Client
     if (!status.ok()) {
         throw BinderException("Arrow schema export failed: " + status.ToString());
     }
-
     // Convert Arrow schema to DuckDB types and names
     vector<LogicalType> mapped_bq_types; // original physical types if casts required
     BigqueryUtils::PopulateAndMapArrowTableTypes(context,
@@ -134,8 +133,8 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowSca
     bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
 
     // Initialize global scan state
-    auto gstate = make_uniq<BigqueryArrowScanGlobalState>();
-    gstate->max_threads = max_read_streams;
+   auto gstate = make_uniq<BigqueryArrowScanGlobalState>();
+   gstate->max_threads = max_read_streams;
     bind_data.estimated_row_count = bq_arrow_reader->GetEstimatedRowCount();
 
     // Set up type mapping from physical to logical columns
@@ -161,30 +160,68 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowSca
             gstate->scanned_types.emplace_back(bind_data.mapped_bq_types[col_id]);
         }
     }
-
-    bool needs_projection = false;
-    for (idx_t out_idx = 0; out_idx < input.projection_ids.size(); ++out_idx) {
-        idx_t proj_id = input.projection_ids[out_idx];
-        idx_t col_id = input.column_ids[proj_id];
+    // Map each requested column (in column_ids order) to its physical index in the Arrow schema
+    vector<idx_t> column_physical_positions;
+    column_physical_positions.reserve(input.column_ids.size());
+    const idx_t invalid_phys_idx = NumericLimits<idx_t>::Maximum();
+    bool contains_rowid = false;
+    for (idx_t col_pos = 0; col_pos < input.column_ids.size(); ++col_pos) {
+        idx_t col_id = input.column_ids[col_pos];
         if (col_id == COLUMN_IDENTIFIER_ROW_ID || col_id < 0) {
+            contains_rowid = true;
+            column_physical_positions.push_back(invalid_phys_idx);
             continue;
         }
-
         const string &name = bind_data.names[col_id];
         idx_t phys_idx = static_cast<idx_t>(arrow_schema->GetFieldIndex(name));
         if (phys_idx == static_cast<idx_t>(-1)) {
             throw InternalException("Column '" + name + "' not found in Arrow schema");
         }
-
-        gstate->projection_ids.push_back(phys_idx);
-        if (phys_idx != out_idx) {
-            needs_projection = true;
-        }
+        column_physical_positions.push_back(phys_idx);
     }
 
-    // Clear projection IDs if no reordering is needed
-    if (!needs_projection) {
-        gstate->projection_ids.clear();
+    bool requires_physical_reorder = false;
+    vector<idx_t> projection_mapping;
+    if (!input.projection_ids.empty()) {
+        projection_mapping.reserve(input.projection_ids.size());
+        for (idx_t out_idx = 0; out_idx < input.projection_ids.size(); ++out_idx) {
+            idx_t col_pos = input.projection_ids[out_idx];
+            D_ASSERT(col_pos < column_physical_positions.size());
+            idx_t phys_idx = column_physical_positions[col_pos];
+            if (phys_idx == invalid_phys_idx) {
+                contains_rowid = true;
+                requires_physical_reorder = true;
+                break;
+            }
+            projection_mapping.push_back(phys_idx);
+            if (phys_idx != col_pos) {
+                requires_physical_reorder = true;
+            }
+        }
+        if (!contains_rowid) {
+            gstate->projection_ids = std::move(projection_mapping);
+        } else {
+            gstate->projection_ids.clear();
+        }
+    } else {
+        projection_mapping.reserve(column_physical_positions.size());
+        for (idx_t out_idx = 0; out_idx < column_physical_positions.size(); ++out_idx) {
+            idx_t phys_idx = column_physical_positions[out_idx];
+            if (phys_idx == invalid_phys_idx) {
+                contains_rowid = true;
+                requires_physical_reorder = true;
+                break;
+            }
+            projection_mapping.push_back(phys_idx);
+            if (phys_idx != out_idx && phys_idx != COLUMN_IDENTIFIER_ROW_ID && phys_idx >= 0) {
+                requires_physical_reorder = true;
+            }
+        }
+        if (!contains_rowid && requires_physical_reorder) {
+            gstate->projection_ids = std::move(projection_mapping);
+        } else {
+            gstate->projection_ids.clear();
+        }
     }
 
     // Create the Arrow scan stream
@@ -208,10 +245,9 @@ unique_ptr<LocalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowScan
 
     result->column_ids = sorted_column_ids;
     result->filters = input.filters.get();
-
     if (!bind_data.projection_pushdown_enabled) {
         result->column_ids.clear();
-    } else if (!input.projection_ids.empty() || bind_data.requires_cast) {
+    } else if (!input.projection_ids.empty() || bind_data.requires_cast || !global_state.projection_ids.empty()) {
         auto &asgs = global_state_p->Cast<ArrowScanGlobalState>();
         result->all_columns.Initialize(client_context, asgs.scanned_types);
     }
