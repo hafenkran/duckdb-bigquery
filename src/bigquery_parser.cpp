@@ -33,7 +33,7 @@ unordered_map<string, string> parse_bigquery_options(const string &options_str) 
     return options;
 }
 
-ParserExtensionParseResult bigquery_parse(ParserExtensionInfo *info, const string &query) {
+ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const string &query) {
     if (!BigquerySettings::ExperimentalEnableBigqueryOptions()) {
         return ParserExtensionParseResult();
     }
@@ -85,23 +85,23 @@ ParserExtensionParseResult bigquery_parse(ParserExtensionInfo *info, const strin
     return ParserExtensionParseResult();
 }
 
-ParserExtensionPlanResult bigquery_plan(ParserExtensionInfo *,
-                                        ClientContext &context,
-                                        unique_ptr<ParserExtensionParseData> parse_data) {
+ParserExtensionPlanResult BigqueryPlan(ParserExtensionInfo *,
+                                       ClientContext &context,
+                                       unique_ptr<ParserExtensionParseData> parse_data) {
     auto bigquery_state = make_shared_ptr<BigqueryState>(std::move(parse_data));
     context.registered_state->Remove("bigquery");
     context.registered_state->Insert("bigquery", bigquery_state);
     throw BinderException("nope");
 }
 
-BoundStatement bigquery_bind(ClientContext &context,
-                             Binder &binder,
-                             OperatorExtensionInfo *info,
-                             SQLStatement &statement) {
+BoundStatement BigqueryBind(ClientContext &context,
+                            Binder &binder,
+                            OperatorExtensionInfo *info,
+                            SQLStatement &statement) {
     switch (statement.type) {
     case StatementType::EXTENSION_STATEMENT: {
         auto &extension_statement = dynamic_cast<ExtensionStatement &>(statement);
-        if (extension_statement.extension.parse_function == bigquery_parse) {
+        if (extension_statement.extension.parse_function == BigqueryParse) {
             auto lookup = context.registered_state->Get<BigqueryState>("bigquery");
             if (!lookup) {
                 throw BinderException("Bigquery registered state not found");

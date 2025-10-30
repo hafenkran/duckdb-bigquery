@@ -37,7 +37,7 @@ SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
     auto bq_client = transaction.GetBigqueryClient();
     auto result = bq_client->ExecuteQuery(query);
 
-    auto total_rows = result.total_rows();
+    const auto &total_rows = result.total_rows();
     uint64_t extracted_value = total_rows.value();
     gstate.updated_count = extracted_value;
     return SinkFinalizeType::READY;

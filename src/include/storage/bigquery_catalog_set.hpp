@@ -14,7 +14,8 @@ class BigqueryTransaction;
 
 class BigqueryCatalogSet {
 public:
-    BigqueryCatalogSet(Catalog &catalog);
+    explicit BigqueryCatalogSet(Catalog &catalog);
+    virtual ~BigqueryCatalogSet() = default;
 
     virtual optional_ptr<CatalogEntry> CreateEntry(unique_ptr<CatalogEntry> entry);
     virtual void DropEntry(ClientContext &context, DropInfo &info);
@@ -42,7 +43,8 @@ private:
 
 class BigqueryInSchemaSet : public BigqueryCatalogSet {
 public:
-    BigqueryInSchemaSet(BigquerySchemaEntry &schema);
+    explicit BigqueryInSchemaSet(BigquerySchemaEntry &schema);
+    ~BigqueryInSchemaSet() override = default;
 
     optional_ptr<CatalogEntry> CreateEntry(unique_ptr<CatalogEntry> entry) override;
 

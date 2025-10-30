@@ -10,6 +10,8 @@
 #include "storage/bigquery_table_entry.hpp"
 #include "storage/bigquery_transaction.hpp"
 
+#include "duckdb/common/string_util.hpp"
+
 #include <arrow/c/bridge.h>
 #include <arrow/util/iterator.h>
 
@@ -74,10 +76,13 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
         }
 
         if (user_return_types.size() != physical_return_types.size()) {
-            throw InternalException("Arrow schema column count (%llu) != catalog column count (%llu) for table %s",
-                                    (unsigned long long)physical_return_types.size(),
-                                    (unsigned long long)user_return_types.size(),
-                                    name);
+            const auto physical_count = static_cast<uint64_t>(physical_return_types.size());
+            const auto user_count = static_cast<uint64_t>(user_return_types.size());
+            throw InternalException(
+                StringUtil::Format("Arrow schema column count (%llu) != catalog column count (%llu) for table %s",
+                                   physical_count,
+                                   user_count,
+                                   name));
         }
 
         // Build mapping: if physical type differs from user-visible, we will cast (incl. spatial handling)

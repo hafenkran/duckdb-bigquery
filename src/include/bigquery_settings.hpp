@@ -62,8 +62,8 @@ inline std::string DetectCAPath() {
 struct BigquerySettings {
 public:
     static string &DefaultLocation() {
-        static string bigquery_default_location = "US";
-        return bigquery_default_location;
+        static string BIGQUERY_DEFAULT_LOCATION = "US";
+        return BIGQUERY_DEFAULT_LOCATION;
     }
 
     static void SetDefaultLocation(ClientContext &context, SetScope scope, Value &parameter) {
@@ -71,8 +71,8 @@ public:
     }
 
     static bool &DebugQueryPrint() {
-        static bool bigquery_debug_query_print = false;
-        return bigquery_debug_query_print;
+        static bool BIGQUERY_DEBUG_QUERY_PRINT = false;
+        return BIGQUERY_DEBUG_QUERY_PRINT;
     }
 
     static void SetDebugQueryPrint(ClientContext &context, SetScope scope, Value &parameter) {
@@ -80,8 +80,8 @@ public:
     }
 
     static bool &ExperimentalFilterPushdown() {
-        static bool bigquery_experimental_filter_pushdown = true;
-        return bigquery_experimental_filter_pushdown;
+        static bool BIGQUERY_EXPERIMENTAL_FILTER_PUSHDOWN = true;
+        return BIGQUERY_EXPERIMENTAL_FILTER_PUSHDOWN;
     }
 
     static void SetExperimentalFilterPushdown(ClientContext &context, SetScope scope, Value &parameter) {
@@ -89,8 +89,8 @@ public:
     }
 
     static string &CurlCaBundlePath() {
-        static string curl_ca_bundle_path = "";
-        return curl_ca_bundle_path;
+        static string CURL_CA_BUNDLE_PATH = "";
+        return CURL_CA_BUNDLE_PATH;
     }
 
     static void SetCurlCaBundlePath(ClientContext &context, SetScope scope, Value &parameter) {
@@ -116,8 +116,8 @@ public:
     }
 
     static bool &ExperimentalFetchCatalogFromInformationSchema() {
-        static bool bigquery_experimental_fetch_catalog_from_information_schema = true;
-        return bigquery_experimental_fetch_catalog_from_information_schema;
+        static bool BIGQUERY_EXPERIMENTAL_FETCH_CATALOG_FROM_INFORMATION_SCHEMA = true;
+        return BIGQUERY_EXPERIMENTAL_FETCH_CATALOG_FROM_INFORMATION_SCHEMA;
     }
 
     static void SetExperimentalFetchCatalogFromInformationSchema(ClientContext &context,
@@ -127,8 +127,8 @@ public:
     }
 
     static bool &ExperimentalEnableBigqueryOptions() {
-        static bool bigquery_experimental_enable_bigquery_options = false;
-        return bigquery_experimental_enable_bigquery_options;
+        static bool BIGQUERY_EXPERIMENTAL_ENABLE_BIGQUERY_OPTIONS = false;
+        return BIGQUERY_EXPERIMENTAL_ENABLE_BIGQUERY_OPTIONS;
     }
 
     static void SetExperimentalEnableBigqueryOptions(ClientContext &context, SetScope scope, Value &parameter) {
@@ -136,8 +136,8 @@ public:
     }
 
     static int &QueryTimeoutMs() {
-        static int bigquery_query_timeout_ms = 90000;
-        return bigquery_query_timeout_ms;
+        static int BIGQUERY_QUERY_TIMEOUT_MS = 90000;
+        return BIGQUERY_QUERY_TIMEOUT_MS;
     }
 
     static void SetQueryTimeoutMs(ClientContext &context, SetScope scope, Value &parameter) {
@@ -155,8 +155,8 @@ public:
     }
 
     static bool &BignumericAsVarchar() {
-        static bool bigquery_bignumeric_as_varchar = false;
-        return bigquery_bignumeric_as_varchar;
+        static bool BIGQUERY_BIGNUMERIC_AS_VARCHAR = false;
+        return BIGQUERY_BIGNUMERIC_AS_VARCHAR;
     }
 
     static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
@@ -169,8 +169,8 @@ public:
     }
 
     static int &MaxReadStreams() {
-        static int bigquery_max_read_streams = 0; // 0 means default DuckDB thread count
-        return bigquery_max_read_streams;
+        static int BIGQUERY_MAX_READ_STREAMS = 0; // 0 means default DuckDB thread count
+        return BIGQUERY_MAX_READ_STREAMS;
     }
 
     static void SetMaxReadStreams(ClientContext &context, SetScope scope, Value &parameter) {
@@ -203,8 +203,8 @@ public:
     }
 
     static string &ArrowCompression() {
-        static string bigquery_compression = "ZSTD";
-        return bigquery_compression;
+        static string BIGQUERY_COMPRESSION = "ZSTD";
+        return BIGQUERY_COMPRESSION;
     }
 
     static void SetArrowCompression(ClientContext &context, SetScope scope, Value &parameter) {
@@ -231,8 +231,8 @@ public:
     }
 
     static bool &UseLegacyScan() {
-        static bool bigquery_use_legacy_scan = false;
-        return bigquery_use_legacy_scan;
+        static bool BIGQUERY_USE_LEGACY_SCAN = false;
+        return BIGQUERY_USE_LEGACY_SCAN;
     }
 
     static void SetUseLegacyScan(ClientContext &context, SetScope scope, Value &parameter) {
@@ -250,8 +250,8 @@ public:
     }
 
     static bool &GeographyAsGeometry() {
-        static bool bigquery_geography_as_geometry = false;
-        return bigquery_geography_as_geometry;
+        static bool BIGQUERY_GEOGRAPHY_AS_GEOMETRY = false;
+        return BIGQUERY_GEOGRAPHY_AS_GEOMETRY;
     }
 
     static void SetGeographyAsGeometry(ClientContext &context, SetScope scope, Value &parameter) {

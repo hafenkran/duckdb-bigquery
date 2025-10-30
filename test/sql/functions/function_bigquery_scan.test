@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/function_bigquery_scan.test
+# name: test/sql/functions/function_bigquery_scan.test
 # description: Comprehensive coverage for bigquery_scan column projection, ordering, and filtering
-# group: [bigquery]
+# group: [functions]
 
 require bigquery
 

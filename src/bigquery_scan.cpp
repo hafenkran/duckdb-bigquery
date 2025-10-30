@@ -119,7 +119,7 @@ unique_ptr<FunctionData> BigqueryLegacyScanFunction::BigqueryLegacyScanBind(Clie
                                                                             vector<string> &names) {
     auto table_string = input.inputs[0].GetValue<string>();
     auto table_ref = BigqueryUtils::ParseTableString(table_string);
-    if (!table_ref.has_dataset_id() || !table_ref.has_table_id()) {
+    if (!table_ref.HasDatasetId() || !table_ref.HasTableId()) {
         throw ParserException("Invalid table string: %s", table_string);
     }
 

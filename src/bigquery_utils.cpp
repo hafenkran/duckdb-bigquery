@@ -76,7 +76,7 @@ BigqueryConfig BigqueryConfig::FromDSN(const std::string &connection_string) {
         dataset_id = table_ref.dataset_id;
 
         // Optional error handling if table ID should not be present
-        if (table_ref.has_table_id()) {
+        if (table_ref.HasTableId()) {
             throw std::invalid_argument("Table ID is not supported in the connection string");
         }
     }

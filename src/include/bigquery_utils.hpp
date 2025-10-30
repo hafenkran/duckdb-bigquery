@@ -107,8 +107,8 @@ struct BigqueryDatasetRef {
         : project_id(project_id), dataset_id(dataset_id) {
     }
 
-    const bool has_dataset_id() const {
-        return dataset_id != "";
+    bool HasDatasetId() const {
+        return !dataset_id.empty();
     }
 
 public:
@@ -123,12 +123,12 @@ struct BigqueryTableRef {
         : project_id(project_id), dataset_id(dataset_id), table_id(table_id) {
     }
 
-    const bool has_dataset_id() const {
-        return dataset_id != "";
+    bool HasDatasetId() const {
+        return !dataset_id.empty();
     }
 
-    const bool has_table_id() const {
-        return table_id != "";
+    bool HasTableId() const {
+        return !table_id.empty();
     }
 
     const string TableString() const;

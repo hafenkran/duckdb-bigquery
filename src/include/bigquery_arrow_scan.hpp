@@ -63,7 +63,7 @@ public:
     idx_t estimated_row_count = 1;
     bool requires_cast = false;
 
-    shared_ptr<FactoryDependency> factory_dep() {
+    shared_ptr<FactoryDependency> GetFactoryDependency() {
         return dependency ? shared_ptr_cast<DependencyItem, FactoryDependency>(dependency) : nullptr;
     }
 

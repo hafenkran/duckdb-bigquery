@@ -1,6 +1,6 @@
-# name: test/sql/bigquery/function_bigquery_attach.test
+# name: test/sql/storage/attach_scan_order.test
 # description: Validate BigQuery ATTACH-based scans respect projection ordering, filtering, and legacy mode
-# group: [bigquery]
+# group: [storage]
 
 require bigquery
 

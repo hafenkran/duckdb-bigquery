@@ -98,6 +98,7 @@ private:
                                     const LogicalType &target_type);
 };
 
+// NOLINTNEXTLINE(readability-identifier-naming)
 template <class ArrowArrayType, class ValueCreator>
 void ConvertPrimitiveArray(const std::shared_ptr<arrow::Array> &array, Vector &out_vec, ValueCreator create_value) {
     auto typed_array = std::static_pointer_cast<ArrowArrayType>(array);
@@ -106,6 +107,7 @@ void ConvertPrimitiveArray(const std::shared_ptr<arrow::Array> &array, Vector &o
     }
 }
 
+// NOLINTNEXTLINE(readability-identifier-naming)
 template <class ArrowArrayType, class ValueCreator>
 void ReadPrimitiveListElements(const std::shared_ptr<arrow::Array> &values,
                                int32_t start_offset,

@@ -27,7 +27,7 @@ struct BigqueryParseData : ParserExtensionParseData {
         : statement(std::move(statement)), options(std::move(options)) {
     }
 
-    virtual string ToString() const override {
+    string ToString() const override {
         return "BigQueryParseData";
     }
 
@@ -36,27 +36,27 @@ struct BigqueryParseData : ParserExtensionParseData {
     }
 };
 
-ParserExtensionParseResult bigquery_parse(ParserExtensionInfo *info, const std::string &query);
+ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const std::string &query);
 
-ParserExtensionPlanResult bigquery_plan(ParserExtensionInfo *info,
-                                        ClientContext &context,
-                                        unique_ptr<ParserExtensionParseData> parse_data);
+ParserExtensionPlanResult BigqueryPlan(ParserExtensionInfo *info,
+                                       ClientContext &context,
+                                       unique_ptr<ParserExtensionParseData> parse_data);
 
 struct BigqueryParserExtension : public ParserExtension {
     BigqueryParserExtension() : ParserExtension() {
-        parse_function = bigquery_parse;
-        plan_function = bigquery_plan;
+        parse_function = BigqueryParse;
+        plan_function = BigqueryPlan;
     }
 };
 
-BoundStatement bigquery_bind(ClientContext &context,
-                             Binder &binder,
-                             OperatorExtensionInfo *info,
-                             SQLStatement &statement);
+BoundStatement BigqueryBind(ClientContext &context,
+                            Binder &binder,
+                            OperatorExtensionInfo *info,
+                            SQLStatement &statement);
 
 struct BigqueryOperatorExtension : public OperatorExtension {
     BigqueryOperatorExtension() : OperatorExtension() {
-        Bind = bigquery_bind;
+        Bind = BigqueryBind;
     }
 
     std::string GetName() override {
