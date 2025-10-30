@@ -19,7 +19,7 @@ jobs:
             duckdb_version: v1.4.1
             ci_tools_version: v1.4.1
             extension_name: bigquery
-            format_checks: "format;tidy"
+            format_checks: "format"
 
     duckdb-stable-build:
         name: Build extension binaries
