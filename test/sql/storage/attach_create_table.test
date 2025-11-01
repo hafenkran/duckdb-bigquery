@@ -1,0 +1,66 @@
+# name: test/sql/storage/attach_create_table.test
+# description: Test inserting/querying blobs
+# group: [storage]
+
+require bigquery
+
+require parquet
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_experimental_enable_bigquery_options=TRUE
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.my_fancy_test_table;
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.my_fancy_test_table(i INTEGER) OPTIONS(
+	description='some description',
+	expiration_timestamp='2027-05-05T01:00:00'
+)
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.my_fancy_test_table VALUES (42);
+
+statement ok
+CREATE TABLE IF NOT EXISTS bq.${BQ_TEST_DATASET}.my_fancy_test_table(i INTEGER);
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.my_fancy_test_table;
+----
+42
+
+query IIII
+SELECT table_name, option_name, option_type, option_value FROM bigquery_query(bq, '
+  SELECT
+    *
+  FROM
+    ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.TABLE_OPTIONS
+')
+WHERE table_name='my_fancy_test_table'
+ORDER BY option_name
+----
+my_fancy_test_table	description	STRING	"some description"
+my_fancy_test_table	expiration_timestamp	TIMESTAMP	TIMESTAMP "2027-05-05T01:00:00.000Z"
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.my_fancy_test_table;
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.multiple_row_groups AS (
+  SELECT * FROM 'test/data/multiple_row_groups.parquet'
+);
+
+query I
+SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.multiple_row_groups;
+----
+10000
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.multiple_row_groups;

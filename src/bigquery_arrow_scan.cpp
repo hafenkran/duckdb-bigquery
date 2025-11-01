@@ -31,7 +31,7 @@ unique_ptr<FunctionData> BigqueryArrowScanFunction::BigqueryArrowScanBind(Client
 
     auto table_string = input.inputs[0].GetValue<string>();
     auto table_ref = BigqueryUtils::ParseTableString(table_string);
-    if (!table_ref.has_dataset_id() || !table_ref.has_table_id()) {
+    if (!table_ref.HasDatasetId() || !table_ref.HasTableId()) {
         throw BinderException("Invalid table string: %s", table_string);
     }
 
@@ -129,7 +129,11 @@ unique_ptr<GlobalTableFunctionState> BigqueryArrowScanFunction::BigqueryArrowSca
 
     // Wrap reader in a factory so every thread can open its own stream
     auto factory = make_shared_ptr<BigqueryStreamFactory>(bq_arrow_reader);
-    bind_data.factory_dep()->factory = factory;
+    auto factory_dependency = bind_data.GetFactoryDependency();
+    if (!factory_dependency) {
+        throw InternalException("Factory dependency not initialized");
+    }
+    factory_dependency->factory = factory;
     bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
 
     // Initialize global scan state

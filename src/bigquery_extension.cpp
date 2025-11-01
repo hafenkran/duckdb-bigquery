@@ -56,7 +56,7 @@ static void LoadInternal(ExtensionLoader &loader) {
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
 
-	bigquery::RegisterBigquerySecretType(loader.GetDatabaseInstance());
+    bigquery::RegisterBigquerySecretType(loader.GetDatabaseInstance());
 
     // Register WKT->GEOMETRY cast (runtime lookup of spatial extension's ST_GeomFromText)
     bigquery::RegisterWKTGeometryCast(loader.GetDatabaseInstance());

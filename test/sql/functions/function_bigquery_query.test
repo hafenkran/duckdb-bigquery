@@ -1,0 +1,67 @@
+# name: test/sql/functions/function_bigquery_query.test
+# description: Test selecting from a few simple tables
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_debug_show_queries = true;
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.test_cities;
+
+statement ok
+DROP VIEW IF EXISTS bq.${BQ_TEST_DATASET}.test_cities_view;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.test_cities AS
+SELECT *
+FROM (
+    VALUES
+    ('Amsterdam', 1000, 'NL'),
+    ('London', 2000, 'GB'),
+    ('New York', 3000, 'US'),
+    ('Paris', 4000, 'FR'),
+    ('Tokyo', 5000, 'JP'),
+    ('Sydney', 6000, 'AU'),
+    ('Cape Town', 7000, 'ZA'),
+    ('Rio de Janeiro', 8000, 'BR'),
+    ('Cairo', 9000, 'EG'),
+    ('Mumbai', 10000, 'IN'),
+    ('Beijing', 11000, 'CN'),
+    ('Mexico City', 12000, 'MX'),
+    ('Lima', 13000, 'PE'),
+    ('Santiago', 14000, 'CL'),
+)
+cities(name, id, country_code);
+
+statement ok
+CALL bigquery_execute('bq', 'CREATE VIEW ${BQ_TEST_DATASET}.test_cities_view AS SELECT * FROM ${BQ_TEST_DATASET}.test_cities');
+
+query III
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view;', dry_run=true);
+----
+0	false	<REGEX>:.+
+
+query I
+SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view');
+----
+14
+
+query I
+SELECT name FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view ORDER BY name ASC LIMIT 1');
+----
+Amsterdam
+
+statement ok
+CALL bigquery_execute('bq', 'DROP VIEW ${BQ_TEST_DATASET}.test_cities_view;');
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.test_cities;

@@ -176,25 +176,25 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
     // statistics
     std::string json_output;
     absl::Status status = google::protobuf::util::MessageToJsonString(job_stats, &json_output);
-	if (!status.ok()) {
-		throw BinderException("Failed to convert job statistics to JSON");
-	}
+    if (!status.ok()) {
+        throw BinderException("Failed to convert job statistics to JSON");
+    }
     output.SetValue(value_idx++, out_idx, Value(json_output));
 
     // configuration
     std::string configuration_json;
     status = google::protobuf::util::MessageToJsonString(job.configuration(), &configuration_json);
-	if (!status.ok()) {
-		throw BinderException("Failed to convert job configuration to JSON" );
-	}
+    if (!status.ok()) {
+        throw BinderException("Failed to convert job configuration to JSON");
+    }
     output.SetValue(value_idx++, out_idx, Value(configuration_json));
 
     // status
     std::string status_json;
     status = google::protobuf::util::MessageToJsonString(job.status(), &status_json);
-	if (!status.ok()) {
-		throw BinderException("Failed to convert job status to JSON");
-	}
+    if (!status.ok()) {
+        throw BinderException("Failed to convert job status to JSON");
+    }
     output.SetValue(value_idx++, out_idx, Value(status_json));
 }
 
@@ -204,8 +204,8 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
                                                      vector<string> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
 
-	string api_endpoint;
-	ListJobsParams params;
+    string api_endpoint;
+    ListJobsParams params;
     params.projection = "full"; // Full projection by default
     std::map<std::string, std::function<void(const Value &)>> param_map = {
         {"jobId", [&](const Value &val) { params.job_id = val.GetValue<string>(); }},
@@ -215,7 +215,7 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
         {"maxCreationTime", [&](const Value &val) { params.max_creation_time = val.GetValue<timestamp_t>(); }},
         {"stateFilter", [&](const Value &val) { params.state_filter = val.GetValue<string>(); }},
         {"parentJobId", [&](const Value &val) { params.parent_job_id = val.GetValue<string>(); }},
-		{"api_endpoint", [&](const Value &val) { api_endpoint = val.GetValue<string>(); }},
+        {"api_endpoint", [&](const Value &val) { api_endpoint = val.GetValue<string>(); }},
     };
     for (auto &param : input.named_parameters) {
         auto it = param_map.find(param.first);
@@ -223,35 +223,35 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
             it->second(param.second);
         }
     }
-	if (params.projection.has_value() && params.projection != "full" && params.projection != "minimal") {
+    if (params.projection.has_value() && params.projection != "full" && params.projection != "minimal") {
         throw BinderException("Invalid value for projection parameter: " + params.projection.value());
     }
 
-	unique_ptr<ListJobsBindData> bind_data = nullptr;
-	auto &database_manager = DatabaseManager::Get(context);
-	auto database = database_manager.GetDatabase(context, dbname_or_project_id);
-	if (database) {
-		// Use attached database for this operation
-		auto &catalog = database->GetCatalog();
-		if (catalog.GetCatalogType() != "bigquery") {
-			throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
-		}
-		if (!api_endpoint.empty()) {
-			throw BinderException("'api_endpoint' named parameter is not supported for attached databases");
-		}
+    unique_ptr<ListJobsBindData> bind_data = nullptr;
+    auto &database_manager = DatabaseManager::Get(context);
+    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    if (database) {
+        // Use attached database for this operation
+        auto &catalog = database->GetCatalog();
+        if (catalog.GetCatalogType() != "bigquery") {
+            throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
+        }
+        if (!api_endpoint.empty()) {
+            throw BinderException("'api_endpoint' named parameter is not supported for attached databases");
+        }
 
-		auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
-		auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
+        auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
+        auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
 
-		bind_data = make_uniq<ListJobsBindData>(transaction.GetBigqueryClient(), params);
-	} else {
-		// Use the provided project_id of the gcp project
-		auto bq_config = BigqueryConfig(dbname_or_project_id).SetApiEndpoint(api_endpoint);
-		auto bq_client = make_shared_ptr<BigqueryClient>(context, bq_config);
-		bind_data = make_uniq<ListJobsBindData>(bq_client, params);
-	}
+        bind_data = make_uniq<ListJobsBindData>(transaction.GetBigqueryClient(), params);
+    } else {
+        // Use the provided project_id of the gcp project
+        auto bq_config = BigqueryConfig(dbname_or_project_id).SetApiEndpoint(api_endpoint);
+        auto bq_client = make_shared_ptr<BigqueryClient>(context, bq_config);
+        bind_data = make_uniq<ListJobsBindData>(bq_client, params);
+    }
 
-	// Initialize the names and return types
+    // Initialize the names and return types
     InitializeNamesAndReturnTypes(return_types, names);
 
     return bind_data;
@@ -319,7 +319,7 @@ BigQueryListJobsFunction::BigQueryListJobsFunction()
     named_parameters["maxCreationTime"] = LogicalType::VARCHAR;
     named_parameters["stateFilter"] = LogicalType::VARCHAR;
     named_parameters["parentJobId"] = LogicalType::VARCHAR;
-	named_parameters["api_endpoint"] = LogicalType::VARCHAR;
+    named_parameters["api_endpoint"] = LogicalType::VARCHAR;
 }
 
 

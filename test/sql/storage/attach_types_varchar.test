@@ -1,0 +1,71 @@
+# name: test/sql/storage/attach_types_varchar.test
+# description: Test inserting/querying VARCHAR
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_bignumeric_as_varchar=TRUE
+
+statement ok
+SET bq_use_legacy_scan=true
+
+statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', '
+CREATE OR REPLACE TABLE ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.table_bignumeric_as_varchar AS
+SELECT
+  1 AS id,
+  CAST(1234567890.123456789012345678 AS BIGNUMERIC) AS big_value
+UNION ALL
+SELECT
+  2,
+  CAST(-9876543210.987654321098765432 AS BIGNUMERIC)
+UNION ALL
+SELECT
+  3,
+  CAST(0.000000000000000001 AS BIGNUMERIC);
+');
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_varchars;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.table_varchars (v VARCHAR);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.table_varchars VALUES ('');
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.table_varchars VALUES ('some BIG...query string');
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.table_varchars;
+----
+(empty)
+some BIG...query string
+
+#query II
+#SELECT * FROM bq.${BQ_TEST_DATASET}.table_bignumeric_as_varchar ORDER BY id;
+#----
+#1	1234567890.12345678901234567800000000000000000000
+#2	-9876543210.98765432109876543200000000000000000000
+#3	1.00000000000000000000E-18
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_varchars;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_bignumeric_as_varchar;
+
+statement ok
+SET bq_bignumeric_as_varchar=FALSE
+
+statement ok
+SET bq_use_legacy_scan=false

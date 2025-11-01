@@ -11,11 +11,12 @@ namespace bigquery {
 class BigquerySchemaSet : public BigqueryCatalogSet {
 public:
     explicit BigquerySchemaSet(Catalog &catalog);
+    ~BigquerySchemaSet() override = default;
 
     optional_ptr<CatalogEntry> CreateSchema(ClientContext &context, CreateSchemaInfo &info);
 
 protected:
-    void LoadEntries(ClientContext &context);
+    void LoadEntries(ClientContext &context) override;
 };
 
 

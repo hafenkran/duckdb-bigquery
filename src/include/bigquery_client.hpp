@@ -39,7 +39,7 @@ struct ListJobsParams {
 class BigqueryClient {
 public:
     explicit BigqueryClient(ClientContext &context, const BigqueryConfig &config);
-    ~BigqueryClient() {};
+    ~BigqueryClient(){};
 
 public:
     vector<BigqueryDatasetRef> GetDatasets();

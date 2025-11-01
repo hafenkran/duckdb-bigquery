@@ -16,7 +16,8 @@ struct BigqueryUpdateGlobalState : public GlobalSinkState {
 };
 
 BigqueryUpdate::BigqueryUpdate(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query)
-    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
+    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table),
+      query(std::move(query)) {
 }
 
 unique_ptr<GlobalSinkState> BigqueryUpdate::GetGlobalSinkState(ClientContext &context) const {
@@ -36,7 +37,7 @@ SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
     auto bq_client = transaction.GetBigqueryClient();
     auto result = bq_client->ExecuteQuery(query);
 
-    auto total_rows = result.total_rows();
+    const auto &total_rows = result.total_rows();
     uint64_t extracted_value = total_rows.value();
     gstate.updated_count = extracted_value;
     return SinkFinalizeType::READY;

@@ -8,8 +8,7 @@ namespace bigquery {
 BigqueryCreateSchemaInfo::BigqueryCreateSchemaInfo() : CreateSchemaInfo() {
 }
 
-BigqueryCreateSchemaInfo::BigqueryCreateSchemaInfo(const CreateSchemaInfo &info,
-                                                   unordered_map<string, string> options)
+BigqueryCreateSchemaInfo::BigqueryCreateSchemaInfo(const CreateSchemaInfo &info, unordered_map<string, string> options)
     : CreateSchemaInfo(), options(std::move(options)) {
     this->info_type = info.info_type;
     this->catalog = info.catalog;
@@ -58,8 +57,7 @@ BigqueryCreateTableInfo::BigqueryCreateTableInfo(string catalog,
     : CreateTableInfo(std::move(catalog), std::move(schema), std::move(name)), options(std::move(options)) {
 }
 
-BigqueryCreateTableInfo::BigqueryCreateTableInfo(const CreateTableInfo &info,
-                                                 unordered_map<string, string> options)
+BigqueryCreateTableInfo::BigqueryCreateTableInfo(const CreateTableInfo &info, unordered_map<string, string> options)
     : CreateTableInfo(info.catalog, info.schema, info.table), options(std::move(options)) {
     this->info_type = info.info_type;
     this->type = info.type;

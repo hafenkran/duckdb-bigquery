@@ -14,7 +14,7 @@ class BigqueryCatalog : public Catalog {
 public:
     explicit BigqueryCatalog(AttachedDatabase &db_p, const BigqueryConfig &config, BigqueryOptions options_p);
     explicit BigqueryCatalog(AttachedDatabase &db_p, const string &connection_str, BigqueryOptions options_p);
-    ~BigqueryCatalog() = default;
+    ~BigqueryCatalog() override = default;
 
     BigqueryConfig config;
     BigqueryOptions options;

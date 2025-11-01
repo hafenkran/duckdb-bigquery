@@ -33,7 +33,7 @@ unordered_map<string, string> parse_bigquery_options(const string &options_str) 
     return options;
 }
 
-ParserExtensionParseResult bigquery_parse(ParserExtensionInfo *info, const string &query) {
+ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const string &query) {
     if (!BigquerySettings::ExperimentalEnableBigqueryOptions()) {
         return ParserExtensionParseResult();
     }
@@ -85,29 +85,29 @@ ParserExtensionParseResult bigquery_parse(ParserExtensionInfo *info, const strin
     return ParserExtensionParseResult();
 }
 
-ParserExtensionPlanResult bigquery_plan(ParserExtensionInfo *,
-                                        ClientContext &context,
-                                        unique_ptr<ParserExtensionParseData> parse_data) {
+ParserExtensionPlanResult BigqueryPlan(ParserExtensionInfo *,
+                                       ClientContext &context,
+                                       unique_ptr<ParserExtensionParseData> parse_data) {
     auto bigquery_state = make_shared_ptr<BigqueryState>(std::move(parse_data));
     context.registered_state->Remove("bigquery");
     context.registered_state->Insert("bigquery", bigquery_state);
     throw BinderException("nope");
 }
 
-BoundStatement bigquery_bind(ClientContext &context,
-                             Binder &binder,
-                             OperatorExtensionInfo *info,
-                             SQLStatement &statement) {
+BoundStatement BigqueryBind(ClientContext &context,
+                            Binder &binder,
+                            OperatorExtensionInfo *info,
+                            SQLStatement &statement) {
     switch (statement.type) {
     case StatementType::EXTENSION_STATEMENT: {
         auto &extension_statement = dynamic_cast<ExtensionStatement &>(statement);
-        if (extension_statement.extension.parse_function == bigquery_parse) {
+        if (extension_statement.extension.parse_function == BigqueryParse) {
             auto lookup = context.registered_state->Get<BigqueryState>("bigquery");
             if (!lookup) {
                 throw BinderException("Bigquery registered state not found");
             }
 
-			auto bigquery_state = dynamic_cast<BigqueryState *>(lookup.get());
+            auto bigquery_state = dynamic_cast<BigqueryState *>(lookup.get());
             if (!bigquery_state) {
                 throw BinderException("Bigquery registered state is not of type BigqueryState");
             }
@@ -116,21 +116,21 @@ BoundStatement bigquery_bind(ClientContext &context,
                 throw BinderException("Bigquery parse data invalid");
             }
 
-			auto &parsed_statement = bigquery_parse_data->statement;
+            auto &parsed_statement = bigquery_parse_data->statement;
             auto &options_map = bigquery_parse_data->options;
 
             if (parsed_statement->type == StatementType::CREATE_STATEMENT) {
                 auto &create_stmt = parsed_statement->Cast<CreateStatement>();
                 auto &info = *create_stmt.info;
 
-				if (options_map.size() > 0) {
-					string &catalog_name = info.catalog;
-					auto &database_manager = DatabaseManager::Get(context);
-					auto database = database_manager.GetDatabase(context, catalog_name);
-					if (!database) {
-						throw BinderException("OPTIONS clause used on non-BigQuery catalog %s", catalog_name);
-					}
-				}
+                if (options_map.size() > 0) {
+                    string &catalog_name = info.catalog;
+                    auto &database_manager = DatabaseManager::Get(context);
+                    auto database = database_manager.GetDatabase(context, catalog_name);
+                    if (!database) {
+                        throw BinderException("OPTIONS clause used on non-BigQuery catalog %s", catalog_name);
+                    }
+                }
 
                 if (auto *schema_info_ptr = dynamic_cast<CreateSchemaInfo *>(&info)) {
                     create_stmt.info = make_uniq<BigqueryCreateSchemaInfo>(*schema_info_ptr, options_map);

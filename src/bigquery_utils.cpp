@@ -50,7 +50,7 @@ public:
 
     static BigqueryTypeException BignumericNotSupported() {
         return BigqueryTypeException("BIGNUMERIC type is not supported. "
-                                         "DuckDB's DECIMAL type supports precision 1-" +
+                                     "DuckDB's DECIMAL type supports precision 1-" +
                                          std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
                                          ", but BIGNUMERIC has precision " +
                                          std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".",
@@ -76,7 +76,7 @@ BigqueryConfig BigqueryConfig::FromDSN(const std::string &connection_string) {
         dataset_id = table_ref.dataset_id;
 
         // Optional error handling if table ID should not be present
-        if (table_ref.has_table_id()) {
+        if (table_ref.HasTableId()) {
             throw std::invalid_argument("Table ID is not supported in the connection string");
         }
     }

@@ -1,0 +1,150 @@
+# name: test/sql/storage/attach_alter_table.test
+# description: Test altering tables
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_debug_show_queries=True;
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table;
+
+### Test - RENAME_COLUMN
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table(i INTEGER);
+
+statement ok
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table RENAME COLUMN i TO i2;
+
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table;
+----
+i2	BIGINT	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table;
+
+
+### Test - RENAME_TABLE
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_renamed;
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_rename_me(i INTEGER);
+
+statement ok
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_rename_me RENAME TO alter_table_renamed;
+
+statement ok
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_renamed;
+
+statement error
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_rename_me;
+----
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_renamed;
+
+
+### Test - ADD_COLUMN
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_add_column(i INTEGER);
+
+statement ok
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_add_column ADD COLUMN l INTEGER;
+
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_add_column;
+----
+i	BIGINT	YES	NULL	NULL	NULL
+l	BIGINT	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_add_column;
+
+
+### Test - REMOVE_COLUMN
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_remove_column(i INTEGER, j INTEGER);
+
+statement ok
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_remove_column DROP COLUMN j;
+
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_remove_column;
+----
+i	BIGINT	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.alter_table_remove_column;
+
+
+### Test - ALTER_COLUMN_TYPE
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type(i INTEGER);
+
+statement error
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type ALTER COLUMN i TYPE STRING;
+----
+ALTER TABLE ALTER COLUMN SET DATA TYPE requires that the existing column type (INT64) is assignable to the new type (STRING)
+
+statement ok
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type ALTER COLUMN i TYPE DOUBLE;
+
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type;
+----
+i	DOUBLE	YES	NULL	NULL	NULL
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.alter_table_alter_column_type;
+
+
+### Test - SET_DEFAULT
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_set_default(i INTEGER);
+
+statement ok
+ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_set_default ALTER COLUMN i SET DEFAULT 100;
+
+query IIIIII
+DESCRIBE bq.${BQ_TEST_DATASET}.alter_table_set_default;
+----
+i	BIGINT	YES	NULL	100	NULL
+
+### statement ok
+### INSERT INTO bq.${BQ_TEST_DATASET}.alter_table_set_default DEFAULT VALUES;
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.alter_table_set_default;
+
+### query I
+### SELECT * FROM bq.${BQ_TEST_DATASET}.alter_table_set_default;
+### ----
+### 100
+
+### Test - DROP_NOT_NULL (disabled due to flakiness)
+# statement ok
+# CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.alter_table_drop_not_null(i INTEGER NOT NULL);
+#
+# statement ok
+# ALTER TABLE bq.${BQ_TEST_DATASET}.alter_table_drop_not_null ALTER COLUMN i DROP NOT NULL;
+#
+# statement ok
+# INSERT INTO bq.${BQ_TEST_DATASET}.alter_table_drop_not_null VALUES (NULL);
+#
+# query I
+# SELECT * FROM bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;
+# ----
+# NULL
+#
+# statement ok
+# DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.alter_table_drop_not_null;

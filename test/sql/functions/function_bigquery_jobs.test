@@ -1,0 +1,35 @@
+# name: test/sql/functions/function_bigquery_jobs.test
+# description: Test selection with filter pushdown
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+CREATE TABLE job_info AS SELECT * FROM bigquery_execute('bq', 'SELECT 1 AS RESULT');
+
+query III
+SELECT state, job_type, status FROM bigquery_jobs('bq', maxResults=10) WHERE job_id=(SELECT job_id FROM job_info);
+----
+Completed	QUERY	{"state":"DONE"}
+
+query III
+SELECT state, job_type, status FROM bigquery_jobs('${BQ_TEST_PROJECT}', maxResults=10) WHERE job_id=(SELECT job_id FROM job_info);
+----
+Completed	QUERY	{"state":"DONE"}
+
+statement error
+SELECT * FROM bigquery_jobs('bq', jobId='my_non_existing_job_id');
+----
+<REGEX>:Binder Error: Permanent error, with a last message of Not found: Job .+
+
+query IIIIIIIIIIIII
+SELECT state, job_id, project, location, creation_time, start_time, end_time, duration_ms, bytes_processed, total_slot_time_ms, user_email, principal_subject, job_type FROM bigquery_jobs('bq', maxResults=1, minCreationTime='2020-10-03 00:00:00', maxCreationTime='2026-10-03 16:00:00')
+----
+Completed	<REGEX>:job_.+	<REGEX>:[a-zA-Z0-9]+	<REGEX>:[a-zA-Z0-9-]+	<REGEX>:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,3})?	<REGEX>:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,3})?	<REGEX>:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,3})?	<REGEX>:\d{2}:\d{2}:\d{2}(\.\d{1,3})?	<REGEX>:(\d+|NULL)	<REGEX>:(\d+|NULL)	<REGEX>:[\w\.\+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+	<REGEX>:.+	QUERY

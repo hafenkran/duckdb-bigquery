@@ -17,10 +17,10 @@ struct BigqueryTableInfo {
         create_info = make_uniq<CreateTableInfo>(project_id, dataset_id, table_id);
         create_info->columns.SetAllowDuplicates(true);
     }
-    BigqueryTableInfo(const BigqueryTableRef &table_ref)
+    explicit BigqueryTableInfo(const BigqueryTableRef &table_ref)
         : BigqueryTableInfo(table_ref.project_id, table_ref.dataset_id, table_ref.table_id) {
     }
-    BigqueryTableInfo(unique_ptr<CreateTableInfo> info) : create_info(std::move(info)) {
+    explicit BigqueryTableInfo(unique_ptr<CreateTableInfo> info) : create_info(std::move(info)) {
         create_info->columns.SetAllowDuplicates(true);
     }
 

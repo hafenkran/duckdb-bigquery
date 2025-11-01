@@ -12,7 +12,7 @@ namespace bigquery {
 
 struct BigqueryCreateSchemaInfo : public CreateSchemaInfo {
     BigqueryCreateSchemaInfo();
-    BigqueryCreateSchemaInfo(const CreateSchemaInfo &info, unordered_map<string, string> options = {});
+    explicit BigqueryCreateSchemaInfo(const CreateSchemaInfo &info, unordered_map<string, string> options = {});
 
     unique_ptr<CreateInfo> Copy() const override;
     string ToString() const override;
@@ -24,8 +24,8 @@ public:
 struct BigqueryCreateTableInfo : public CreateTableInfo {
     BigqueryCreateTableInfo();
     BigqueryCreateTableInfo(string catalog, string schema, string name, unordered_map<string, string> options = {});
-    BigqueryCreateTableInfo(const CreateTableInfo &info, unordered_map<string, string> options = {});
-	BigqueryCreateTableInfo(const BigqueryCreateTableInfo &other);
+    explicit BigqueryCreateTableInfo(const CreateTableInfo &info, unordered_map<string, string> options = {});
+    BigqueryCreateTableInfo(const BigqueryCreateTableInfo &other);
 
     unique_ptr<CreateInfo> Copy() const override;
     string ToString() const override;
@@ -37,7 +37,7 @@ public:
 struct BigqueryCreateViewInfo : public CreateViewInfo {
     BigqueryCreateViewInfo();
     BigqueryCreateViewInfo(SchemaCatalogEntry &schema, string view_name, unordered_map<string, string> options = {});
-    BigqueryCreateViewInfo(const CreateViewInfo &info, unordered_map<string, string> options = {});
+    explicit BigqueryCreateViewInfo(const CreateViewInfo &info, unordered_map<string, string> options = {});
     BigqueryCreateViewInfo(const BigqueryCreateViewInfo &other);
 
     unique_ptr<CreateInfo> Copy() const override;

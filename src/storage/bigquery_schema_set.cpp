@@ -31,17 +31,17 @@ void BigquerySchemaSet::LoadEntries(ClientContext &context) {
     auto bqclient = transaction.GetBigqueryClient();
 
     if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
-		auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
+        auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
 
-		vector<BigqueryDatasetRef> datasets;
-		if (bq_catalog.config.HasDatasetId()){
-			auto dataset = bqclient->GetDataset(bq_catalog.config.dataset_id);
-			datasets.push_back(dataset);
-		} else {
-			datasets = bqclient->GetDatasets();
-		}
+        vector<BigqueryDatasetRef> datasets;
+        if (bq_catalog.config.HasDatasetId()) {
+            auto dataset = bqclient->GetDataset(bq_catalog.config.dataset_id);
+            datasets.push_back(dataset);
+        } else {
+            datasets = bqclient->GetDatasets();
+        }
 
-		std::map<std::string, CreateTableInfo> table_infos;
+        std::map<std::string, CreateTableInfo> table_infos;
         bqclient->GetTableInfosFromDatasets(datasets, table_infos);
 
         std::map<std::string, vector<CreateTableInfo>> tables_by_schema;

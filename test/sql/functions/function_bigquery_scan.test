@@ -1,0 +1,111 @@
+# name: test/sql/functions/function_bigquery_scan.test
+# description: Comprehensive coverage for bigquery_scan column projection, ordering, and filtering
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test` AS
+    SELECT 1 AS a, 2 AS b, "alpha" AS c
+    UNION ALL
+    SELECT 3 AS a, 4 AS b, "beta" AS c
+');
+
+# Default scan should preserve natural ordering and column layout
+query III
+SELECT a, b, c FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY a;
+----
+1	2	alpha
+3	4	beta
+
+# Reordered projection must follow requested order
+query III
+SELECT c, a, b FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY a;
+----
+alpha	1	2
+beta	3	4
+
+# Subset of columns should match requested names and values
+query I
+SELECT b FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY b;
+----
+2
+4
+
+# Duplicate projections must be consistent
+query II
+SELECT a AS first_a, a AS second_a FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY a;
+----
+1	1
+3	3
+
+# Aggregations rely on implicit ROWID handling
+query I
+SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test');
+----
+2
+
+# Filters should round-trip expected rows
+query II
+SELECT a, c FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') WHERE b = 4;
+----
+3	beta
+
+statement ok
+SET bq_use_legacy_scan = true;
+
+# Legacy scan should mirror Arrow-based behaviour
+query III
+SELECT a, b, c FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY a;
+----
+1	2	alpha
+3	4	beta
+
+query III
+SELECT c, a, b FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY a;
+----
+alpha	1	2
+beta	3	4
+
+query I
+SELECT b FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY b;
+----
+2
+4
+
+query II
+SELECT a AS first_a, a AS second_a FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY a;
+----
+1	1
+3	3
+
+query I
+SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test');
+----
+2
+
+query II
+SELECT a, c FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') WHERE b = 4;
+----
+3	beta
+
+statement ok
+SET bq_use_legacy_scan = false;
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT}' AS bq (TYPE bigquery);
+
+# Catalog scan goes through same projection handling
+query III
+SELECT c, a, b FROM bq.${BQ_TEST_DATASET}.function_scan_test ORDER BY a;
+----
+alpha	1	2
+beta	3	4
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_DATASET}.function_scan_test`');

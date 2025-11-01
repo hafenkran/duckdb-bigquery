@@ -12,6 +12,7 @@ class BigquerySchemaEntry;
 class BigqueryTableSet : public BigqueryInSchemaSet {
 public:
     explicit BigqueryTableSet(BigquerySchemaEntry &schema);
+    ~BigqueryTableSet() override = default;
 
 public:
     optional_ptr<CatalogEntry> CreateTable(ClientContext &context, BoundCreateTableInfo &info);

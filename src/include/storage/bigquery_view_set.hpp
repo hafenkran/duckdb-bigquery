@@ -15,12 +15,12 @@ public:
     explicit BigqueryViewSet(BigquerySchemaEntry &schema);
 
 public:
-	optional_ptr<CatalogEntry> CreateView(ClientContext &context, CreateViewInfo &info);
-	optional_ptr<CatalogEntry> RefreshView(ClientContext &context, const string &view_name);
+    optional_ptr<CatalogEntry> CreateView(ClientContext &context, CreateViewInfo &info);
+    optional_ptr<CatalogEntry> RefreshView(ClientContext &context, const string &view_name);
 
 protected:
-	void LoadEntries(ClientContext &context) override;
-	void ClearEntries() override;
+    void LoadEntries(ClientContext &context) override;
+    void ClearEntries() override;
 };
 
 } // namespace bigquery

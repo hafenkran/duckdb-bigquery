@@ -1,0 +1,36 @@
+# name: test/sql/functions/function_bigquery_execute.test
+# description: Tests the bigquery_execute(...) function
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table`')
+
+query IIIIIII
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table` (x INT64)')
+----
+1	<REGEX>:job_.+	<REGEX>:.+	<REGEX>:.+	0	0	0
+
+query III
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table`', dry_run=true)
+----
+0	false	<REGEX>:.+
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+query I
+SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'exec_table';
+----
+1
+
+statement ok
+CALL bigquery_execute('bq', 'DROP TABLE ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table;')
+
+statement ok
+CALL bigquery_clear_cache();

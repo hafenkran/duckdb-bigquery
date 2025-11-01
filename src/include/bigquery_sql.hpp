@@ -18,9 +18,11 @@ struct BigquerySQL {
 public:
     static string ExtractFilters(PhysicalOperator &child);
     static string TransformFilter(const string &column_name, TableFilter &filter);
-    static string CreateExpression(const string &column_name, vector<unique_ptr<TableFilter>> &filters, const string &op);
+    static string CreateExpression(const string &column_name,
+                                   vector<unique_ptr<TableFilter>> &filters,
+                                   const string &op);
 
-	static string AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info);
+    static string AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info);
     static string CreateSchemaInfoToSQL(const string &project_id, const CreateSchemaInfo &info);
     static string CreateTableInfoToSQL(const string &project_id, const CreateTableInfo &info);
     static string CreateViewInfoToSQL(const string &project_id, const CreateViewInfo &info);
@@ -29,12 +31,14 @@ public:
     static string LogicalUpdateToSQL(const string &project_id, LogicalUpdate &lu, PhysicalOperator &child);
     static string LogicalDeleteToSQL(const string &project_id, LogicalDelete &ld, PhysicalOperator &child);
 
-	static string BigqueryColumnToSQL(const ColumnDefinition &column);
+    static string BigqueryColumnToSQL(const ColumnDefinition &column);
     static string BigqueryColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints);
-	static string BigqueryOptionsToSQL(const unordered_map<string, string> &options);
+    static string BigqueryOptionsToSQL(const unordered_map<string, string> &options);
 
-	static string ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets);
-	static string ColumnsFromInformationSchemaQuery(const string &project_id, const string &dataset, const bool include_order_by = true);
+    static string ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets);
+    static string ColumnsFromInformationSchemaQuery(const string &project_id,
+                                                    const string &dataset,
+                                                    const bool include_order_by = true);
 };
 
 } // namespace bigquery

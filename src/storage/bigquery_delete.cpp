@@ -15,7 +15,8 @@ namespace duckdb {
 namespace bigquery {
 
 BigqueryDelete::BigqueryDelete(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query)
-    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table), query(std::move(query)) {
+    : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table),
+      query(std::move(query)) {
 }
 
 unique_ptr<GlobalSinkState> BigqueryDelete::GetGlobalSinkState(ClientContext &context) const {
@@ -64,9 +65,9 @@ PhysicalOperator &BigqueryCatalog::PlanDelete(ClientContext &context,
     if (op.return_chunk) {
         throw BinderException("RETURNING clause is not supported.");
     }
-	auto query = BigquerySQL::LogicalDeleteToSQL(GetProjectID(), op, plan);
-	auto &delete_op = planner.Make<BigqueryDelete>(op, op.table, query);
-	delete_op.children.push_back(plan);
+    auto query = BigquerySQL::LogicalDeleteToSQL(GetProjectID(), op, plan);
+    auto &delete_op = planner.Make<BigqueryDelete>(op, op.table, query);
+    delete_op.children.push_back(plan);
     return delete_op;
 }
 

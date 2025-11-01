@@ -1,0 +1,50 @@
+# name: test/sql/storage/attach_filter_pushdown.test
+# description: Test selection with filter pushdown
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.filter_pushdown;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.filter_pushdown(i INTEGER);
+
+statement ok
+SET bq_experimental_filter_pushdown=true
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.filter_pushdown FROM range(10000)
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i=5252
+----
+5252
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i>5000 AND i<=5006;
+----
+5001
+5002
+5003
+5004
+5005
+5006
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i IN (2222, 3333, 4444, 5555);
+----
+2222
+3333
+4444
+5555
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.filter_pushdown;

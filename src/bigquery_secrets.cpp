@@ -114,7 +114,7 @@ unique_ptr<const BaseSecret> BigquerySecret::Clone() const {
 static string ReadJsonFile(const string &param, const string &file_path, const string &example_path) {
     string error_msg = "The '" + param + "' parameter must be a valid file path (e.g., '" + example_path + "')";
 
-	if (!std::filesystem::exists(std::filesystem::path(file_path))) {
+    if (!std::filesystem::exists(std::filesystem::path(file_path))) {
         throw InvalidInputException(error_msg);
     }
 

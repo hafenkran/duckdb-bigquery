@@ -107,8 +107,8 @@ struct BigqueryDatasetRef {
         : project_id(project_id), dataset_id(dataset_id) {
     }
 
-    const bool has_dataset_id() const {
-        return dataset_id != "";
+    bool HasDatasetId() const {
+        return !dataset_id.empty();
     }
 
 public:
@@ -123,12 +123,12 @@ struct BigqueryTableRef {
         : project_id(project_id), dataset_id(dataset_id), table_id(table_id) {
     }
 
-    const bool has_dataset_id() const {
-        return dataset_id != "";
+    bool HasDatasetId() const {
+        return !dataset_id.empty();
     }
 
-    const bool has_table_id() const {
-        return table_id != "";
+    bool HasTableId() const {
+        return !table_id.empty();
     }
 
     const string TableString() const;
@@ -153,7 +153,6 @@ struct BigqueryType {
 };
 
 
-
 struct BigqueryUtils {
 public:
     // static ConnectionDetails ParseConnectionString(const string &connection_string);
@@ -175,10 +174,11 @@ public:
     static string WriteQuotedIdentifier(const string &identifier);
     static string ReplaceQuotes(string &identifier, char to_replace = '\'');
 
-	static bool IsGeographyType(const LogicalType &type);
-	static bool IsGeometryType(const LogicalType &type);
+    static bool IsGeographyType(const LogicalType &type);
+    static bool IsGeometryType(const LogicalType &type);
     static LogicalType CastToBigqueryType(const LogicalType &type);
-	static LogicalType CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context = nullptr);
+    static LogicalType CastToBigqueryTypeWithSpatialConversion(const LogicalType &type,
+                                                               ClientContext *context = nullptr);
     static LogicalType FieldSchemaToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
     static LogicalType FieldSchemaNumericToLogicalType(const google::cloud::bigquery::v2::TableFieldSchema &field);
 

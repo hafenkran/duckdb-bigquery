@@ -9,11 +9,11 @@ namespace duckdb {
 namespace bigquery {
 
 // Secret parameter name constants
-static constexpr const char* kAccessToken = "access_token";
-static constexpr const char* kServiceAccountJson = "service_account_json";
-static constexpr const char* kServiceAccountPath = "service_account_path";
-static constexpr const char* kExternalAccountJson = "external_account_json";
-static constexpr const char* kExternalAccountPath = "external_account_path";
+static constexpr const char *kAccessToken = "access_token";
+static constexpr const char *kServiceAccountJson = "service_account_json";
+static constexpr const char *kServiceAccountPath = "service_account_path";
+static constexpr const char *kExternalAccountJson = "external_account_json";
+static constexpr const char *kExternalAccountPath = "external_account_path";
 
 class BigquerySecret : public KeyValueSecret {
 public:

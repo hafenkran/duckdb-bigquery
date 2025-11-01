@@ -79,7 +79,7 @@ optional_ptr<CatalogEntry> BigqueryCatalog::CreateSchema(CatalogTransaction tran
 optional_ptr<SchemaCatalogEntry> BigqueryCatalog::LookupSchema(CatalogTransaction transaction,
                                                                const EntryLookupInfo &schema_lookup,
                                                                OnEntryNotFound if_not_found) {
-    auto schema_name = schema_lookup.GetEntryName();
+    const auto &schema_name = schema_lookup.GetEntryName();
     if (schema_name == DEFAULT_SCHEMA) {
         return GetSchema(transaction, GetDefaultDatasetID(), if_not_found);
     }
