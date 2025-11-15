@@ -285,10 +285,17 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
         NumericCast<idx_t>(state.chunk->arrow_array.length) - state.chunk_offset);
     data.lines_read += output_size;
 
+    auto ensure_column_id_coverage = [&](DataChunk &chunk) {
+        if (!state.column_ids.empty() && state.column_ids.size() != chunk.ColumnCount()) {
+            state.column_ids.clear();
+        }
+    };
+
     if (gstate.CanRemoveFilterColumns()) {
         state.all_columns.Reset();
         state.all_columns.SetCardinality(output_size);
 
+        ensure_column_id_coverage(state.all_columns);
         ArrowTableFunction::ArrowToDuckDB(state,
                                           data.arrow_table.GetColumns(),
                                           state.all_columns,
@@ -358,6 +365,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
         bool do_cast = data.requires_cast || geometry_cast_needed;
         if (!do_cast) {
             // Direct write to output
+            ensure_column_id_coverage(output);
             ArrowTableFunction::ArrowToDuckDB(state,
                                               data.arrow_table.GetColumns(),
                                               output,
@@ -365,6 +373,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
         } else {
             state.all_columns.Reset();
             state.all_columns.SetCardinality(output_size);
+            ensure_column_id_coverage(state.all_columns);
             ArrowTableFunction::ArrowToDuckDB(state,
                                               data.arrow_table.GetColumns(),
                                               state.all_columns,
