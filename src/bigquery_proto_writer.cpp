@@ -298,8 +298,7 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         }
         auto estimated_size_increase = serialized_msg.size() + APPEND_ROWS_ROW_OVERHEAD;
 
-        if (rows_in_batch > 0 &&
-            current_request_bytes + estimated_size_increase > DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
+        if (rows_in_batch > 0 && current_request_bytes + estimated_size_increase > DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
             SendAppendRequest(request);
             request = create_request();
             rows = request.mutable_proto_rows()->mutable_rows();
@@ -326,8 +325,7 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
     }
 }
 
-void BigqueryProtoWriter::SendAppendRequest(
-    const google::cloud::bigquery::storage::v1::AppendRowsRequest &request) {
+void BigqueryProtoWriter::SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request) {
     if (!request.has_proto_rows() || request.proto_rows().rows().serialized_rows_size() == 0) {
         return;
     }
