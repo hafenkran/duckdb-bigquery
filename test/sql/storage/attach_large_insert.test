@@ -1,0 +1,41 @@
+# name: test/sql/storage/attach_large_insert.test
+# description: Ensure large string inserts (single chunk > 10 MiB) succeed by batching AppendRows requests
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.large_json_insert (
+    id INTEGER,
+    payload_a STRING,
+    payload_b STRING,
+    payload_c STRING,
+    payload_d STRING,
+    payload_e STRING
+);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.large_json_insert
+SELECT
+    i,
+    '{"payload_a":"' || repeat('A', 100000) || '"}',
+    '{"payload_b":"' || repeat('B', 100000) || '"}',
+    '{"payload_c":"' || repeat('C', 100000) || '"}',
+    '{"payload_d":"' || repeat('D', 100000) || '"}',
+    '{"payload_e":"' || repeat('E', 100000) || '"}'
+FROM range(100) tbl(i);
+
+query I
+SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.large_json_insert;
+----
+100
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.large_json_insert;

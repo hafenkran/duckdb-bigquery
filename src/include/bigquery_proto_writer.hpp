@@ -39,6 +39,11 @@ public:
     void Finalize();
 
 private:
+    static constexpr idx_t DEFAULT_APPEND_ROWS_SOFT_LIMIT = 9 * 1024 * 1024;
+    static constexpr idx_t APPEND_ROWS_ROW_OVERHEAD = 32;
+
+    void SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request);
+
     string table_string;
 
     google::protobuf::DescriptorPool pool;
@@ -51,7 +56,6 @@ private:
     std::unique_ptr<google::cloud::AsyncStreamingReadWriteRpc<google::cloud::bigquery::storage::v1::AppendRowsRequest,
                                                               google::cloud::bigquery::storage::v1::AppendRowsResponse>>
         grpc_stream;
-    // google::cloud::bigquery::storage::v1::AppendRowsRequest append_request;
 };
 
 } // namespace bigquery

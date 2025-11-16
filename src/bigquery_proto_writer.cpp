@@ -238,11 +238,6 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         throw BinderException("Cannot get message prototype from message descriptor");
     }
 
-    // Create the append request
-    google::cloud::bigquery::storage::v1::AppendRowsRequest request;
-    request.set_write_stream(write_stream.name());
-    msg_descriptor->CopyTo(request.mutable_proto_rows()->mutable_writer_schema()->mutable_proto_descriptor());
-
     vector<idx_t> column_indexes;
     if (column_idxs.empty()) {
         column_indexes.resize(chunk.ColumnCount());
@@ -255,7 +250,18 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         }
     }
 
+    auto create_request = [this]() {
+        google::cloud::bigquery::storage::v1::AppendRowsRequest new_request;
+        new_request.set_write_stream(write_stream.name());
+        msg_descriptor->CopyTo(new_request.mutable_proto_rows()->mutable_writer_schema()->mutable_proto_descriptor());
+        return new_request;
+    };
+
+    auto request = create_request();
     auto *rows = request.mutable_proto_rows()->mutable_rows();
+    idx_t rows_in_batch = 0;
+    size_t current_request_bytes = request.ByteSizeLong();
+
     for (idx_t i = 0; i < chunk.size(); i++) {
         google::protobuf::Message *msg = msg_prototype->New();
         const google::protobuf::Reflection *reflection = msg->GetReflection();
@@ -290,8 +296,38 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         if (!msg->SerializeToString(&serialized_msg)) {
             throw std::runtime_error("Failed to serialize message");
         }
+        auto estimated_size_increase = serialized_msg.size() + APPEND_ROWS_ROW_OVERHEAD;
+
+        if (rows_in_batch > 0 && current_request_bytes + estimated_size_increase > DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
+            SendAppendRequest(request);
+            request = create_request();
+            rows = request.mutable_proto_rows()->mutable_rows();
+            rows_in_batch = 0;
+            current_request_bytes = request.ByteSizeLong();
+        }
+
         rows->add_serialized_rows(serialized_msg);
+        rows_in_batch++;
+        current_request_bytes += estimated_size_increase;
+
+        if (current_request_bytes >= DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
+            SendAppendRequest(request);
+            request = create_request();
+            rows = request.mutable_proto_rows()->mutable_rows();
+            rows_in_batch = 0;
+            current_request_bytes = request.ByteSizeLong();
+        }
         delete msg;
+    }
+
+    if (rows_in_batch > 0) {
+        SendAppendRequest(request);
+    }
+}
+
+void BigqueryProtoWriter::SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request) {
+    if (!request.has_proto_rows() || request.proto_rows().rows().serialized_rows_size() == 0) {
+        return;
     }
 
     int max_retries = 100;
@@ -322,7 +358,6 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
             }
         }
 
-        // GET THE RESPONSE AND ERROR HANDLING
         auto response = grpc_stream->Read().get();
         if (!response) {
             if (attempt < max_retries - 1) {
