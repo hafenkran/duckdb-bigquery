@@ -503,24 +503,6 @@ LOAD 'bigquery'
 
 Now you can use the features from this extension.
 
-## Using Docker
-
-You can also build the project using Docker. This approach simplifies dependencies management and setup. You can build the docker image by using the provided `make` command as follows:
-
-```bash
-make docker-build
-```
-
-To run the Docker container, you'll need to authenticate with Google Cloud using a service account. Ensure you have a service account JSON file for Google Cloud authentication. The service account credentials must be set up as environment variables and mounted to the container. Use the following command to run the Docker container, replacing `/path/to/my/service-account-credentials.json` with the actual path to your service account JSON file:
-
-```bash
-docker run \
-    -it \
-    -v /path/to/my/service-account-credentials.json:/creds \
-    -e GOOGLE_APPLICATION_CREDENTIALS=/creds/service-account-credentials.json \
-    duckdb-bigquery:v1.4.2
-```
-
 ## Important Notes on Using Google BigQuery
 
 > **⚠️ Disclaimer**: This is an independent, community-maintained open-source project and is not affiliated with, endorsed by, or officially supported by Google LLC, or any of their subsidiaries. This extension is provided "as is" without any warranties or guarantees. "DuckDB" and "BigQuery" are trademarks of their respective owners. Users are solely responsible for compliance with applicable terms of service and any costs incurred through usage.
