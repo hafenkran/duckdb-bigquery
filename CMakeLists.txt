@@ -8,6 +8,13 @@ endif()
 # Set extension name here
 set(TARGET_NAME bigquery)
 
+# musl-specific workaround: thrift headers miss <cstdint>, so force-include it when building in the musl CI container.
+set(MUSL_EXTRA_CXXFLAGS "")
+if(DEFINED ENV{DUCKDB_PLATFORM} AND "$ENV{DUCKDB_PLATFORM}" STREQUAL "linux_amd64_musl")
+    set(MUSL_EXTRA_CXXFLAGS "-include cstdint")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MUSL_EXTRA_CXXFLAGS}")
+endif()
+
 # Compile and install google-cloud-cpp depedencies
 message("Installing google-cloud-cpp dependencies")
 execute_process(
@@ -27,6 +34,7 @@ execute_process(
         -DVCPKG_OVERLAY_TRIPLETS=${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains/
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_CXX_FLAGS=${MUSL_EXTRA_CXXFLAGS}
         # Force static linking for cross-compilation
         -DBUILD_SHARED_LIBS=OFF
         -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
