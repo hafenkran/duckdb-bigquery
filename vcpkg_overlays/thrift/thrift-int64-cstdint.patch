@@ -1,0 +1,10 @@
+--- a/lib/cpp/src/thrift/concurrency/Mutex.h
++++ b/lib/cpp/src/thrift/concurrency/Mutex.h
+@@ -21,6 +21,7 @@
+ #ifndef _THRIFT_CONCURRENCY_MUTEX_H_
+ #define _THRIFT_CONCURRENCY_MUTEX_H_ 1
+ 
+ #include <thrift/TNonCopyable.h>
++#include <cstdint>
+ 
+ namespace apache {
