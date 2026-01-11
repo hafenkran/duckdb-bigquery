@@ -122,9 +122,9 @@ SinkResultType BigqueryInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 }
 
 // ### GET DATA
-SourceResultType BigqueryInsert::GetData(ExecutionContext &context,
-                                         DataChunk &chunk,
-                                         OperatorSourceInput &input) const {
+SourceResultType BigqueryInsert::GetDataInternal(ExecutionContext &context,
+                                                 DataChunk &chunk,
+                                                 OperatorSourceInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
     chunk.SetCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.insert_count));
