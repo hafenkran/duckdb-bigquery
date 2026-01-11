@@ -2,6 +2,7 @@
 #include "bigquery_settings.hpp"
 
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
+#include "duckdb/catalog/entry_lookup_info.hpp"
 #include "duckdb/common/constants.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/execution/expression_executor.hpp"
@@ -122,7 +123,9 @@ static BoundCastInfo BindWKTGeomCast(BindCastInput &input, const LogicalType &so
     }
     try {
         auto &catalog = Catalog::GetSystemCatalog(*context);
-        auto &func_entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(*context, DEFAULT_SCHEMA, "st_geomfromtext");
+        EntryLookupInfo lookup_info(CatalogType::SCALAR_FUNCTION_ENTRY, "st_geomfromtext");
+        auto &entry = catalog.GetEntry(*context, DEFAULT_SCHEMA, lookup_info);
+        auto &func_entry = entry.Cast<ScalarFunctionCatalogEntry>();
         vector<LogicalType> args{LogicalType(LogicalTypeId::VARCHAR)};
 
         auto func = func_entry.functions.GetFunctionByArguments(*context, args);
