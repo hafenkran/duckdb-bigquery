@@ -196,14 +196,14 @@ static unique_ptr<FunctionData> BigqueryTableStorageBind(ClientContext &context,
     bind_data->types = return_types;
 
     if (auto *arrow = dynamic_cast<BigqueryArrowScanBindData *>(scan_bind_base.get())) {
-        bind_data->arrow_bind = unique_ptr<BigqueryArrowScanBindData>(
-            static_cast<BigqueryArrowScanBindData *>(scan_bind_base.release()));
+        bind_data->arrow_bind =
+            unique_ptr<BigqueryArrowScanBindData>(static_cast<BigqueryArrowScanBindData *>(scan_bind_base.release()));
         bind_data->bq_client = bind_data->arrow_bind->bq_client;
         bind_data->bq_config = bind_data->arrow_bind->bq_config;
         bind_data->use_legacy_scan = false;
     } else {
-        bind_data->legacy_bind = unique_ptr<BigqueryLegacyScanBindData>(
-            static_cast<BigqueryLegacyScanBindData *>(scan_bind_base.release()));
+        bind_data->legacy_bind =
+            unique_ptr<BigqueryLegacyScanBindData>(static_cast<BigqueryLegacyScanBindData *>(scan_bind_base.release()));
         bind_data->bq_client = bind_data->legacy_bind->bq_client;
         bind_data->bq_config = bind_data->legacy_bind->config;
         bind_data->use_legacy_scan = true;
@@ -230,9 +230,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryTableStorageInitGlobal(Clien
 
     bind_data.direct_results = false;
     auto destination_table = job.configuration().query().destination_table();
-    auto table_ref = BigqueryTableRef(destination_table.project_id(),
-                                      destination_table.dataset_id(),
-                                      destination_table.table_id());
+    auto table_ref =
+        BigqueryTableRef(destination_table.project_id(), destination_table.dataset_id(), destination_table.table_id());
 
     if (bind_data.use_legacy_scan) {
         bind_data.legacy_bind->table_ref = table_ref;
@@ -274,8 +273,8 @@ static unique_ptr<LocalTableFunctionState> BigqueryTableStorageInitLocal(Executi
                                           input.filters,
                                           input.sample_options,
                                           input.op);
-        result->scan_local = BigqueryLegacyScanFunction::BigqueryLegacyScanInitLocalState(context, scan_input,
-                                                                                          gstate.scan_global.get());
+        result->scan_local =
+            BigqueryLegacyScanFunction::BigqueryLegacyScanInitLocalState(context, scan_input, gstate.scan_global.get());
     } else {
         TableFunctionInitInput scan_input(optional_ptr<const FunctionData>(bind_data.arrow_bind.get()),
                                           input.column_ids,
