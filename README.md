@@ -357,7 +357,7 @@ The operation supports the following additional named parameters as query argume
 
 ### `bigquery_table_storage` Function
 
-The `bigquery_table_storage` function reads the `INFORMATION_SCHEMA.TABLE_STORAGE` metadata view. Use this to inspect
+The `bigquery_table_storage` function reads the `INFORMATION_SCHEMA.TABLE_STORAGE` [metadata view](https://docs.cloud.google.com/bigquery/docs/information-schema-table-storage). Use this to inspect
 storage metadata for a project by region or dataset.
 
 ```sql
