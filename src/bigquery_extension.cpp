@@ -25,6 +25,7 @@
 #include "bigquery_secrets.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
+#include "bigquery_table_storage.hpp"
 
 #include <iostream>
 
@@ -52,6 +53,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
     loader.RegisterFunction(bigquery_list_jobs_function);
+
+    bigquery::BigqueryTableStorageFunction bigquery_table_storage_function;
+    loader.RegisterFunction(bigquery_table_storage_function);
 
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();

@@ -17,20 +17,21 @@
 namespace duckdb {
 namespace bigquery {
 
-static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
-                                                  TableFunctionBindInput &input,
-                                                  vector<LogicalType> &return_types,
-                                                  vector<string> &names) {
-    auto dbname_or_project_id = input.inputs[0].GetValue<string>();
-    auto query_string = input.inputs[1].GetValue<string>();
-
+unique_ptr<FunctionData> BigqueryQueryBindInternal(ClientContext &context,
+                                                   const string &dbname_or_project_id,
+                                                   const string &query_string,
+                                                   const BigQueryCommonParameters &params,
+                                                   vector<LogicalType> &return_types,
+                                                   vector<string> &names,
+                                                   bool allow_dry_run) {
     auto &database_manager = DatabaseManager::Get(context);
     auto database = database_manager.GetDatabase(context, dbname_or_project_id);
 
-    auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
-
     // Handle dry_run case separately
     if (params.dry_run) {
+        if (!allow_dry_run) {
+            throw BinderException("'dry_run' is not supported for bigquery_table_storage");
+        }
         return_types.emplace_back(LogicalTypeId::BIGINT);
         names.emplace_back("total_bytes_processed");
         return_types.emplace_back(LogicalTypeId::BOOLEAN);
@@ -198,8 +199,18 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     }
 }
 
-static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContext &context,
-                                                                    TableFunctionInitInput &input) {
+static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
+                                                  TableFunctionBindInput &input,
+                                                  vector<LogicalType> &return_types,
+                                                  vector<string> &names) {
+    auto dbname_or_project_id = input.inputs[0].GetValue<string>();
+    auto query_string = input.inputs[1].GetValue<string>();
+    auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
+
+    return BigqueryQueryBindInternal(context, dbname_or_project_id, query_string, params, return_types, names, true);
+}
+
+unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContext &context, TableFunctionInitInput &input) {
     // Dry run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(input.bind_data.get())) {
         return make_uniq<GlobalTableFunctionState>();
@@ -244,9 +255,9 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
     }
 }
 
-static unique_ptr<LocalTableFunctionState> BigqueryQueryInitLocal(ExecutionContext &context,
-                                                                  TableFunctionInitInput &input,
-                                                                  GlobalTableFunctionState *global_state) {
+unique_ptr<LocalTableFunctionState> BigqueryQueryInitLocal(ExecutionContext &context,
+                                                           TableFunctionInitInput &input,
+                                                           GlobalTableFunctionState *global_state) {
     // Dry run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(input.bind_data.get())) {
         return make_uniq<LocalTableFunctionState>();
@@ -259,7 +270,7 @@ static unique_ptr<LocalTableFunctionState> BigqueryQueryInitLocal(ExecutionConte
     return BigqueryLegacyScanFunction::BigqueryLegacyScanInitLocalState(context, input, global_state);
 }
 
-static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
     D_ASSERT(data.bind_data);
     const auto *base = data.bind_data.get();
 
@@ -290,7 +301,7 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
     BigqueryLegacyScanFunction::BigqueryLegacyScanExecute(context, data, output);
 }
 
-static BindInfo BigqueryQueryGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+BindInfo BigqueryQueryGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
     D_ASSERT(bind_data_p);
     const auto *base = bind_data_p.get();
     BindInfo info(ScanType::EXTERNAL);
@@ -316,7 +327,7 @@ static BindInfo BigqueryQueryGetBindInfo(const optional_ptr<FunctionData> bind_d
     return info;
 }
 
-static InsertionOrderPreservingMap<string> BigqueryQueryToString(TableFunctionToStringInput &input) {
+InsertionOrderPreservingMap<string> BigqueryQueryToString(TableFunctionToStringInput &input) {
     D_ASSERT(input.bind_data);
 
     InsertionOrderPreservingMap<string> result;
@@ -343,7 +354,7 @@ static InsertionOrderPreservingMap<string> BigqueryQueryToString(TableFunctionTo
     return result;
 }
 
-static unique_ptr<NodeStatistics> BigqueryQueryCardinality(ClientContext &context, const FunctionData *bind_data_p) {
+unique_ptr<NodeStatistics> BigqueryQueryCardinality(ClientContext &context, const FunctionData *bind_data_p) {
     D_ASSERT(bind_data_p);
     const auto *base = bind_data_p;
 
@@ -364,9 +375,9 @@ static unique_ptr<NodeStatistics> BigqueryQueryCardinality(ClientContext &contex
     return make_uniq<NodeStatistics>(n, n);
 }
 
-static double BigqueryQueryProgress(ClientContext &context,
-                                    const FunctionData *bind_data_p,
-                                    const GlobalTableFunctionState *global_state) {
+double BigqueryQueryProgress(ClientContext &context,
+                             const FunctionData *bind_data_p,
+                             const GlobalTableFunctionState *global_state) {
     D_ASSERT(bind_data_p);
     D_ASSERT(global_state);
 

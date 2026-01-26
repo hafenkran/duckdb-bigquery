@@ -355,6 +355,37 @@ The operation supports the following additional named parameters as query argume
 | `stateFilter`     | `VARCHAR`   | Filters jobs by state (e.g., `PENDING`, `RUNNING`,`DONE`).                                       |
 | `parentJobId`     | `VARCHAR`   | Filters results to only include child jobs of the specified parent job ID.                       |
 
+### `bigquery_table_storage` Function
+
+The `bigquery_table_storage` function reads the `INFORMATION_SCHEMA.TABLE_STORAGE` [metadata view](https://docs.cloud.google.com/bigquery/docs/information-schema-table-storage). Use this to inspect
+storage metadata for a project by region or dataset.
+
+```sql
+D SELECT * FROM bigquery_table_storage('my_gcp_project', region := 'eu');
+```
+
+The view includes per‑table metadata such as row counts, partition counts, logical bytes, and physical/time‑travel bytes.
+
+> **Note**: Querying `INFORMATION_SCHEMA.TABLE_STORAGE` requires `bigquery.tables.get` and `bigquery.tables.list`,
+> and Google recommends granting `roles/bigquery.metadataViewer` on the project. The basic Owner role isn’t
+> listed as a recommended role for this view; if you rely on Owner and still see permission errors, make sure
+> the required BigQuery permissions are present (typically via `roles/bigquery.metadataViewer` on the project).
+
+Exactly one of `region` or `dataset` must be provided. The function issues a `SELECT * FROM
+project.region-<region>.INFORMATION_SCHEMA.TABLE_STORAGE` (or `project.<dataset>.INFORMATION_SCHEMA.TABLE_STORAGE`)
+query under the hood.
+
+The `bigquery_table_storage` function supports the following named parameters:
+
+| Parameter         | Type      | Description                                                                 |
+| ----------------- | --------- | --------------------------------------------------------------------------- |
+| `region`          | `VARCHAR` | Region (e.g. `eu`, `us`). Exactly one of `region`/`dataset` must be set.     |
+| `dataset`         | `VARCHAR` | Dataset ID. Exactly one of `region`/`dataset` must be set.                  |
+| `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default). |
+| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).        |
+| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                           |
+| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                  |
+
 ### `bigquery_clear_cache` Function
 
 DuckDB caches schema metadata, such as datasets and table structures, to avoid repeated fetches from BigQuery. If the schema changes externally, use `bigquery_clear_cache` to update the cache and retrieve the latest schema information:
