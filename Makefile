@@ -20,10 +20,6 @@ EXT_CONFIG=${PROJ_DIR}extension_config.cmake
 # Include the Makefile from extension-ci-tools
 include extension-ci-tools/makefiles/duckdb_extension.Makefile
 
-.PHONY: docker-build
-docker-build:
-	docker build -t duckdb-bigquery:v1.4-andium -f dev/Dockerfile .
-
 .PHONY: lint
 lint:
 	python3 ./scripts/run-clang-tidy.py $(MAKEFILE_DIR)/src/* \
