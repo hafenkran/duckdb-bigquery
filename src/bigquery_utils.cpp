@@ -816,6 +816,9 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
     case LogicalTypeId::DOUBLE:
         return "FLOAT64";
     case LogicalTypeId::BLOB:
+        if (BigqueryUtils::IsGeometryType(type) && BigquerySettings::GeographyAsGeometry()) {
+            return "GEOGRAPHY";
+        }
         return "BYTES";
     case LogicalTypeId::DATE:
         return "DATE";

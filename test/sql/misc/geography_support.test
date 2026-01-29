@@ -71,6 +71,51 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.geography_test WHERE id = 4;
 ----
 4	POINT (10 20)
 
+# Test 6: GEOMETRY type mapping depends on bq_geography_as_geometry setting
+statement ok
+CREATE OR REPLACE TABLE local_geoms AS
+SELECT 1 AS id, ST_GeomFromText('POINT(1 2)') AS geom;
+
+statement ok
+SET bq_geography_as_geometry = false;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_false;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_ctas_false AS
+SELECT * FROM local_geoms;
+
+query I
+SELECT data_type
+FROM bigquery_query('${BQ_TEST_PROJECT}', '
+  SELECT data_type
+  FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.COLUMNS`
+  WHERE table_name = "geography_ctas_false" AND column_name = "geom"
+');
+----
+BYTES
+
+statement ok
+SET bq_geography_as_geometry = true;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_true;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_ctas_true AS
+SELECT * FROM local_geoms;
+
+query I
+SELECT data_type
+FROM bigquery_query('${BQ_TEST_PROJECT}', '
+  SELECT data_type
+  FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.COLUMNS`
+  WHERE table_name = "geography_ctas_true" AND column_name = "geom"
+');
+----
+GEOGRAPHY
+
 # Reset setting
 statement ok
 SET bq_geography_as_geometry = false;
@@ -78,3 +123,12 @@ SET bq_geography_as_geometry = false;
 # Cleanup
 statement ok
 FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_DATASET}.geography_test`');
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_false;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_true;
+
+statement ok
+DROP TABLE IF EXISTS local_geoms;
