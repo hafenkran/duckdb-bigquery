@@ -22,9 +22,17 @@ public:
 struct BigqueryParseData : ParserExtensionParseData {
     unique_ptr<SQLStatement> statement;
     unordered_map<string, string> options;
+    vector<string> partition_by;
+    vector<string> cluster_by;
 
-    BigqueryParseData(unique_ptr<SQLStatement> statement, unordered_map<string, string> options)
-        : statement(std::move(statement)), options(std::move(options)) {
+    BigqueryParseData(unique_ptr<SQLStatement> statement,
+                      unordered_map<string, string> options,
+                      vector<string> partition_by,
+                      vector<string> cluster_by)
+        : statement(std::move(statement)),
+          options(std::move(options)),
+          partition_by(std::move(partition_by)),
+          cluster_by(std::move(cluster_by)) {
     }
 
     string ToString() const override {
@@ -32,7 +40,10 @@ struct BigqueryParseData : ParserExtensionParseData {
     }
 
     unique_ptr<ParserExtensionParseData> Copy() const override {
-        return make_uniq_base<ParserExtensionParseData, BigqueryParseData>(statement->Copy(), options);
+        return make_uniq_base<ParserExtensionParseData, BigqueryParseData>(statement->Copy(),
+                                                                          options,
+                                                                          partition_by,
+                                                                          cluster_by);
     }
 };
 

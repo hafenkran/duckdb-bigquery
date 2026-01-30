@@ -34,16 +34,19 @@ string BigqueryCreateSchemaInfo::ToString() const {
     if (!base_str.empty() && base_str.back() == ';') {
         base_str.pop_back();
     }
-    base_str += " OPTIONS (";
-    bool first = true;
-    for (const auto &opt : options) {
-        if (!first) {
-            base_str += ", ";
+    if (!options.empty()) {
+        base_str += " OPTIONS (";
+        bool first = true;
+        for (const auto &opt : options) {
+            if (!first) {
+                base_str += ", ";
+            }
+            base_str += opt.first + "='" + opt.second + "'";
+            first = false;
         }
-        base_str += opt.first + "='" + opt.second + "'";
-        first = false;
+        base_str += ")";
     }
-    base_str += ");";
+    base_str += ";";
     return base_str;
 }
 
@@ -80,11 +83,15 @@ BigqueryCreateTableInfo::BigqueryCreateTableInfo(const CreateTableInfo &info, un
 
 BigqueryCreateTableInfo::BigqueryCreateTableInfo(const BigqueryCreateTableInfo &other)
     : BigqueryCreateTableInfo(static_cast<const CreateTableInfo &>(other), other.options) {
+    partition_by = other.partition_by;
+    cluster_by = other.cluster_by;
 }
 
 unique_ptr<CreateInfo> BigqueryCreateTableInfo::Copy() const {
     auto copy = make_uniq<BigqueryCreateTableInfo>(*this);
     copy->options = options;
+    copy->partition_by = partition_by;
+    copy->cluster_by = cluster_by;
     return std::move(copy);
 }
 
@@ -92,6 +99,24 @@ string BigqueryCreateTableInfo::ToString() const {
     string base_str = CreateTableInfo::ToString();
     if (!base_str.empty() && base_str.back() == ';') {
         base_str.pop_back();
+    }
+    if (!partition_by.empty()) {
+        base_str += " PARTITION BY ";
+        for (idx_t i = 0; i < partition_by.size(); i++) {
+            if (i > 0) {
+                base_str += ", ";
+            }
+            base_str += partition_by[i];
+        }
+    }
+    if (!cluster_by.empty()) {
+        base_str += " CLUSTER BY ";
+        for (idx_t i = 0; i < cluster_by.size(); i++) {
+            if (i > 0) {
+                base_str += ", ";
+            }
+            base_str += cluster_by[i];
+        }
     }
     base_str += " OPTIONS (";
     bool first = true;
