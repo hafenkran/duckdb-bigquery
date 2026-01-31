@@ -1,0 +1,59 @@
+# name: test/sql/misc/partition_cluster_parser.test
+# description: Test BigQuery parser for PARTITION BY / CLUSTER BY / OPTIONS in CREATE TABLE
+# group: [misc]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_experimental_enable_bigquery_options=TRUE;
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.partition_cluster_tbl;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.partition_cluster_tbl (
+    ts DATE,
+    i BIGINT
+)
+PARTITION BY ts
+CLUSTER BY i
+OPTIONS (description="some description");
+
+query III
+SELECT
+  column_name,
+  is_partitioning_column,
+  clustering_ordinal_position
+FROM bigquery_query('${BQ_TEST_PROJECT}', '
+  SELECT
+    column_name,
+    is_partitioning_column,
+    clustering_ordinal_position
+  FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.COLUMNS`
+  WHERE table_name = "partition_cluster_tbl"
+  ORDER BY column_name
+');
+----
+i	NO	1
+ts	YES	NULL
+
+query I
+SELECT option_value
+FROM bigquery_query('${BQ_TEST_PROJECT}', '
+  SELECT option_value
+  FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.TABLE_OPTIONS`
+  WHERE table_name = "partition_cluster_tbl"
+    AND option_name = "description"
+');
+----
+"some description"
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.partition_cluster_tbl;
