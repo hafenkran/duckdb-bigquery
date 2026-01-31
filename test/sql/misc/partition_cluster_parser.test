@@ -9,7 +9,7 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-SET bq_experimental_enable_bigquery_options=TRUE;
+SET bq_experimental_enable_sql_parser=TRUE;
 
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
@@ -57,3 +57,6 @@ FROM bigquery_query('${BQ_TEST_PROJECT}', '
 
 statement ok
 DROP TABLE bq.${BQ_TEST_DATASET}.partition_cluster_tbl;
+
+statement ok
+SET bq_experimental_enable_sql_parser=FALSE

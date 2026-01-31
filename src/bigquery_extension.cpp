@@ -93,11 +93,11 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()),
                               bigquery::BigquerySettings::SetExperimentalFetchCatalogFromInformationSchema);
-    config.AddExtensionOption("bq_experimental_enable_bigquery_options",
-                              "Whether to enable BigQuery OPTIONS in CREATE statements",
+    config.AddExtensionOption("bq_experimental_enable_sql_parser",
+                              "Whether to enable BigQuery CREATE TABLE clause parsing extensions",
                               LogicalType::BOOLEAN,
-                              Value(bigquery::BigquerySettings::ExperimentalEnableBigqueryOptions()),
-                              bigquery::BigquerySettings::SetExperimentalEnableBigqueryOptions);
+                              Value(bigquery::BigquerySettings::ExperimentalEnableSqlParser()),
+                              bigquery::BigquerySettings::SetExperimentalEnableSqlParser);
     config.AddExtensionOption("bq_debug_show_queries",
                               "DEBUG SETTING: print all queries sent to BigQuery to stdout",
                               LogicalType::BOOLEAN,

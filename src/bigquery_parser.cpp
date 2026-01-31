@@ -347,7 +347,7 @@ static BigqueryClauseParseResult ExtractBigqueryClauses(const string &query) {
 }
 
 ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const string &query) {
-    if (!BigquerySettings::ExperimentalEnableBigqueryOptions()) {
+    if (!BigquerySettings::ExperimentalEnableSqlParser()) {
         return ParserExtensionParseResult();
     }
 
@@ -364,7 +364,8 @@ ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const string
         if (!clause_result.options.empty()) {
             return ParserExtensionParseResult("OPTIONS in CREATE statement is only supported for single statements");
         }
-        return ParserExtensionParseResult("BigQuery CREATE TABLE with PARTITION/CLUSTER supports only single statements");
+        return ParserExtensionParseResult(
+            "BigQuery CREATE TABLE with PARTITION/CLUSTER supports only single statements");
     }
 
     for (auto &statement : statements) {

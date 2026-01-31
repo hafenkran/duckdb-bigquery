@@ -29,9 +29,7 @@ struct BigqueryParseData : ParserExtensionParseData {
                       unordered_map<string, string> options,
                       vector<string> partition_by,
                       vector<string> cluster_by)
-        : statement(std::move(statement)),
-          options(std::move(options)),
-          partition_by(std::move(partition_by)),
+        : statement(std::move(statement)), options(std::move(options)), partition_by(std::move(partition_by)),
           cluster_by(std::move(cluster_by)) {
     }
 
@@ -41,9 +39,9 @@ struct BigqueryParseData : ParserExtensionParseData {
 
     unique_ptr<ParserExtensionParseData> Copy() const override {
         return make_uniq_base<ParserExtensionParseData, BigqueryParseData>(statement->Copy(),
-                                                                          options,
-                                                                          partition_by,
-                                                                          cluster_by);
+                                                                           options,
+                                                                           partition_by,
+                                                                           cluster_by);
     }
 };
 
