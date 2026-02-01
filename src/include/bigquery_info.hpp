@@ -32,6 +32,8 @@ struct BigqueryCreateTableInfo : public CreateTableInfo {
 
 public:
     unordered_map<string, string> options;
+    vector<string> partition_by;
+    vector<string> cluster_by;
 };
 
 struct BigqueryCreateViewInfo : public CreateViewInfo {

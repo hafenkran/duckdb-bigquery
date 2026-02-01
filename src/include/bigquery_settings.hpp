@@ -126,13 +126,13 @@ public:
         ExperimentalFetchCatalogFromInformationSchema() = BooleanValue::Get(parameter);
     }
 
-    static bool &ExperimentalEnableBigqueryOptions() {
-        static bool BIGQUERY_EXPERIMENTAL_ENABLE_BIGQUERY_OPTIONS = false;
-        return BIGQUERY_EXPERIMENTAL_ENABLE_BIGQUERY_OPTIONS;
+    static bool &ExperimentalEnableSqlParser() {
+        static bool BIGQUERY_EXPERIMENTAL_ENABLE_SQL_PARSER = false;
+        return BIGQUERY_EXPERIMENTAL_ENABLE_SQL_PARSER;
     }
 
-    static void SetExperimentalEnableBigqueryOptions(ClientContext &context, SetScope scope, Value &parameter) {
-        ExperimentalEnableBigqueryOptions() = BooleanValue::Get(parameter);
+    static void SetExperimentalEnableSqlParser(ClientContext &context, SetScope scope, Value &parameter) {
+        ExperimentalEnableSqlParser() = BooleanValue::Get(parameter);
     }
 
     static int &QueryTimeoutMs() {

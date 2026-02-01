@@ -256,6 +256,24 @@ string BigquerySQL::CreateTableInfoToSQL(const string &project_id, const CreateT
     stmt << BigqueryColumnsToSQL(info.columns, info.constraints);
 
     if (auto *bq_info = dynamic_cast<const BigqueryCreateTableInfo *>(&info)) {
+        if (!bq_info->partition_by.empty()) {
+            stmt << " PARTITION BY ";
+            for (idx_t i = 0; i < bq_info->partition_by.size(); i++) {
+                if (i > 0) {
+                    stmt << ", ";
+                }
+                stmt << bq_info->partition_by[i];
+            }
+        }
+        if (!bq_info->cluster_by.empty()) {
+            stmt << " CLUSTER BY ";
+            for (idx_t i = 0; i < bq_info->cluster_by.size(); i++) {
+                if (i > 0) {
+                    stmt << ", ";
+                }
+                stmt << bq_info->cluster_by[i];
+            }
+        }
         auto options_str = BigquerySQL::BigqueryOptionsToSQL(bq_info->options);
         if (!options_str.empty()) {
             stmt << " " << options_str;

@@ -413,6 +413,27 @@ D INSERT INTO bq.dataset.geo_table VALUES
 
 > **⚠️ Spatial Extension Loading Order**: The spatial extension must be installed and loaded **before** setting `bq_geography_as_geometry=true` and **before** using `ATTACH`. Otherwise, the internal catalog will be configured for `VARCHAR` types and geometry conversion will not work properly.
 
+### Experimental BigQuery partitioning, clustering & options clauses
+
+Use `bq_experimental_enable_sql_parser` to enable BigQuery-specific `CREATE TABLE` clauses like `PARTITION BY`,
+`CLUSTER BY`, and `OPTIONS`. The extension parses these clauses before DuckDB, stores them in the table create info,
+and re-emits them when generating the final BigQuery SQL so the settings are applied server-side. This applies to
+`CREATE TABLE` and `CREATE TABLE ... AS` statements.
+
+```sql
+D SET bq_experimental_enable_sql_parser = true;
+D ATTACH 'project=my_gcp_project dataset=my_dataset' AS bq (TYPE bigquery);
+
+-- Create Table with Partitioning, clustering, and table options
+D CREATE TABLE bq.my_dataset.partition_cluster_tbl (ts TIMESTAMP, i BIGINT)
+   PARTITION BY DATE(ts)
+   CLUSTER BY i
+   OPTIONS (description="example description");
+
+-- Pseudo column partitioning
+D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
+   PARTITION BY _PARTITIONDATE;
+```
 
 ### Additional Extension Settings
 
@@ -425,7 +446,7 @@ D INSERT INTO bq.dataset.geo_table VALUES
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
 | `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |
 | `bq_experimental_use_info_schema`         | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                         | `true`  |
-| `bq_experimental_enable_bigquery_options` | [EXPERIMENTAL] - Whether to enable BigQuery OPTIONS in CREATE statements                                                                                                                           | `false` |
+| `bq_experimental_enable_sql_parser` | [EXPERIMENTAL] - Enable BigQuery CREATE TABLE clause parsing extensions (PARTITION BY / CLUSTER BY / OPTIONS)                                                                                          | `false` |
 | `bq_curl_ca_bundle_path`                  | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                          |         |
 | `bq_max_read_streams`                     | Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work. | `0`     |
 | `bq_arrow_compression`                    | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                       | `ZSTD`  |
