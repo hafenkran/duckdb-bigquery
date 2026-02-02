@@ -54,18 +54,18 @@ static void LoadInternal(ExtensionLoader &loader) {
     loader.RegisterFunction(bigquery_list_jobs_function);
 
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
-    config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
+    StorageExtension::Register(config, "bigquery", make_shared_ptr<bigquery::BigqueryStorageExtension>());
 
     bigquery::RegisterBigquerySecretType(loader.GetDatabaseInstance());
 
-    // Register WKT->GEOMETRY cast (runtime lookup of spatial extension's ST_GeomFromText)
+    // Register WKT (GEOGRAPHY) -> GEOMETRY cast using core geometry parsing
     bigquery::RegisterWKTGeometryCast(loader.GetDatabaseInstance());
 
     bigquery::BigqueryParserExtension bigquery_parser_extension;
-    config.parser_extensions.push_back(bigquery_parser_extension);
+    ParserExtension::Register(config, bigquery_parser_extension);
 
-    auto operator_extension = make_uniq<bigquery::BigqueryOperatorExtension>();
-    config.operator_extensions.push_back(move(operator_extension));
+    auto operator_extension = make_shared_ptr<bigquery::BigqueryOperatorExtension>();
+    OperatorExtension::Register(config, std::move(operator_extension));
 
     config.AddExtensionOption("bq_bignumeric_as_varchar",
                               "Read BigQuery BIGNUMERIC data type as VARCHAR",
@@ -127,13 +127,6 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::UseLegacyScan()),
                               bigquery::BigquerySettings::SetUseLegacyScan);
-    config.AddExtensionOption("bq_geography_as_geometry",
-                              "Whether to return BigQuery GEOGRAPHY columns as DuckDB GEOMETRY types "
-                              "(requires spatial extension). Default is false (returns WKT strings).",
-                              LogicalType::BOOLEAN,
-                              Value(bigquery::BigquerySettings::GeographyAsGeometry()),
-                              bigquery::BigquerySettings::SetGeographyAsGeometry);
-
     // Deprecated setting
     config.AddExtensionOption(
         "bq_experimental_use_incubating_scan",
