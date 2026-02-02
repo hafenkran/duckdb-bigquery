@@ -16,11 +16,6 @@
 #include "bigquery_geography_winding.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_utils.hpp"
-#include "duckdb/catalog/catalog.hpp"
-#include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
-#include "duckdb/common/error_data.hpp"
-#include "duckdb/function/function_binder.hpp"
-#include "duckdb/function/function_set.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_insert.hpp"
 #include "storage/bigquery_transaction.hpp"
@@ -208,27 +203,10 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
         return plan; // nothing to do
     }
 
-    FunctionBinder binder(context);
-
     vector<LogicalType> projected_types;
     vector<unique_ptr<Expression>> select_list;
     projected_types.reserve(child_types.size());
     select_list.reserve(child_types.size());
-
-    // Lookup ST_AsText once
-    ScalarFunctionSet *astext_set = nullptr;
-    try {
-        auto &entry = Catalog::GetEntry(context,
-                                        CatalogType::SCALAR_FUNCTION_ENTRY,
-                                        INVALID_CATALOG,
-                                        INVALID_SCHEMA,
-                                        "ST_AsText");
-        auto &sf_entry = entry.Cast<ScalarFunctionCatalogEntry>();
-        astext_set = &sf_entry.functions;
-    } catch (...) {
-        throw InvalidInputException(
-            "Writing GEOMETRY columns to BigQuery requires the spatial extension (function ST_AsText not found)");
-    }
 
     // Internal scalar function to fix polygon ring winding for BigQuery GEOGRAPHY
     ScalarFunction ccw_func("bigquery_force_polygon_ccw",
@@ -244,31 +222,13 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
             continue;
         }
 
-        // Prepare argument logical types for cost-based binding
-        vector<LogicalType> arg_types{type};
-        ErrorData error;
-        auto opt_index = binder.BindFunction("st_astext", *astext_set, arg_types, error);
-        if (!opt_index.IsValid()) {
-            throw InvalidInputException("Failed to bind ST_AsText for GEOMETRY column: %s", error.Message().c_str());
-        }
-
-        auto func = astext_set->GetFunctionByOffset(opt_index.GetIndex());
-        vector<unique_ptr<Expression>> args;
-        args.push_back(make_uniq<BoundReferenceExpression>(type, i));
+        auto geom_ref = make_uniq<BoundReferenceExpression>(type, i);
         unique_ptr<Expression> bound =
-            make_uniq<BoundFunctionExpression>(func.return_type, func, std::move(args), nullptr, false);
+            BoundCastExpression::AddCastToType(context, std::move(geom_ref), LogicalType::VARCHAR);
 
-        if (func.return_type.id() != LogicalTypeId::VARCHAR) {
-            bound = BoundCastExpression::AddCastToType(context, std::move(bound), LogicalType::VARCHAR);
-        }
-
-        // Wrap in winding fix to ensure OGC-compliant ring order for BigQuery GEOGRAPHY
-        {
-            vector<unique_ptr<Expression>> ccw_args;
-            ccw_args.push_back(std::move(bound));
-            bound =
-                make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args), nullptr, false);
-        }
+        vector<unique_ptr<Expression>> ccw_args;
+        ccw_args.push_back(std::move(bound));
+        bound = make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args), nullptr, false);
 
         projected_types.push_back(LogicalType::VARCHAR);
         select_list.push_back(std::move(bound));

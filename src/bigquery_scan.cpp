@@ -156,13 +156,11 @@ unique_ptr<FunctionData> BigqueryLegacyScanFunction::BigqueryLegacyScanBind(Clie
         throw std::runtime_error("no columns for table " + table_ref.table_id);
     }
 
-    if (BigquerySettings::GeographyAsGeometry()) {
-        for (const auto &column : columns.Logical()) {
-            if (BigqueryUtils::IsGeographyType(column.GetType())) {
-                throw BinderException(
-                    "BigQuery GEOGRAPHY columns with geography_as_geometry=true are not supported in legacy scan. "
-                    "Please either set bq_use_legacy_scan=false (recommended) or set bq_geography_as_geometry=false.");
-            }
+    for (const auto &column : columns.Logical()) {
+        if (BigqueryUtils::IsGeometryType(column.GetType())) {
+            throw BinderException(
+                "BigQuery GEOGRAPHY columns are not supported in legacy scan. "
+                "Please set bq_use_legacy_scan=false (recommended).");
         }
     }
 

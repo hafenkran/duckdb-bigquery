@@ -3,6 +3,7 @@
 #include "duckdb.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parser.hpp"
+#include "duckdb/planner/operator_extension.hpp"
 
 namespace duckdb {
 namespace bigquery {

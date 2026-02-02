@@ -309,7 +309,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                 for (idx_t i = 0; i < output.ColumnCount(); i++) {
                     auto &src_vec = state.all_columns.data[i];
                     auto &dst_type = output.data[i].GetType();
-                    if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
+                    if (dst_type.id() == LogicalTypeId::GEOMETRY &&
                         src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
                         geometry_cast_needed = true;
                         break;
@@ -320,7 +320,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                     auto proj_id = gstate.projection_ids[i];
                     auto &src_vec = state.all_columns.data[proj_id];
                     auto &dst_type = output.data[i].GetType();
-                    if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
+                    if (dst_type.id() == LogicalTypeId::GEOMETRY &&
                         src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
                         geometry_cast_needed = true;
                         break;
@@ -355,7 +355,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                 auto &dst_type = output.data[i].GetType();
                 // scanned type from gstate.scanned_types (physical source type)
                 const LogicalType &src_type = gstate.scanned_types[i];
-                if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
+                if (dst_type.id() == LogicalTypeId::GEOMETRY &&
                     src_type.id() == LogicalTypeId::VARCHAR) {
                     geometry_cast_needed = true;
                     break;
