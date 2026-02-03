@@ -19,65 +19,41 @@ FROM bigquery_execute('${BQ_TEST_PROJECT}', '
 	)
 ');
 
-# Test 1: Default behavior - GEOGRAPHY columns should be returned as VARCHAR (WKT strings)
+# Test 1: GEOGRAPHY columns should be returned as GEOMETRY
 query II
 SELECT id, geom FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test') ORDER BY id;
 ----
 1	POINT(-122.4194 37.7749)
 2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
 
-# Test 2: Load spatial extension for geometry conversion
-statement ok
-INSTALL spatial;
-
-statement ok
-LOAD spatial;
-
-# Test 3: Set geography_as_geometry to false (default) - should return WKT strings
-statement ok
-SET bq_geography_as_geometry = false;
-
-query II
-SELECT id, geom FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test') ORDER BY id;
-----
-1	POINT(-122.4194 37.7749)
-2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
-
-# Test 4: Set geography_as_geometry to true - should convert to GEOMETRY type
-statement ok
-SET bq_geography_as_geometry = true;
-
-# Verify that spatial functions work on converted GEOMETRY columns
+# Verify that GEOMETRY cast works on converted columns
 query III
 SELECT
     id,
-    ST_AsText(geom) as geom_wkt,
-    ST_GeometryType(geom) as geom_type
+    CAST(geom AS VARCHAR) as geom_wkt,
+    typeof(geom) as geom_type
 FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test')
 ORDER BY id;
 ----
-1	POINT (-122.4194 37.7749)	POINT
-2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	POLYGON
+1	POINT(-122.4194 37.7749)	VARCHAR
+2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	VARCHAR
 
 # Test 5: ATTACH and write to table
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.geography_test VALUES (4, ST_GeomFromText('POINT(10 20)'))
+INSERT INTO bq.${BQ_TEST_DATASET}.geography_test VALUES (4, 'POINT(10 20)'::GEOMETRY)
 
 query II
 SELECT * FROM bq.${BQ_TEST_DATASET}.geography_test WHERE id = 4;
 ----
 4	POINT (10 20)
 
-# Test 6: GEOMETRY type mapping depends on bq_geography_as_geometry setting
+# Test 3: GEOMETRY type mapping is always GEOGRAPHY in BigQuery
 statement ok
 CREATE OR REPLACE TABLE local_geoms AS
-SELECT 1 AS id, ST_GeomFromText('POINT(1 2)') AS geom;
-
-statement ok
-SET bq_geography_as_geometry = false;
+SELECT 1 AS id, 'POINT(1 2)'::GEOMETRY AS geom;
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_false;
@@ -94,31 +70,7 @@ FROM bigquery_query('${BQ_TEST_PROJECT}', '
   WHERE table_name = "geography_ctas_false" AND column_name = "geom"
 ');
 ----
-BYTES
-
-statement ok
-SET bq_geography_as_geometry = true;
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_true;
-
-statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.geography_ctas_true AS
-SELECT * FROM local_geoms;
-
-query I
-SELECT data_type
-FROM bigquery_query('${BQ_TEST_PROJECT}', '
-  SELECT data_type
-  FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.COLUMNS`
-  WHERE table_name = "geography_ctas_true" AND column_name = "geom"
-');
-----
 GEOGRAPHY
-
-# Reset setting
-statement ok
-SET bq_geography_as_geometry = false;
 
 # Cleanup
 statement ok
@@ -126,9 +78,6 @@ FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_DATASET}.geog
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_false;
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_true;
 
 statement ok
 DROP TABLE IF EXISTS local_geoms;
