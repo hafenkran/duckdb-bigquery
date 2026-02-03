@@ -191,9 +191,8 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         for (const auto &column : columns.Logical()) {
             if (BigqueryUtils::IsGeometryType(column.GetType())) {
-                throw BinderException(
-                    "BigQuery GEOGRAPHY columns are not supported in legacy scan. "
-                    "Please set use_legacy_scan=false (recommended).");
+                throw BinderException("BigQuery GEOGRAPHY columns are not supported in legacy scan. "
+                                      "Please set use_legacy_scan=false (recommended).");
             }
         }
 

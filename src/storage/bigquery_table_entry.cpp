@@ -142,9 +142,8 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
         for (const auto &column : columns.Logical()) {
             const auto &type = column.GetType();
             if (BigqueryUtils::IsGeometryType(type)) {
-                throw BinderException(
-                    "BigQuery GEOGRAPHY columns are not supported in legacy scan. "
-                    "Please set bq_use_legacy_scan=false (recommended).");
+                throw BinderException("BigQuery GEOGRAPHY columns are not supported in legacy scan. "
+                                      "Please set bq_use_legacy_scan=false (recommended).");
             }
         }
 

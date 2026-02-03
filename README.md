@@ -423,8 +423,6 @@ D INSERT INTO bq.dataset.geo_table VALUES
     ('Buffer Zone', ST_Buffer('POINT(-122.0 37.9)'::GEOMETRY, 0.01));
 ```
 
-> **⚠️ Spatial Extension Loading Order**: The spatial extension must be installed and loaded **before** setting `bq_geography_as_geometry=true` and **before** using `ATTACH`. Otherwise, the internal catalog will be configured for `VARCHAR` types and geometry conversion will not work properly.
-
 ### Experimental BigQuery partitioning, clustering & options clauses
 
 Use `bq_experimental_enable_sql_parser` to enable BigQuery-specific `CREATE TABLE` clauses like `PARTITION BY`,

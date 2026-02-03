@@ -248,7 +248,6 @@ public:
                "Please use bq_use_legacy_scan=%s instead.\n",
                value ? "false" : "true");
     }
-
 };
 
 
