@@ -17,6 +17,20 @@ endif()
 
 # Compile and install google-cloud-cpp depedencies
 message("Installing google-cloud-cpp dependencies")
+set(VCPKG_CRT_ARGS "")
+if(WIN32)
+    # Ensure vcpkg builds with static CRT to match DuckDB (/MT)
+    if(NOT DEFINED VCPKG_CRT_LINKAGE)
+        set(VCPKG_CRT_LINKAGE static)
+    endif()
+    if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
+        set(VCPKG_LIBRARY_LINKAGE static)
+    endif()
+    set(VCPKG_CRT_ARGS
+        -DVCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE}
+        -DVCPKG_LIBRARY_LINKAGE=${VCPKG_LIBRARY_LINKAGE}
+    )
+endif()
 execute_process(
     COMMAND
         ${CMAKE_COMMAND}
@@ -32,6 +46,7 @@ execute_process(
         -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
         -DVCPKG_TARGET_ARCHITECTURE=${VCPKG_TARGET_ARCHITECTURE}
         -DVCPKG_OVERLAY_TRIPLETS=${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains/
+        ${VCPKG_CRT_ARGS}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_CXX_FLAGS=${MUSL_EXTRA_CXXFLAGS}

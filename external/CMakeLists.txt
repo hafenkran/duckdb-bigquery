@@ -15,6 +15,16 @@ include(ExternalProject)
 set(LOCAL_INSTALL_DIR ${CMAKE_BINARY_DIR}/local)
 set_directory_properties(PROPERTIES EP_BASE ${CMAKE_BINARY_DIR}/projects)
 
+if(WIN32)
+    # Default to static CRT to match DuckDB (/MT); allow override via cache/CLI.
+    if(NOT DEFINED VCPKG_CRT_LINKAGE)
+        set(VCPKG_CRT_LINKAGE static)
+    endif()
+    if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
+        set(VCPKG_LIBRARY_LINKAGE static)
+    endif()
+endif()
+
 ExternalProject_Add(
     gcp
     URL ${CMAKE_CURRENT_SOURCE_DIR}/vendor/google-cloud-cpp-2.38.0.zip
@@ -36,6 +46,8 @@ ExternalProject_Add(
                -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}
                -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
                -DVCPKG_OVERLAY_TRIPLETS=${VCPKG_OVERLAY_TRIPLETS}
+               -DVCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE}
+               -DVCPKG_LIBRARY_LINKAGE=${VCPKG_LIBRARY_LINKAGE}
                -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
                # Project Options
                -DGOOGLE_CLOUD_CPP_ENABLE_EXAMPLES=OFF

@@ -38,7 +38,7 @@ ORDER BY id;
 1	POINT(-122.4194 37.7749)	VARCHAR
 2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	VARCHAR
 
-# Test 5: ATTACH and write to table
+# Test 2: ATTACH and write to table
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
