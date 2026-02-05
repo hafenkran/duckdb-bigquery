@@ -114,8 +114,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         }
 
         // Populate names/types using updated DuckDB Arrow API
-        ArrowTableFunction::PopulateArrowTableSchema(DBConfig::GetConfig(context),
-                                                     bind_data->arrow_table,
+        ArrowTableFunction::PopulateArrowTableSchema(context, bind_data->arrow_table,
                                                      bind_data->schema_root.arrow_schema);
         names = bind_data->arrow_table.GetNames();
         return_types = bind_data->arrow_table.GetTypes();
