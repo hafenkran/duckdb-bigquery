@@ -468,7 +468,7 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
                                                   vector<LogicalType> &return_types,
                                                   vector<LogicalType> &mapped_bq_types,
                                                   const ColumnList *source_columns) {
-    ArrowTableFunction::PopulateArrowTableSchema(DBConfig::GetConfig(context), arrow_table, schema_root.arrow_schema);
+    ArrowTableFunction::PopulateArrowTableSchema(context, arrow_table, schema_root.arrow_schema);
 
     names = arrow_table.GetNames();
     return_types = arrow_table.GetTypes();
