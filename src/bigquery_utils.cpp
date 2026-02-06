@@ -485,6 +485,12 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
         idx_t idx = 0;
         for (auto &col : source_columns->Logical()) {
             const LogicalType &src_type = col.GetType();
+            // Preserve GEOMETRY types from source_columns, as Arrow schema stores them as VARCHAR
+            // For other types, keep the Arrow schema types (they are correct)
+            if (src_type.id() == LogicalTypeId::GEOMETRY) {
+                return_types[idx] = src_type;
+            }
+            // Propagate aliases for all types
             if (src_type.HasAlias() && !src_type.GetAlias().empty()) {
                 if (!return_types[idx].HasAlias() || return_types[idx].GetAlias().empty()) {
                     return_types[idx].SetAlias(src_type.GetAlias());
@@ -498,9 +504,17 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
     mapped_bq_types.clear();
     mapped_bq_types.reserve(return_types.size());
     for (idx_t i = 0; i < return_types.size(); i++) {
-        auto bq_type = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(return_types[i], &context);
-        if (bq_type != return_types[i]) {
+
+		// For reading from BigQuery, we need to map GEOMETRY types to VARCHAR
+        // because BigQuery stores GEOGRAPHY as WKT strings in Arrow format
+        LogicalType bq_type;
+        if (return_types[i].id() == LogicalTypeId::GEOMETRY) {
+            // BigQuery stores GEOGRAPHY as WKT (VARCHAR) in Arrow, so we need to cast
+            bq_type = LogicalType::VARCHAR;
             requires_cast = true;
+        } else {
+            // For other types, use the type as-is (no conversion needed when reading)
+            bq_type = return_types[i];
         }
         mapped_bq_types.push_back(bq_type);
     }

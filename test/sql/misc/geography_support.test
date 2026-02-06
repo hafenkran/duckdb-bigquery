@@ -23,20 +23,20 @@ FROM bigquery_execute('${BQ_TEST_PROJECT}', '
 query II
 SELECT id, geom FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test') ORDER BY id;
 ----
-1	POINT(-122.4194 37.7749)
-2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
+1	POINT (-122.4194 37.7749)
+2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
 
 # Verify that GEOMETRY cast works on converted columns
 query III
 SELECT
     id,
-    CAST(geom AS VARCHAR) as geom_wkt,
+    geom,
     typeof(geom) as geom_type
 FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test')
 ORDER BY id;
 ----
-1	POINT(-122.4194 37.7749)	VARCHAR
-2	POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	VARCHAR
+1	POINT (-122.4194 37.7749)	GEOMETRY
+2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	GEOMETRY
 
 # Test 2: ATTACH and write to table
 statement ok
