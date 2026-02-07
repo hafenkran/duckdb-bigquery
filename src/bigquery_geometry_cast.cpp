@@ -13,7 +13,8 @@ void RegisterWKTGeometryCast(DatabaseInstance &db) {
     auto &casts = DBConfig::GetConfig(db).GetCastFunctions();
     LogicalType source = LogicalType(LogicalTypeId::VARCHAR);
     source.SetAlias("GEOGRAPHY");
-    LogicalType target = LogicalType::GEOMETRY();
+    // BigQuery uses WGS84 (OGC:CRS84) as the default CRS for GEOGRAPHY
+    LogicalType target = LogicalType::GEOMETRY("OGC:CRS84");
     casts.RegisterCastFunction(source, target, BindWKTGeomCast);
 }
 

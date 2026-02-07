@@ -229,7 +229,7 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     } else if (bigquery_type == "BIGNUMERIC") {
         type = BigqueryUtils::FieldSchemaNumericToLogicalType(field);
     } else if (bigquery_type == "GEOGRAPHY") {
-        type = LogicalType::GEOMETRY();
+        type = LogicalType::GEOMETRY("OGC:CRS84");
     } else if (bigquery_type == "STRUCT" || bigquery_type == "RECORD") {
         child_list_t<LogicalType> new_types;
         for (auto &child : field.fields()) {
@@ -749,7 +749,7 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
     } else if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
         result = BigqueryUtils::BigqueryNumericSQLToLogicalType(type);
     } else if (type == "GEOGRAPHY") {
-        result = LogicalType::GEOMETRY();
+        result = LogicalType::GEOMETRY("OGC:CRS84");
     } else if (type.find("ARRAY<") == 0) {
         string array_sub_type = type.substr(6, type.size() - 7);
         LogicalType element_logical_type = BigquerySQLToLogicalType(array_sub_type);
