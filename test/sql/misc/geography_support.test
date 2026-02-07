@@ -1,83 +1,169 @@
 # name: test/sql/misc/geography_support.test
-# description: Test GEOGRAPHY to GEOMETRY type conversion feature
+# description: Test GEOGRAPHY to GEOMETRY type conversion with CRS support
 # group: [misc]
 
 require bigquery
+
+require parquet
 
 require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
-# Create a simple table with GEOGRAPHY columns using bigquery_execute
-statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', '
-	CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test` AS
-	SELECT * FROM (
-		SELECT 1 as id, ST_GEOGPOINT(-122.4194, 37.7749) as geom
-		UNION ALL
-		SELECT 2 as id, ST_GEOGFROMTEXT("POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))") as geom
-	)
-');
-
-# Test 1: GEOGRAPHY columns should be returned as GEOMETRY
-query II
-SELECT id, geom FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test') ORDER BY id;
-----
-1	POINT (-122.4194 37.7749)
-2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
-
-# Verify that GEOMETRY cast works on converted columns
-query III
-SELECT
-    id,
-    geom,
-    typeof(geom) as geom_type
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test')
-ORDER BY id;
-----
-1	POINT (-122.4194 37.7749)	GEOMETRY
-2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	GEOMETRY
-
-# Test 2: ATTACH and write to table
+# Step 1: Create BigQuery table directly from geoparquet file
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.geography_test VALUES (4, 'POINT(10 20)'::GEOMETRY)
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test;
 
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test_extra;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_test AS
+SELECT * FROM read_parquet('test/data/cities.geoparquet');
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_test_extra AS
+SELECT * FROM (VALUES
+    (1, 'POINT(-122.4194 37.7749)'::GEOMETRY('OGC:CRS84')),
+    (2, 'POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))'::GEOMETRY('OGC:CRS84')),
+    (3, 'LINESTRING(-122.4 37.7, -122.3 37.8)'::GEOMETRY('OGC:CRS84'))
+) AS t(id, geom);
+
+# Test 1: Verify GEOGRAPHY columns from geoparquet are returned as GEOMETRY with CRS
 query II
-SELECT * FROM bq.${BQ_TEST_DATASET}.geography_test WHERE id = 4;
+SELECT
+    typeof(geom) as geom_type,
+    st_crs(geom) as crs
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test')
+LIMIT 1;
 ----
-4	POINT (10 20)
+GEOMETRY('OGC:CRS84')	OGC:CRS84
 
-# Test 3: GEOMETRY type mapping is always GEOGRAPHY in BigQuery
+# Test 1b: Verify GEOGRAPHY columns from test table are returned as GEOMETRY with CRS
+query IIII
+SELECT
+    id,
+    geom,
+    typeof(geom) as geom_type,
+    st_crs(geom) as crs
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+ORDER BY id;
+----
+1	POINT (-122.4194 37.7749)	GEOMETRY('OGC:CRS84')	OGC:CRS84
+2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	GEOMETRY('OGC:CRS84')	OGC:CRS84
+3	LINESTRING (-122.4 37.7, -122.3 37.8)	GEOMETRY('OGC:CRS84')	OGC:CRS84
+
+# Test 2: Selective read - only geometry column with CRS check
+query II
+SELECT
+    geom,
+    st_crs(geom) as crs
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+WHERE id = 1;
+----
+POINT (-122.4194 37.7749)	OGC:CRS84
+
+# Test 3: Verify CRS is consistent across all rows
+query I
+SELECT COUNT(DISTINCT st_crs(geom)) as distinct_crs_count
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra');
+----
+1
+
+# Test 4: Round-trip test - read from BigQuery, verify CRS, and write back
+# Read from BigQuery, verify CRS, and write back
 statement ok
-CREATE OR REPLACE TABLE local_geoms AS
-SELECT 1 AS id, 'POINT(1 2)'::GEOMETRY AS geom;
+CREATE OR REPLACE TABLE local_geoms_roundtrip AS
+SELECT
+    id,
+    geom,
+    st_crs(geom) as crs
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+WHERE id <= 2;
+
+# Verify local table has correct CRS
+query III
+SELECT id, typeof(geom) as geom_type, crs
+FROM local_geoms_roundtrip
+ORDER BY id;
+----
+1	GEOMETRY('OGC:CRS84')	OGC:CRS84
+2	GEOMETRY('OGC:CRS84')	OGC:CRS84
+
+# Write back to BigQuery
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_roundtrip;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_false;
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_roundtrip AS
+SELECT id, geom FROM local_geoms_roundtrip;
 
+# Verify the round-trip: read back and check CRS is preserved
+query IIII
+SELECT
+    id,
+    geom,
+    typeof(geom) as geom_type,
+    st_crs(geom) as crs
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_roundtrip')
+ORDER BY id;
+----
+1	POINT (-122.4194 37.7749)	GEOMETRY('OGC:CRS84')	OGC:CRS84
+2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))	GEOMETRY('OGC:CRS84')	OGC:CRS84
+
+# Test 5: Insert new GEOMETRY with CRS into BigQuery table
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.geography_ctas_false AS
-SELECT * FROM local_geoms;
+INSERT INTO bq.${BQ_TEST_DATASET}.geography_test_extra VALUES (4, 'POINT(10 20)'::GEOMETRY('OGC:CRS84'));
 
+# Verify inserted geometry has correct CRS
+query IIII
+SELECT
+    id,
+    geom,
+    typeof(geom) as geom_type,
+    st_crs(geom) as crs
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+WHERE id = 4;
+----
+4	POINT (10 20)	GEOMETRY('OGC:CRS84')	OGC:CRS84
+
+# Test 6: Verify BigQuery stores GEOMETRY as GEOGRAPHY
 query I
 SELECT data_type
 FROM bigquery_query('${BQ_TEST_PROJECT}', '
   SELECT data_type
   FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.COLUMNS`
-  WHERE table_name = "geography_ctas_false" AND column_name = "geom"
+  WHERE table_name = "geography_test_extra" AND column_name = "geom"
 ');
 ----
 GEOGRAPHY
 
+# Test 7: Test with different geometry types and verify CRS
+query III
+SELECT
+    id,
+    typeof(geom) as duckdb_type,
+    st_crs(geom) as crs
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+ORDER BY id;
+----
+1	GEOMETRY('OGC:CRS84')	OGC:CRS84
+2	GEOMETRY('OGC:CRS84')	OGC:CRS84
+3	GEOMETRY('OGC:CRS84')	OGC:CRS84
+4	GEOMETRY('OGC:CRS84')	OGC:CRS84
+
 # Cleanup
 statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_DATASET}.geography_test`');
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_ctas_false;
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test_extra;
 
 statement ok
-DROP TABLE IF EXISTS local_geoms;
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_roundtrip;
+
+statement ok
+DROP TABLE IF EXISTS local_geoms_roundtrip;

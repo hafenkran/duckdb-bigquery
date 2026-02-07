@@ -1,10 +1,6 @@
-#include <iostream>
-
 #include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 
 #include "bigquery_client.hpp"
-#include "bigquery_info.hpp"
-#include "bigquery_parser.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
