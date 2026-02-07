@@ -404,6 +404,8 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 The BigQuery extension maps BigQuery [`GEOGRAPHY`](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#geography_type) columns to DuckDB `GEOMETRY` and uses WKT for interchange. You can read GEOGRAPHY as GEOMETRY and write GEOMETRY back to GEOGRAPHY without any extra settings:
 
+> **Note:** Starting with DuckDB v1.5.0, `GEOMETRY` types are natively supported without requiring the Spatial extension. For DuckDB versions prior to v1.5.0, you need to enable the legacy setting `SET bq_geography_as_geometry = true;` to use GEOGRAPHY/GEOMETRY functionality.
+
 ```sql
 D ATTACH 'project=my_gcp_project' AS bq (TYPE bigquery);
 
@@ -420,7 +422,7 @@ D SELECT name, geography_column, typeof(geography_column) FROM bq.dataset.geo_ta
 -- Write GEOMETRY data - automatically converted to BigQuery GEOGRAPHY (WKT)
 D INSERT INTO bq.dataset.geo_table VALUES 
     ('New Point', 'POINT(-122.2 37.8)'::GEOMETRY),
-    ('Buffer Zone', ST_Buffer('POINT(-122.0 37.9)'::GEOMETRY, 0.01));
+    ('Other Point', 'POINT(-122.0 37.9)'::GEOMETRY);
 ```
 
 ### Experimental BigQuery partitioning, clustering & options clauses
