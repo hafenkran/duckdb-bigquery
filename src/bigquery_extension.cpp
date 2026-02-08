@@ -17,6 +17,7 @@
 #include "bigquery_client.hpp"
 #include "bigquery_execute.hpp"
 #include "bigquery_extension.hpp"
+#include "bigquery_geography_winding.hpp"
 #include "bigquery_geometry_cast.hpp"
 #include "bigquery_jobs.hpp"
 #include "bigquery_parser.hpp"
@@ -52,6 +53,11 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
     loader.RegisterFunction(bigquery_list_jobs_function);
+
+    // Register polygon winding fix function for BigQuery GEOGRAPHY writes
+    ScalarFunction force_ccw("bq_force_polygon_ccw", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
+                             bigquery::BqForcePolygonCCWFunction);
+    loader.RegisterFunction(force_ccw);
 
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     config.storage_extensions["bigquery"] = make_uniq<bigquery::BigqueryStorageExtension>();
