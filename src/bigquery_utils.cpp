@@ -505,7 +505,7 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
     mapped_bq_types.reserve(return_types.size());
     for (idx_t i = 0; i < return_types.size(); i++) {
 
-		// For reading from BigQuery, we need to map GEOMETRY types to VARCHAR
+        // For reading from BigQuery, we need to map GEOMETRY types to VARCHAR
         // because BigQuery stores GEOGRAPHY as WKT strings in Arrow format
         LogicalType bq_type;
         if (return_types[i].id() == LogicalTypeId::GEOMETRY) {
