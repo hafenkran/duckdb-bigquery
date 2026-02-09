@@ -230,19 +230,9 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
             "Writing GEOMETRY columns to BigQuery requires the spatial extension (function ST_AsText not found)");
     }
 
-    // Lookup bq_force_polygon_ccw to fix ring winding for BigQuery GEOGRAPHY
-    ScalarFunctionSet *ccw_set = nullptr;
-    try {
-        auto &ccw_entry = Catalog::GetEntry(context,
-                                            CatalogType::SCALAR_FUNCTION_ENTRY,
-                                            INVALID_CATALOG,
-                                            INVALID_SCHEMA,
-                                            "bq_force_polygon_ccw");
-        auto &ccw_sf_entry = ccw_entry.Cast<ScalarFunctionCatalogEntry>();
-        ccw_set = &ccw_sf_entry.functions;
-    } catch (...) {
-        // Function not found — this shouldn't happen if the extension loaded correctly
-    }
+    // Internal scalar function to fix polygon ring winding for BigQuery GEOGRAPHY
+    ScalarFunction ccw_func("bigquery_force_polygon_ccw", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
+                            bigquery::BqForcePolygonCCWFunction);
 
     for (idx_t i = 0; i < child_types.size(); i++) {
         auto &type = child_types[i];
@@ -270,18 +260,12 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
             bound = BoundCastExpression::AddCastToType(context, std::move(bound), LogicalType::VARCHAR);
         }
 
-        // Wrap in bq_force_polygon_ccw to fix ring winding for BigQuery
-        if (ccw_set) {
-            vector<LogicalType> ccw_arg_types{LogicalType::VARCHAR};
-            ErrorData ccw_error;
-            auto ccw_opt_index = binder.BindFunction("bq_force_polygon_ccw", *ccw_set, ccw_arg_types, ccw_error);
-            if (ccw_opt_index.IsValid()) {
-                auto ccw_func = ccw_set->GetFunctionByOffset(ccw_opt_index.GetIndex());
-                vector<unique_ptr<Expression>> ccw_args;
-                ccw_args.push_back(std::move(bound));
-                bound = make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args),
-                                                           nullptr, false);
-            }
+        // Wrap in winding fix to ensure OGC-compliant ring order for BigQuery GEOGRAPHY
+        {
+            vector<unique_ptr<Expression>> ccw_args;
+            ccw_args.push_back(std::move(bound));
+            bound = make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args),
+                                                       nullptr, false);
         }
 
         projected_types.push_back(LogicalType::VARCHAR);
