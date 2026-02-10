@@ -13,6 +13,7 @@
 #include <google/protobuf/dynamic_message.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
+#include "bigquery_geography_winding.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_utils.hpp"
 #include "duckdb/catalog/catalog.hpp"
@@ -229,6 +230,12 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
             "Writing GEOMETRY columns to BigQuery requires the spatial extension (function ST_AsText not found)");
     }
 
+    // Internal scalar function to fix polygon ring winding for BigQuery GEOGRAPHY
+    ScalarFunction ccw_func("bigquery_force_polygon_ccw",
+                            {LogicalType::VARCHAR},
+                            LogicalType::VARCHAR,
+                            bigquery::BqForcePolygonCCWFunction);
+
     for (idx_t i = 0; i < child_types.size(); i++) {
         auto &type = child_types[i];
         if (!BigqueryUtils::IsGeometryType(type)) {
@@ -253,10 +260,17 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
 
         if (func.return_type.id() != LogicalTypeId::VARCHAR) {
             bound = BoundCastExpression::AddCastToType(context, std::move(bound), LogicalType::VARCHAR);
-            projected_types.push_back(LogicalType::VARCHAR);
-        } else {
-            projected_types.push_back(func.return_type);
         }
+
+        // Wrap in winding fix to ensure OGC-compliant ring order for BigQuery GEOGRAPHY
+        {
+            vector<unique_ptr<Expression>> ccw_args;
+            ccw_args.push_back(std::move(bound));
+            bound =
+                make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args), nullptr, false);
+        }
+
+        projected_types.push_back(LogicalType::VARCHAR);
         select_list.push_back(std::move(bound));
     }
 
