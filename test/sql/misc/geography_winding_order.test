@@ -1,0 +1,53 @@
+# name: test/sql/misc/geography_winding_order.test
+# description: Test round trip of GEOGRAPHY winding order correction (CW → CCW)
+# group: [misc]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+INSTALL spatial;
+
+statement ok
+LOAD spatial;
+
+statement ok
+SET bq_geography_as_geometry = true;
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+# Create a BigQuery table with a GEOGRAPHY column
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_winding_test;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_winding_test (id INT64, geom GEOMETRY);
+
+# Insert two polygons with different winding orders:
+# id=1: CW exterior ring  (N→E→S→W) — should be corrected to CCW on write
+# id=2: CCW exterior ring (E→N→W→S) — should remain unchanged
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.geography_winding_test VALUES
+	(1, ST_GeomFromText('POLYGON((-122.4 37.7, -122.4 37.8, -122.3 37.8, -122.3 37.7, -122.4 37.7))')),
+	(2, ST_GeomFromText('POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))'));
+
+# Both polygons should be returned with CCW exterior winding order
+query II
+SELECT id, ST_AsText(geom)
+FROM bq.${BQ_TEST_DATASET}.geography_winding_test
+ORDER BY id;
+----
+1	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
+2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
+
+# Reset setting
+statement ok
+SET bq_geography_as_geometry = false;
+
+# Cleanup
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_winding_test;
