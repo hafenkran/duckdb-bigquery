@@ -231,7 +231,9 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
     }
 
     // Internal scalar function to fix polygon ring winding for BigQuery GEOGRAPHY
-    ScalarFunction ccw_func("bigquery_force_polygon_ccw", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
+    ScalarFunction ccw_func("bigquery_force_polygon_ccw",
+                            {LogicalType::VARCHAR},
+                            LogicalType::VARCHAR,
                             bigquery::BqForcePolygonCCWFunction);
 
     for (idx_t i = 0; i < child_types.size(); i++) {
@@ -264,8 +266,8 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
         {
             vector<unique_ptr<Expression>> ccw_args;
             ccw_args.push_back(std::move(bound));
-            bound = make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args),
-                                                       nullptr, false);
+            bound =
+                make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args), nullptr, false);
         }
 
         projected_types.push_back(LogicalType::VARCHAR);
