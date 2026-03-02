@@ -74,7 +74,7 @@ static void SetScalarQueryParameter(google::cloud::bigquery::v2::QueryParameter 
 }
 
 static google::cloud::bigquery::v2::QueryParameter BuildPositionalQueryParameter(const Value &value,
-                                                                                  idx_t parameter_index) {
+                                                                                 idx_t parameter_index) {
     auto type_id = value.type().id();
     google::cloud::bigquery::v2::QueryParameter parameter;
 

@@ -217,8 +217,10 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
 
         // Execute the query and get destination table
-        auto query_response =
-            mutable_bind_data.bq_client->ExecuteQuery(mutable_bind_data.query, "", false, mutable_bind_data.query_parameters);
+        auto query_response = mutable_bind_data.bq_client->ExecuteQuery(mutable_bind_data.query,
+                                                                        "",
+                                                                        false,
+                                                                        mutable_bind_data.query_parameters);
         auto job = mutable_bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
         if (job.status().has_error_result()) {
