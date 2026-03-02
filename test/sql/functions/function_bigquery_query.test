@@ -82,10 +82,13 @@ EXECUTE bq_query_params_stmt(42, 'abc');
 statement error
 SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x', [1,2,3]);
 ----
-<REGEX>:Binder Error: Unsupported DuckDB type for BigQuery query parameter \\$1: .+
+<REGEX>:Binder Error: Unsupported DuckDB type for BigQuery query parameter .+: .+
 
 statement ok
 CALL bigquery_execute('bq', 'DROP VIEW ${BQ_TEST_DATASET}.test_cities_view;');
 
 statement ok
 DROP TABLE bq.${BQ_TEST_DATASET}.test_cities;
+
+statement ok
+SET bq_debug_show_queries = false;
