@@ -12,6 +12,7 @@ struct BigqueryQueryDryRunBindData : public TableFunctionData {
     BigqueryConfig config;
     shared_ptr<BigqueryClient> bq_client;
     string query;
+    vector<Value> query_parameters;
     bool finished = false;
 };
 

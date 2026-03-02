@@ -41,6 +41,8 @@ public:
     BigqueryTableRef table_ref;
     //! The query string for the scan (used for bigquery_query function)
     string query;
+    //! Positional query parameters used for the query (used for bigquery_query function)
+    vector<Value> query_parameters;
     //! The filter string for the scan
     string filter_condition;
 

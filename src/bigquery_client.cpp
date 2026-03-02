@@ -9,6 +9,7 @@
 
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/types/time.hpp"
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
@@ -49,6 +50,142 @@
 
 namespace duckdb {
 namespace bigquery {
+namespace {
+
+static Value CastQueryParameterValue(const Value &value, const LogicalType &target_type, idx_t parameter_index) {
+    auto casted = value;
+    if (!casted.DefaultTryCastAs(target_type)) {
+        throw BinderException("Unsupported conversion for BigQuery query parameter $%llu: %s -> %s",
+                              parameter_index + 1,
+                              value.type().ToString(),
+                              target_type.ToString());
+    }
+    return casted;
+}
+
+static void SetScalarQueryParameter(google::cloud::bigquery::v2::QueryParameter &parameter,
+                                    const string &bq_type,
+                                    optional_ptr<const string> value) {
+    parameter.mutable_parameter_type()->set_type(bq_type);
+    auto *parameter_value = parameter.mutable_parameter_value();
+    if (value) {
+        parameter_value->mutable_value()->set_value(*value);
+    }
+}
+
+static google::cloud::bigquery::v2::QueryParameter BuildPositionalQueryParameter(const Value &value,
+                                                                                  idx_t parameter_index) {
+    auto type_id = value.type().id();
+    google::cloud::bigquery::v2::QueryParameter parameter;
+
+    switch (type_id) {
+    case LogicalTypeId::BOOLEAN: {
+        if (value.IsNull()) {
+            SetScalarQueryParameter(parameter, "BOOL", nullptr);
+        } else {
+            string bool_str = value.GetValue<bool>() ? "true" : "false";
+            SetScalarQueryParameter(parameter, "BOOL", &bool_str);
+        }
+        break;
+    }
+    case LogicalTypeId::TINYINT:
+    case LogicalTypeId::SMALLINT:
+    case LogicalTypeId::INTEGER:
+    case LogicalTypeId::BIGINT:
+    case LogicalTypeId::UTINYINT:
+    case LogicalTypeId::USMALLINT:
+    case LogicalTypeId::UINTEGER:
+    case LogicalTypeId::UBIGINT:
+    case LogicalTypeId::HUGEINT:
+    case LogicalTypeId::UHUGEINT: {
+        auto casted = CastQueryParameterValue(value, LogicalType::BIGINT, parameter_index);
+        if (casted.IsNull()) {
+            SetScalarQueryParameter(parameter, "INT64", nullptr);
+        } else {
+            auto int_str = std::to_string(casted.GetValue<int64_t>());
+            SetScalarQueryParameter(parameter, "INT64", &int_str);
+        }
+        break;
+    }
+    case LogicalTypeId::FLOAT:
+    case LogicalTypeId::DOUBLE: {
+        auto casted = CastQueryParameterValue(value, LogicalType::DOUBLE, parameter_index);
+        if (casted.IsNull()) {
+            SetScalarQueryParameter(parameter, "FLOAT64", nullptr);
+        } else {
+            auto float_str = casted.ToString();
+            SetScalarQueryParameter(parameter, "FLOAT64", &float_str);
+        }
+        break;
+    }
+    case LogicalTypeId::DECIMAL: {
+        if (value.IsNull()) {
+            SetScalarQueryParameter(parameter, "NUMERIC", nullptr);
+        } else {
+            auto numeric_str = value.ToString();
+            SetScalarQueryParameter(parameter, "NUMERIC", &numeric_str);
+        }
+        break;
+    }
+    case LogicalTypeId::VARCHAR: {
+        if (value.IsNull()) {
+            SetScalarQueryParameter(parameter, "STRING", nullptr);
+        } else {
+            auto string_val = value.GetValue<string>();
+            SetScalarQueryParameter(parameter, "STRING", &string_val);
+        }
+        break;
+    }
+    case LogicalTypeId::DATE: {
+        if (value.IsNull()) {
+            SetScalarQueryParameter(parameter, "DATE", nullptr);
+        } else {
+            auto date_str = Date::ToString(value.GetValue<date_t>());
+            SetScalarQueryParameter(parameter, "DATE", &date_str);
+        }
+        break;
+    }
+    case LogicalTypeId::TIME:
+    case LogicalTypeId::TIME_NS:
+    case LogicalTypeId::TIME_TZ: {
+        auto casted = CastQueryParameterValue(value, LogicalType::TIME, parameter_index);
+        if (casted.IsNull()) {
+            SetScalarQueryParameter(parameter, "TIME", nullptr);
+        } else {
+            auto time_str = Time::ToString(casted.GetValue<dtime_t>());
+            SetScalarQueryParameter(parameter, "TIME", &time_str);
+        }
+        break;
+    }
+    case LogicalTypeId::TIMESTAMP:
+    case LogicalTypeId::TIMESTAMP_SEC:
+    case LogicalTypeId::TIMESTAMP_MS:
+    case LogicalTypeId::TIMESTAMP_NS:
+    case LogicalTypeId::TIMESTAMP_TZ: {
+        auto casted = CastQueryParameterValue(value, LogicalType::TIMESTAMP, parameter_index);
+        if (casted.IsNull()) {
+            SetScalarQueryParameter(parameter, "TIMESTAMP", nullptr);
+        } else {
+            auto timestamp_str = Timestamp::ToString(casted.GetValue<timestamp_t>());
+            SetScalarQueryParameter(parameter, "TIMESTAMP", &timestamp_str);
+        }
+        break;
+    }
+    case LogicalTypeId::SQLNULL:
+        throw BinderException(
+            "BigQuery query parameter $%llu has unknown NULL type. Add an explicit cast to the corresponding DuckDB "
+            "argument (e.g. CAST(? AS INTEGER)).",
+            parameter_index + 1);
+    default:
+        throw BinderException("Unsupported DuckDB type for BigQuery query parameter $%llu: %s",
+                              parameter_index + 1,
+                              value.type().ToString());
+    }
+
+    return parameter;
+}
+
+} // namespace
 
 class CustomReadIdempotencyPolicy : public google::cloud::bigquery_storage_v1::BigQueryReadConnectionIdempotencyPolicy {
 public:
@@ -632,9 +769,10 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
 }
 
 void BigqueryClient::GetTableInfoForQuery(const string &query,
+                                          const vector<Value> &query_parameters,
                                           ColumnList &res_columns,
                                           vector<unique_ptr<Constraint>> &res_constraints) {
-    auto query_response = ExecuteQuery(query, "", true);
+    auto query_response = ExecuteQuery(query, "", true, query_parameters);
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
@@ -705,18 +843,19 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 
 google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query,
                                                                         const string &location,
-                                                                        const bool &dry_run) {
+                                                                        const bool &dry_run,
+                                                                        const vector<Value> &query_parameters) {
     CheckAuthentication();
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response = PostQueryJobInternal(client, query, location, dry_run);
+    auto response = PostQueryJobInternal(client, query, location, dry_run, query_parameters);
     if (!response.ok()) {
         ThrowOnErrorStatus(response.status());
 
         if (CheckSSLError(response.status())) {
-            return ExecuteQuery(query, location, dry_run);
+            return ExecuteQuery(query, location, dry_run, query_parameters);
         }
 
         throw BinderException("Query execution failed: " + response.status().message());
@@ -780,7 +919,8 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const string &query,
     const string &location,
-    const bool &dry_run) {
+    const bool &dry_run,
+    const vector<Value> &query_parameters) {
 
     if (!dry_run && BigquerySettings::DebugQueryPrint()) {
         std::cout << "query: " << query << std::endl;
@@ -803,6 +943,13 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
 
     if (!location.empty()) {
         *query_request.mutable_location() = location;
+    }
+    if (!query_parameters.empty()) {
+        query_request.set_parameter_mode("POSITIONAL");
+        for (idx_t i = 0; i < query_parameters.size(); i++) {
+            auto *query_parameter = query_request.add_query_parameters();
+            *query_parameter = BuildPositionalQueryParameter(query_parameters[i], i);
+        }
     }
 
     auto request = google::cloud::bigquery::v2::PostQueryRequest();

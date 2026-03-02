@@ -23,6 +23,10 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                                   vector<string> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
+    vector<Value> query_parameters;
+    for (idx_t i = 2; i < input.inputs.size(); i++) {
+        query_parameters.emplace_back(input.inputs[i]);
+    }
 
     auto &database_manager = DatabaseManager::Get(context);
     auto database = database_manager.GetDatabase(context, dbname_or_project_id);
@@ -40,6 +44,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         auto result = make_uniq<BigqueryQueryDryRunBindData>();
         result->query = query_string;
+        result->query_parameters = query_parameters;
 
         if (database) {
             auto &catalog = database->GetCatalog();
@@ -70,6 +75,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     if (!params.use_legacy_scan) {
         auto bind_data = make_uniq<BigqueryArrowScanBindData>();
         bind_data->query = query_string;
+        bind_data->query_parameters = query_parameters;
         bind_data->estimated_row_count = 1;
 
         if (database) {
@@ -99,7 +105,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         ColumnList columns;
         vector<unique_ptr<Constraint>> constraints;
-        bind_data->bq_client->GetTableInfoForQuery(query_string, columns, constraints);
+        bind_data->bq_client->GetTableInfoForQuery(query_string, bind_data->query_parameters, columns, constraints);
 
         auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
         auto status = arrow::ExportSchema(*std::move(arrow_schema_ptr), &bind_data->schema_root.arrow_schema);
@@ -142,6 +148,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         // Legacy implementation (V1)
         auto bind_data = make_uniq<BigqueryLegacyScanBindData>();
         bind_data->query = query_string;
+        bind_data->query_parameters = query_parameters;
         bind_data->estimated_row_count = 1;
 
         if (database) {
@@ -172,7 +179,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         ColumnList columns;
         vector<unique_ptr<Constraint>> constraints;
-        bind_data->bq_client->GetTableInfoForQuery(query_string, columns, constraints);
+        bind_data->bq_client->GetTableInfoForQuery(query_string, bind_data->query_parameters, columns, constraints);
 
         for (auto &column : columns.Logical()) {
             names.push_back(column.GetName());
@@ -210,7 +217,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
 
         // Execute the query and get destination table
-        auto query_response = mutable_bind_data.bq_client->ExecuteQuery(mutable_bind_data.query);
+        auto query_response =
+            mutable_bind_data.bq_client->ExecuteQuery(mutable_bind_data.query, "", false, mutable_bind_data.query_parameters);
         auto job = mutable_bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
         if (job.status().has_error_result()) {
@@ -228,7 +236,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         auto &bind_data = input.bind_data->CastNoConst<BigqueryLegacyScanBindData>();
 
         // Execute the query and get destination table
-        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query);
+        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", false, bind_data.query_parameters);
         auto job = bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
         if (job.status().has_error_result()) {
@@ -270,7 +278,7 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
             return;
         }
 
-        auto response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", true);
+        auto response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", true, bind_data.query_parameters);
         bind_data.finished = true;
 
         output.SetValue(0, 0, Value::BIGINT(response.total_bytes_processed().value()));
@@ -428,6 +436,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
     named_parameters["use_legacy_scan"] = LogicalType::BOOLEAN;
     named_parameters["dry_run"] = LogicalType::BOOLEAN;
+    varargs = LogicalType::ANY;
 }
 
 } // namespace bigquery
