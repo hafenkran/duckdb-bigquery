@@ -150,6 +150,7 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
     if (!export_status.ok()) {
         throw BinderException("Arrow export failed: " + export_status.ToString());
     }
+
     return wrapper;
 }
 

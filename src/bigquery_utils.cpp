@@ -229,12 +229,7 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     } else if (bigquery_type == "BIGNUMERIC") {
         type = BigqueryUtils::FieldSchemaNumericToLogicalType(field);
     } else if (bigquery_type == "GEOGRAPHY") {
-        if (BigquerySettings::GeographyAsGeometry()) {
-            type = LogicalType::BLOB;
-            type.SetAlias("GEOMETRY");
-        } else {
-            type = LogicalType::VARCHAR;
-        }
+        type = LogicalType::GEOMETRY("OGC:CRS84");
     } else if (bigquery_type == "STRUCT" || bigquery_type == "RECORD") {
         child_list_t<LogicalType> new_types;
         for (auto &child : field.fields()) {
@@ -473,7 +468,7 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
                                                   vector<LogicalType> &return_types,
                                                   vector<LogicalType> &mapped_bq_types,
                                                   const ColumnList *source_columns) {
-    ArrowTableFunction::PopulateArrowTableSchema(DBConfig::GetConfig(context), arrow_table, schema_root.arrow_schema);
+    ArrowTableFunction::PopulateArrowTableSchema(context, arrow_table, schema_root.arrow_schema);
 
     names = arrow_table.GetNames();
     return_types = arrow_table.GetTypes();
@@ -490,6 +485,12 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
         idx_t idx = 0;
         for (auto &col : source_columns->Logical()) {
             const LogicalType &src_type = col.GetType();
+            // Preserve GEOMETRY types from source_columns, as Arrow schema stores them as VARCHAR
+            // For other types, keep the Arrow schema types (they are correct)
+            if (src_type.id() == LogicalTypeId::GEOMETRY) {
+                return_types[idx] = src_type;
+            }
+            // Propagate aliases for all types
             if (src_type.HasAlias() && !src_type.GetAlias().empty()) {
                 if (!return_types[idx].HasAlias() || return_types[idx].GetAlias().empty()) {
                     return_types[idx].SetAlias(src_type.GetAlias());
@@ -503,9 +504,17 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
     mapped_bq_types.clear();
     mapped_bq_types.reserve(return_types.size());
     for (idx_t i = 0; i < return_types.size(); i++) {
-        auto bq_type = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(return_types[i], &context);
-        if (bq_type != return_types[i]) {
+
+        // For reading from BigQuery, we need to map GEOMETRY types to VARCHAR
+        // because BigQuery stores GEOGRAPHY as WKT strings in Arrow format
+        LogicalType bq_type;
+        if (return_types[i].id() == LogicalTypeId::GEOMETRY) {
+            // BigQuery stores GEOGRAPHY as WKT (VARCHAR) in Arrow, so we need to cast
+            bq_type = LogicalType::VARCHAR;
             requires_cast = true;
+        } else {
+            // For other types, use the type as-is (no conversion needed when reading)
+            bq_type = return_types[i];
         }
         mapped_bq_types.push_back(bq_type);
     }
@@ -517,6 +526,7 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
 bool BigqueryUtils::IsValueQuotable(const Value &value) {
     switch (value.type().id()) {
     case LogicalTypeId::VARCHAR:
+    case LogicalTypeId::GEOMETRY:
     case LogicalTypeId::BLOB:
     case LogicalTypeId::DATE:
     case LogicalTypeId::TIME:
@@ -560,6 +570,11 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     case LogicalTypeId::FLOAT:
     case LogicalTypeId::DOUBLE:
         return LogicalType::DOUBLE;
+    case LogicalTypeId::GEOMETRY: {
+        LogicalType geography_type = LogicalType(LogicalTypeId::VARCHAR);
+        geography_type.SetAlias("GEOGRAPHY");
+        return geography_type;
+    }
     case LogicalTypeId::BLOB:
         // if (BigqueryUtils::IsGeometryType(type)) {
         //     auto geom_type = LogicalType(LogicalTypeId::VARCHAR);
@@ -619,18 +634,16 @@ bool BigqueryUtils::IsGeographyType(const LogicalType &type) {
 }
 
 bool BigqueryUtils::IsGeometryType(const LogicalType &type) {
-    return type.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY";
+    return type.id() == LogicalTypeId::GEOMETRY;
 }
 
 LogicalType BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context) {
-    // Check for WKT alias on VARCHAR types - convert to GEOMETRY if spatial extension is available
-    if (type.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY") {
-        if (context && BigquerySettings::IsGeometryConversionEnabled(*context)) {
-            // Create GEOMETRY type (BLOB with GEOMETRY alias)
-            LogicalType geometry_type = LogicalType(LogicalTypeId::VARCHAR);
-            geometry_type.SetAlias("GEOGRAPHY");
-            return geometry_type;
-        }
+    (void)context;
+    // BigQuery stores GEOGRAPHY as WKT; represent it as VARCHAR with GEOGRAPHY alias.
+    if (type.id() == LogicalTypeId::GEOMETRY) {
+        LogicalType geography_type = LogicalType(LogicalTypeId::VARCHAR);
+        geography_type.SetAlias("GEOGRAPHY");
+        return geography_type;
     }
     LogicalType result = CastToBigqueryType(type);
     return result;
@@ -638,6 +651,8 @@ LogicalType BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(const Logical
 
 google::protobuf::FieldDescriptorProto::Type BigqueryUtils::LogicalTypeToProtoType(const LogicalType &type) {
     switch (type.id()) {
+    case LogicalTypeId::GEOMETRY:
+        return google::protobuf::FieldDescriptorProto::TYPE_STRING;
     case LogicalTypeId::BLOB:
         if (BigqueryUtils::IsGeometryType(type)) {
             return google::protobuf::FieldDescriptorProto::TYPE_STRING;
@@ -734,12 +749,7 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
     } else if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
         result = BigqueryUtils::BigqueryNumericSQLToLogicalType(type);
     } else if (type == "GEOGRAPHY") {
-        if (BigquerySettings::GeographyAsGeometry()) {
-            result = LogicalType::BLOB;
-            result.SetAlias("GEOMETRY");
-        } else {
-            result = LogicalType::VARCHAR;
-        }
+        result = LogicalType::GEOMETRY("OGC:CRS84");
     } else if (type.find("ARRAY<") == 0) {
         string array_sub_type = type.substr(6, type.size() - 7);
         LogicalType element_logical_type = BigquerySQLToLogicalType(array_sub_type);
@@ -815,8 +825,10 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
     case LogicalTypeId::FLOAT:
     case LogicalTypeId::DOUBLE:
         return "FLOAT64";
+    case LogicalTypeId::GEOMETRY:
+        return "GEOGRAPHY";
     case LogicalTypeId::BLOB:
-        if (BigqueryUtils::IsGeometryType(type) && BigquerySettings::GeographyAsGeometry()) {
+        if (BigqueryUtils::IsGeometryType(type) || BigqueryUtils::IsGeographyType(type)) {
             return "GEOGRAPHY";
         }
         return "BYTES";
@@ -839,6 +851,9 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
     case LogicalTypeId::INTERVAL:
         return "INTERVAL";
     case LogicalTypeId::VARCHAR:
+        if (BigqueryUtils::IsGeographyType(type)) {
+            return "GEOGRAPHY";
+        }
         return "STRING";
     case LogicalTypeId::UUID:
         return "STRING";

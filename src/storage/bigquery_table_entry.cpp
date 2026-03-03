@@ -97,10 +97,10 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
 
             LogicalType chosen_physical;
             // SPECIAL CASE (GEOGRAPHY -> GEOMETRY):
-            // Catalog/user type: BLOB alias GEOMETRY (target user-facing GEOMETRY)
+            // Catalog/user type: GEOMETRY (target user-facing GEOMETRY)
             // Actual BigQuery Arrow stream delivers WKT as VARCHAR alias GEOGRAPHY.
             // CastToBigqueryTypeWithSpatialConversion returns VARCHAR GEOGRAPHY. We must keep that as the mapped
-            // physical source so that cast logic triggers and converts WKT->GEOMETRY blob.
+            // physical source so that cast logic triggers and converts WKT->GEOMETRY.
             bool is_geometry_target = BigqueryUtils::IsGeometryType(user_type);
             bool spatial_inversion = BigqueryUtils::IsGeographyType(spatial_source);
             if (is_geometry_target && spatial_inversion) {
@@ -139,15 +139,11 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
         // Use the old Bigquery scan function (bigquery_scan)
 
         // Check if geography_as_geometry is enabled with legacy scan and GEOGRAPHY columns present
-        if (BigquerySettings::GeographyAsGeometry()) {
-            for (const auto &column : columns.Logical()) {
-                const auto &type = column.GetType();
-                if (BigqueryUtils::IsGeographyType(type)) {
-                    throw BinderException(
-                        "BigQuery GEOGRAPHY columns with geography_as_geometry=true are not supported in legacy scan. "
-                        "Please either set bq_use_legacy_scan=false (recommended) or set "
-                        "bq_geography_as_geometry=false.");
-                }
+        for (const auto &column : columns.Logical()) {
+            const auto &type = column.GetType();
+            if (BigqueryUtils::IsGeometryType(type)) {
+                throw BinderException("BigQuery GEOGRAPHY columns are not supported in legacy scan. "
+                                      "Please set bq_use_legacy_scan=false (recommended).");
             }
         }
 

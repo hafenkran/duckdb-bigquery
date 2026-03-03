@@ -5,7 +5,7 @@
 namespace duckdb {
 namespace bigquery {
 
-// Register cast from VARCHAR alias WKT -> BLOB alias GEOMETRY (runtime lookup of ST_GeomFromText during execution)
+// Register cast from VARCHAR alias GEOGRAPHY -> GEOMETRY (WKT parsing via core cast)
 void RegisterWKTGeometryCast(DatabaseInstance &db);
 
 } // namespace bigquery
