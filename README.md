@@ -258,6 +258,21 @@ D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.
 └───────┴────────────────┘
 ```
 
+`bigquery_query` also supports positional query parameters. Use `?` placeholders in the BigQuery SQL string and pass the parameter values as additional function arguments (this also works with prepared statements):
+
+```sql
+D PREPARE s AS
+  SELECT *
+  FROM bigquery_query('my_gcp_project', 'SELECT ? AS x, ? AS y', ?, ?);
+D EXECUTE s(42, 'abc');
+┌───────┬─────────┐
+│   x   │    y    │
+│ int64 │ varchar │
+├───────┼─────────┤
+│    42 │ abc     │
+└───────┴─────────┘
+```
+
 > **Note**: If your goal is straightforward table reads, `bigquery_scan` is often more efficient, as it bypasses the SQL layer for direct data access. However, `bigquery_query` is ideal when you need to execute custom SQL that requires the full querying capabilities of BigQuery expressed in GoogleSQL. In this case, BigQuery transparently creates an anonymous temporary result table, which is fetched using the selected scan engine.
 
 The `dry_run` parameter allows you to validate a query without executing it. This is useful for estimating query costs and checking syntax before running expensive queries:

@@ -38,6 +38,7 @@ struct BigqueryLegacyScanBindData : public TableFunctionData {
     BigqueryTableRef table_ref;
 
     string query;
+    vector<Value> query_parameters;
     string filter_condition;
 
     shared_ptr<BigqueryClient> bq_client;

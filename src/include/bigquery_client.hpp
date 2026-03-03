@@ -68,6 +68,7 @@ public:
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
     void GetTableInfoForQuery(const string &query,
+                              const vector<Value> &query_parameters,
                               ColumnList &res_columns,
                               vector<unique_ptr<Constraint>> &res_constraints);
 
@@ -77,7 +78,8 @@ public:
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query,
                                                             const string &location = "",
-                                                            const bool &dry_run = false);
+                                                            const bool &dry_run = false,
+                                                            const vector<Value> &query_parameters = {});
     google::cloud::bigquery::v2::GetQueryResultsResponse GetQueryResults(
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
@@ -108,7 +110,8 @@ private:
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const string &query,
         const string &location = "",
-        const bool &dry_run = false);
+        const bool &dry_run = false,
+        const vector<Value> &query_parameters = {});
 
     google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> GetQueryResultsInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
