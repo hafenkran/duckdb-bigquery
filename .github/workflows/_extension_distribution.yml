@@ -62,7 +62,7 @@ on:
       vcpkg_commit:
         required: false
         type: string
-        default: "ce613c41372b23b1f51333815feb3edd87ef8a8b"
+        default: "84bab45d415d22042bd0b9081aea57f362da3f35"
       # Override the vcpkg binary sources config. By default, we use the public (read-only) cache from duckdb.
       vcpkg_binary_sources:
         required: false
@@ -200,10 +200,10 @@ jobs:
       - id: parse-matrices
         run: |
           mkdir build
-          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os linux --output build/linux_matrix.json --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
-          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os osx --output build/osx_matrix.json --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os linux   --output build/linux_matrix.json   --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os osx     --output build/osx_matrix.json     --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
           python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os windows --output build/windows_matrix.json --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
-          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os wasm --output build/wasm_matrix.json --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os wasm    --output build/wasm_matrix.json    --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
 
       - id: set-matrix-linux
         run: |
@@ -383,6 +383,8 @@ jobs:
           OPENSSL_USE_STATIC_LIBS=true
           DUCKDB_PLATFORM=${{ matrix.duckdb_arch }}
           DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }}
+          ENABLE_EXTENSION_AUTOINSTALL=1
+          ENABLE_EXTENSION_AUTOLOADING=1
           EXTENSION_NAME=${{ inputs.extension_name }}
           EXTENSION_CANONICAL=${{ inputs.extension_canonical }}
           LINUX_CI_IN_DOCKER=1
@@ -676,10 +678,20 @@ jobs:
           echo "CPPFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
           echo "CXXFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
 
-      - name: Install unixODBC
-        if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';unixodbc;')}}
+      - name: Install unixODBC (arm64)
+        if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';unixodbc;') && matrix.duckdb_arch == 'osx_arm64' }}
         run: |
+          brew config
           brew install unixodbc
+          brew ls -v unixodbc
+
+      - name: Install unixODBC (amd64)
+        if: ${{ contains(format(';{0};', inputs.extra_toolchains), ';unixodbc;') && matrix.duckdb_arch == 'osx_amd64' }}
+        run: |
+          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          /usr/local/bin/brew config
+          /usr/local/bin/brew install unixodbc
+          /usr/local/bin/brew ls -v unixodbc
 
       - name: Override AWS CLI
         if: ${{ (contains(format(';{0};', inputs.extra_toolchains), ';downgraded_aws_cli;')) }}
@@ -710,7 +722,7 @@ jobs:
       - name: Build extension
         shell: bash
         run: |
-          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} make ${{ inputs.build_type }}
+          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} ENABLE_EXTENSION_AUTOINSTALL=1 ENABLE_EXTENSION_AUTOLOADING=1 make ${{ inputs.build_type }}
 
       - id: "auth"
         uses: "google-github-actions/auth@v2"
@@ -956,6 +968,8 @@ jobs:
           DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
           EXTENSION_NAME: ${{ inputs.extension_name }}
           EXTENSION_CANONICAL: ${{ inputs.extension_canonical }}
+          ENABLE_EXTENSION_AUTOINSTALL: 1
+          ENABLE_EXTENSION_AUTOLOADING: 1
           DUCKDB_PLATFORM_RTOOLS: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 1 || 0 }}
           EXT_FLAGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         shell: cmd
@@ -1179,7 +1193,7 @@ jobs:
 
       - name: Build Wasm module
         run: |
-          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} make ${{ matrix.duckdb_arch }}
+          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} ENABLE_EXTENSION_AUTOINSTALL=1 ENABLE_EXTENSION_AUTOLOADING=1 make ${{ matrix.duckdb_arch }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.upload_all_extensions }}
