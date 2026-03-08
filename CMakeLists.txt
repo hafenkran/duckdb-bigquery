@@ -19,37 +19,13 @@ endif()
 message("Installing google-cloud-cpp dependencies")
 set(MSVC_RUNTIME_ARGS "")
 if(WIN32)
-    # Keep external dependency CRT linkage aligned with the current DuckDB build.
-    # This avoids Windows LNK2038 runtime mismatches (e.g. /MT vs /MD).
+    # Ensure external dependencies use /MT to match DuckDB's runtime.
+    # Determine runtime library based on build type (generator expressions don't work in execute_process)
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(_MSVC_ACTIVE_FLAGS "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS_DEBUG}")
-    else()
-        set(_MSVC_ACTIVE_FLAGS "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_CXX_FLAGS_RELEASE}")
-    endif()
-
-    if(_MSVC_ACTIVE_FLAGS MATCHES "(^| )/MTd( |$)")
         set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
-        set(DETECTED_VCPKG_CRT_LINKAGE static)
-    elseif(_MSVC_ACTIVE_FLAGS MATCHES "(^| )/MT( |$)")
-        set(MSVC_RUNTIME_LIB "MultiThreaded")
-        set(DETECTED_VCPKG_CRT_LINKAGE static)
-    elseif(_MSVC_ACTIVE_FLAGS MATCHES "(^| )/MDd( |$)")
-        set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
-        set(DETECTED_VCPKG_CRT_LINKAGE dynamic)
-    elseif(_MSVC_ACTIVE_FLAGS MATCHES "(^| )/MD( |$)")
-        set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
-        set(DETECTED_VCPKG_CRT_LINKAGE dynamic)
     else()
-        # CMake's default MSVC runtime is /MD(/MDd) when nothing is set explicitly.
-        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-            set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
-        else()
-            set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
-        endif()
-        set(DETECTED_VCPKG_CRT_LINKAGE dynamic)
+        set(MSVC_RUNTIME_LIB "MultiThreaded")
     endif()
-
-    message(STATUS "Windows CRT alignment: runtime='${MSVC_RUNTIME_LIB}', vcpkg_crt='${DETECTED_VCPKG_CRT_LINKAGE}'")
     set(MSVC_RUNTIME_ARGS
         -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
         -DCMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME_LIB}
@@ -57,9 +33,9 @@ if(WIN32)
 endif()
 set(VCPKG_CRT_ARGS "")
 if(WIN32)
-    # Ensure vcpkg CRT linkage follows the detected runtime mode.
+    # Ensure vcpkg builds with static CRT to match DuckDB (/MT)
     if(NOT DEFINED VCPKG_CRT_LINKAGE)
-        set(VCPKG_CRT_LINKAGE ${DETECTED_VCPKG_CRT_LINKAGE})
+        set(VCPKG_CRT_LINKAGE static)
     endif()
     if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
         set(VCPKG_LIBRARY_LINKAGE static)
