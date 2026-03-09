@@ -19,12 +19,15 @@ endif()
 message("Installing google-cloud-cpp dependencies")
 set(MSVC_RUNTIME_ARGS "")
 if(WIN32)
-    # Ensure external dependencies use /MT to match DuckDB's runtime.
-    # Determine runtime library based on build type (generator expressions don't work in execute_process)
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
+    # Keep external dependencies on the same MSVC runtime as DuckDB.
+    # execute_process config does not reliably handle generator expressions here.
+    if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY AND NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "" AND
+       NOT CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "\\$<")
+        set(MSVC_RUNTIME_LIB "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+    elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
     else()
-        set(MSVC_RUNTIME_LIB "MultiThreaded")
+        set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
     endif()
     set(MSVC_RUNTIME_ARGS
         -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
@@ -33,9 +36,13 @@ if(WIN32)
 endif()
 set(VCPKG_CRT_ARGS "")
 if(WIN32)
-    # Ensure vcpkg builds with static CRT to match DuckDB (/MT)
+    # Match vcpkg CRT linkage to the selected MSVC runtime mode.
     if(NOT DEFINED VCPKG_CRT_LINKAGE)
-        set(VCPKG_CRT_LINKAGE static)
+        if(MSVC_RUNTIME_LIB MATCHES "DLL")
+            set(VCPKG_CRT_LINKAGE dynamic)
+        else()
+            set(VCPKG_CRT_LINKAGE static)
+        endif()
     endif()
     if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
         set(VCPKG_LIBRARY_LINKAGE static)
@@ -128,6 +135,7 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 function(link_libraries_to_extension target_name)
     target_link_libraries(
         ${target_name}
+        PRIVATE
         # Google Cloud C++ libraries (order matters!)
         google-cloud-cpp::common
         google-cloud-cpp::bigquery
@@ -150,11 +158,12 @@ function(link_libraries_to_extension target_name)
         OpenSSL::SSL
         OpenSSL::Crypto
         CURL::libcurl
-        -lpthread
-        -ldl
         # Arrow
         "$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>"
     )
+    if(NOT WIN32)
+        target_link_libraries(${target_name} PRIVATE pthread dl)
+    endif()
 endfunction()
 
 link_libraries_to_extension(${EXTENSION_NAME})
