@@ -5,6 +5,18 @@ PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 EXT_NAME=bigquery
 EXT_CONFIG=${PROJ_DIR}extension_config.cmake
 
+# Prepend repo-local vcpkg triplet overlays so Windows CRT linkage can be
+# controlled without changing shared extension-ci-tools workflows.
+LOCAL_VCPKG_OVERLAY_TRIPLETS=${PROJ_DIR}vcpkg_overlays/triplets
+ORIG_VCPKG_OVERLAY_TRIPLETS:=$(VCPKG_OVERLAY_TRIPLETS)
+ifneq ("$(wildcard $(LOCAL_VCPKG_OVERLAY_TRIPLETS))","")
+ifneq ("$(ORIG_VCPKG_OVERLAY_TRIPLETS)", "")
+export VCPKG_OVERLAY_TRIPLETS:=$(LOCAL_VCPKG_OVERLAY_TRIPLETS);$(ORIG_VCPKG_OVERLAY_TRIPLETS)
+else
+export VCPKG_OVERLAY_TRIPLETS:=$(LOCAL_VCPKG_OVERLAY_TRIPLETS)
+endif
+endif
+
 # # ---------------------------------------------
 # # Enable AddressSanitizer (and UBSan) globally
 # EXT_DEBUG_FLAGS   += -DENABLE_SANITIZER=1 -DENABLE_UBSAN=1
