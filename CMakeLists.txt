@@ -18,13 +18,36 @@ endif()
 # Compile and install google-cloud-cpp depedencies
 message("Installing google-cloud-cpp dependencies")
 set(MSVC_RUNTIME_ARGS "")
-if(WIN32)
-    # Ensure external dependencies use /MT to match DuckDB's runtime.
-    # Determine runtime library based on build type (generator expressions don't work in execute_process)
+set(MSVC_RUNTIME_LIB "")
+if(MSVC)
+    # Keep external dependencies on the same MSVC runtime as DuckDB.
+    # execute_process() CMAKE_ARGS do not reliably handle generator expressions.
+    set(IS_DEBUG_BUILD FALSE)
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
+        set(IS_DEBUG_BUILD TRUE)
+    endif()
+    if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY AND NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "")
+        set(RUNTIME_IS_DLL FALSE)
+        if(CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL")
+            set(RUNTIME_IS_DLL TRUE)
+        endif()
+        if(IS_DEBUG_BUILD)
+            if(RUNTIME_IS_DLL)
+                set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
+            else()
+                set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
+            endif()
+        else()
+            if(RUNTIME_IS_DLL)
+                set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
+            else()
+                set(MSVC_RUNTIME_LIB "MultiThreaded")
+            endif()
+        endif()
+    elseif(IS_DEBUG_BUILD)
+        set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
     else()
-        set(MSVC_RUNTIME_LIB "MultiThreaded")
+        set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
     endif()
     set(MSVC_RUNTIME_ARGS
         -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
@@ -32,11 +55,20 @@ if(WIN32)
     )
 endif()
 set(VCPKG_CRT_ARGS "")
-if(WIN32)
-    # Ensure vcpkg builds with static CRT to match DuckDB (/MT)
-    if(NOT DEFINED VCPKG_CRT_LINKAGE)
-        set(VCPKG_CRT_LINKAGE static)
+if(MSVC)
+    # Match vcpkg CRT linkage to the selected MSVC runtime mode.
+    if(MSVC_RUNTIME_LIB MATCHES "DLL")
+        set(EXPECTED_VCPKG_CRT_LINKAGE dynamic)
+    else()
+        set(EXPECTED_VCPKG_CRT_LINKAGE static)
     endif()
+    if(DEFINED VCPKG_CRT_LINKAGE AND NOT VCPKG_CRT_LINKAGE STREQUAL "${EXPECTED_VCPKG_CRT_LINKAGE}")
+        message(
+            WARNING
+                "Overriding VCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE} with ${EXPECTED_VCPKG_CRT_LINKAGE} to match CMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME_LIB}"
+        )
+    endif()
+    set(VCPKG_CRT_LINKAGE ${EXPECTED_VCPKG_CRT_LINKAGE})
     if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
         set(VCPKG_LIBRARY_LINKAGE static)
     endif()
@@ -45,6 +77,31 @@ if(WIN32)
         -DVCPKG_LIBRARY_LINKAGE=${VCPKG_LIBRARY_LINKAGE}
     )
 endif()
+set(VCPKG_OVERLAY_TRIPLETS_ARG "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_overlays/triplets")
+    set(VCPKG_OVERLAY_TRIPLETS_ARG "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_overlays/triplets")
+endif()
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains")
+    if(VCPKG_OVERLAY_TRIPLETS_ARG STREQUAL "")
+        set(VCPKG_OVERLAY_TRIPLETS_ARG "${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains")
+    else()
+        set(VCPKG_OVERLAY_TRIPLETS_ARG "${VCPKG_OVERLAY_TRIPLETS_ARG};${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains")
+    endif()
+endif()
+if(DEFINED VCPKG_OVERLAY_TRIPLETS AND NOT VCPKG_OVERLAY_TRIPLETS STREQUAL "")
+    if(VCPKG_OVERLAY_TRIPLETS_ARG STREQUAL "")
+        set(VCPKG_OVERLAY_TRIPLETS_ARG "${VCPKG_OVERLAY_TRIPLETS}")
+    else()
+        set(VCPKG_OVERLAY_TRIPLETS_ARG "${VCPKG_OVERLAY_TRIPLETS};${VCPKG_OVERLAY_TRIPLETS_ARG}")
+    endif()
+elseif(DEFINED ENV{VCPKG_OVERLAY_TRIPLETS} AND NOT "$ENV{VCPKG_OVERLAY_TRIPLETS}" STREQUAL "")
+    if(VCPKG_OVERLAY_TRIPLETS_ARG STREQUAL "")
+        set(VCPKG_OVERLAY_TRIPLETS_ARG "$ENV{VCPKG_OVERLAY_TRIPLETS}")
+    else()
+        set(VCPKG_OVERLAY_TRIPLETS_ARG "$ENV{VCPKG_OVERLAY_TRIPLETS};${VCPKG_OVERLAY_TRIPLETS_ARG}")
+    endif()
+endif()
+string(REPLACE ";" "\\;" VCPKG_OVERLAY_TRIPLETS_ARG "${VCPKG_OVERLAY_TRIPLETS_ARG}")
 execute_process(
     COMMAND
         ${CMAKE_COMMAND}
@@ -59,7 +116,7 @@ execute_process(
         -DVCPKG_INSTALLED_DIR=${CMAKE_BINARY_DIR}/vcpkg_installed
         -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
         -DVCPKG_TARGET_ARCHITECTURE=${VCPKG_TARGET_ARCHITECTURE}
-        -DVCPKG_OVERLAY_TRIPLETS=${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains/
+        -DVCPKG_OVERLAY_TRIPLETS=${VCPKG_OVERLAY_TRIPLETS_ARG}
         ${MSVC_RUNTIME_ARGS}
         ${VCPKG_CRT_ARGS}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}

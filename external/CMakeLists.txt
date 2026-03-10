@@ -19,21 +19,54 @@ include(ExternalProject)
 set(LOCAL_INSTALL_DIR ${CMAKE_BINARY_DIR}/local)
 set_directory_properties(PROPERTIES EP_BASE ${CMAKE_BINARY_DIR}/projects)
 
-if(WIN32)
-    # Default to static CRT to match DuckDB (/MT); allow override via cache/CLI.
-    if(NOT DEFINED VCPKG_CRT_LINKAGE)
-        set(VCPKG_CRT_LINKAGE static)
+if(MSVC)
+    # Keep dependency runtime aligned with the top-level DuckDB runtime.
+    set(IS_DEBUG_BUILD FALSE)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(IS_DEBUG_BUILD TRUE)
     endif()
+    if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY AND NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "")
+        set(RUNTIME_IS_DLL FALSE)
+        if(CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL")
+            set(RUNTIME_IS_DLL TRUE)
+        endif()
+        if(IS_DEBUG_BUILD)
+            if(RUNTIME_IS_DLL)
+                set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
+            else()
+                set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
+            endif()
+        else()
+            if(RUNTIME_IS_DLL)
+                set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
+            else()
+                set(MSVC_RUNTIME_LIB "MultiThreaded")
+            endif()
+        endif()
+    elseif(IS_DEBUG_BUILD)
+        set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
+    else()
+        set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
+    endif()
+
+    if(MSVC_RUNTIME_LIB MATCHES "DLL")
+        set(EXPECTED_VCPKG_CRT_LINKAGE dynamic)
+    else()
+        set(EXPECTED_VCPKG_CRT_LINKAGE static)
+    endif()
+    if(DEFINED VCPKG_CRT_LINKAGE AND NOT VCPKG_CRT_LINKAGE STREQUAL "${EXPECTED_VCPKG_CRT_LINKAGE}")
+        message(
+            WARNING
+                "Overriding VCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE} with ${EXPECTED_VCPKG_CRT_LINKAGE} to match CMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME_LIB}"
+        )
+    endif()
+    set(VCPKG_CRT_LINKAGE ${EXPECTED_VCPKG_CRT_LINKAGE})
     if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
         set(VCPKG_LIBRARY_LINKAGE static)
     endif()
-    # Determine runtime library based on build type (generator expressions don't work in CMAKE_ARGS)
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
-    else()
-        set(MSVC_RUNTIME_LIB "MultiThreaded")
-    endif()
 endif()
+set(VCPKG_OVERLAY_TRIPLETS_CMAKE_ARG "${VCPKG_OVERLAY_TRIPLETS}")
+string(REPLACE ";" "\\;" VCPKG_OVERLAY_TRIPLETS_CMAKE_ARG "${VCPKG_OVERLAY_TRIPLETS_CMAKE_ARG}")
 
 # Build Windows-specific CMAKE_ARGS
 set(GCP_CMAKE_ARGS
@@ -49,7 +82,7 @@ set(GCP_CMAKE_ARGS
 )
 
 # Add Windows-specific runtime library setting
-if(WIN32)
+if(MSVC)
     list(APPEND GCP_CMAKE_ARGS -DCMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME_LIB})
 endif()
 
@@ -66,7 +99,7 @@ ExternalProject_Add(
                -DVCPKG_MANIFEST_DIR=${VCPKG_MANIFEST_DIR}
                -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}
                -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
-               -DVCPKG_OVERLAY_TRIPLETS=${VCPKG_OVERLAY_TRIPLETS}
+               -DVCPKG_OVERLAY_TRIPLETS=${VCPKG_OVERLAY_TRIPLETS_CMAKE_ARG}
                -DVCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE}
                -DVCPKG_LIBRARY_LINKAGE=${VCPKG_LIBRARY_LINKAGE}
                -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
