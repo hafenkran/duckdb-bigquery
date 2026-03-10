@@ -18,36 +18,13 @@ endif()
 # Compile and install google-cloud-cpp depedencies
 message("Installing google-cloud-cpp dependencies")
 set(MSVC_RUNTIME_ARGS "")
-set(MSVC_RUNTIME_LIB "")
-if(MSVC)
-    # Keep external dependencies on the same MSVC runtime as DuckDB.
-    # execute_process() CMAKE_ARGS do not reliably handle generator expressions.
-    set(IS_DEBUG_BUILD FALSE)
+if(WIN32)
+    # Ensure external dependencies use /MT to match DuckDB's runtime.
+    # Determine runtime library based on build type (generator expressions don't work in execute_process)
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(IS_DEBUG_BUILD TRUE)
-    endif()
-    if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY AND NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "")
-        set(RUNTIME_IS_DLL FALSE)
-        if(CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL")
-            set(RUNTIME_IS_DLL TRUE)
-        endif()
-        if(IS_DEBUG_BUILD)
-            if(RUNTIME_IS_DLL)
-                set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
-            else()
-                set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
-            endif()
-        else()
-            if(RUNTIME_IS_DLL)
-                set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
-            else()
-                set(MSVC_RUNTIME_LIB "MultiThreaded")
-            endif()
-        endif()
-    elseif(IS_DEBUG_BUILD)
-        set(MSVC_RUNTIME_LIB "MultiThreadedDebugDLL")
+        set(MSVC_RUNTIME_LIB "MultiThreadedDebug")
     else()
-        set(MSVC_RUNTIME_LIB "MultiThreadedDLL")
+        set(MSVC_RUNTIME_LIB "MultiThreaded")
     endif()
     set(MSVC_RUNTIME_ARGS
         -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
@@ -55,20 +32,11 @@ if(MSVC)
     )
 endif()
 set(VCPKG_CRT_ARGS "")
-if(MSVC)
-    # Match vcpkg CRT linkage to the selected MSVC runtime mode.
-    if(MSVC_RUNTIME_LIB MATCHES "DLL")
-        set(EXPECTED_VCPKG_CRT_LINKAGE dynamic)
-    else()
-        set(EXPECTED_VCPKG_CRT_LINKAGE static)
+if(WIN32)
+    # Ensure vcpkg builds with static CRT to match DuckDB (/MT)
+    if(NOT DEFINED VCPKG_CRT_LINKAGE)
+        set(VCPKG_CRT_LINKAGE static)
     endif()
-    if(DEFINED VCPKG_CRT_LINKAGE AND NOT VCPKG_CRT_LINKAGE STREQUAL "${EXPECTED_VCPKG_CRT_LINKAGE}")
-        message(
-            WARNING
-                "Overriding VCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE} with ${EXPECTED_VCPKG_CRT_LINKAGE} to match CMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME_LIB}"
-        )
-    endif()
-    set(VCPKG_CRT_LINKAGE ${EXPECTED_VCPKG_CRT_LINKAGE})
     if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
         set(VCPKG_LIBRARY_LINKAGE static)
     endif()
@@ -182,12 +150,11 @@ function(link_libraries_to_extension target_name)
         OpenSSL::SSL
         OpenSSL::Crypto
         CURL::libcurl
+        -lpthread
+        -ldl
         # Arrow
         "$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>"
     )
-    if(NOT WIN32)
-        target_link_libraries(${target_name} pthread dl)
-    endif()
 endfunction()
 
 link_libraries_to_extension(${EXTENSION_NAME})
