@@ -402,31 +402,28 @@ D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', b
 
 ### Working with Geometries
 
-The BigQuery extension supports geospatial data with automatic conversion between DuckDB `GEOMETRY` and BigQuery [`GEOGRAPHY`](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#geography_type) types. By default, BigQuery `GEOGRAPHY` columns are read as `VARCHAR` (WKT format). With the [spatial extension](https://duckdb.org/docs/stable/core_extensions/spatial/overview.html) installed and loaded and the `bq_geography_as_geometry` setting enabled, they can be read as native DuckDB `GEOMETRY` types:
+The BigQuery extension maps BigQuery [`GEOGRAPHY`](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#geography_type) columns to DuckDB `GEOMETRY` and uses WKT for interchange. With DuckDB v1.5.0 and newer, you can read GEOGRAPHY as GEOMETRY and write GEOMETRY back to GEOGRAPHY without any extra settings:
+
+> **Note (DuckDB < v1.5.0):** Before DuckDB v1.5.0, you had to load the `spatial` extension and enable the legacy setting `SET bq_geography_as_geometry = true;` to use GEOGRAPHY/GEOMETRY functionality.
 
 ```sql
--- Load spatial extension and enable GEOMETRY support (BEFORE ATTACH)
-D INSTALL spatial; LOAD spatial;
-D SET bq_geography_as_geometry = true;
 D ATTACH 'project=my_gcp_project' AS bq (TYPE bigquery);
 
 -- Read GEOGRAPHY columns as native GEOMETRY
-D SELECT name, geography_column FROM bq.dataset.geo_table;
-┌──────────────┬──────────────────────────────────────────┐
-│     name     │            geography_column              │
-│   varchar    │                geometry                  │
-├──────────────┼──────────────────────────────────────────┤
-│ Location A   │ POINT(-122.4194 37.7749)                 │
-│ Location B   │ POLYGON((-122.5 37.7, -122.3 37.8, ...)) │
-└──────────────┴──────────────────────────────────────────┘
+D SELECT name, geography_column, typeof(geography_column) FROM bq.dataset.geo_table;
+┌──────────────┬──────────────────────────────────────────┬──────────┐
+│     name     │            geography_column              │  typeof  │
+│   varchar    │                geometry                  │ varchar  │
+├──────────────┼──────────────────────────────────────────┼──────────┤
+│ Location A   │ POINT(-122.4194 37.7749)                 │ GEOMETRY │
+│ Location B   │ POLYGON((-122.5 37.7, -122.3 37.8, ...)) │ GEOMETRY │
+└──────────────┴──────────────────────────────────────────┴──────────┘
 
--- Write GEOMETRY data - automatically converted to BigQuery GEOGRAPHY
+-- Write GEOMETRY data - automatically converted to BigQuery GEOGRAPHY (WKT)
 D INSERT INTO bq.dataset.geo_table VALUES 
-    ('New Point', ST_Point(-122.2, 37.8)),
-    ('Buffer Zone', ST_Buffer(ST_Point(-122.0, 37.9), 0.01));
+    ('New Point', 'POINT(-122.2 37.8)'::GEOMETRY),
+    ('Other Point', 'POINT(-122.0 37.9)'::GEOMETRY);
 ```
-
-> **⚠️ Spatial Extension Loading Order**: The spatial extension must be installed and loaded **before** setting `bq_geography_as_geometry=true` and **before** using `ATTACH`. Otherwise, the internal catalog will be configured for `VARCHAR` types and geometry conversion will not work properly.
 
 ### Experimental BigQuery partitioning, clustering & options clauses
 
@@ -456,7 +453,6 @@ D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error. **Note: Only supported with legacy scan.**                                                                | `false` |
 | `bq_use_legacy_scan`                      | Use legacy scan implementation instead of optimized Arrow-based scan. Set to `true` for the old scan or `false` for the new optimized implementation.                                              | `false` |
-| `bq_geography_as_geometry`                | Return BigQuery `GEOGRAPHY` columns as DuckDB `GEOMETRY` types (requires spatial extension). When `false`, returns WKT strings as `VARCHAR`.                                                       | `false` |
 | `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
 | `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |

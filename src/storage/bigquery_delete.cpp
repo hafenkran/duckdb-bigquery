@@ -39,9 +39,9 @@ SinkFinalizeType BigqueryDelete::Finalize(Pipeline &pipeline,
     return SinkFinalizeType::READY;
 }
 
-SourceResultType BigqueryDelete::GetData(ExecutionContext &context,
-                                         DataChunk &chunk,
-                                         OperatorSourceInput &input) const {
+SourceResultType BigqueryDelete::GetDataInternal(ExecutionContext &context,
+                                                 DataChunk &chunk,
+                                                 OperatorSourceInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryDeleteGlobalState>();
     chunk.SetCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.deleted_count));

@@ -296,10 +296,14 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
         state.all_columns.SetCardinality(output_size);
 
         ensure_column_id_coverage(state.all_columns);
+        // When projection is pushed down to BigQuery, the ArrowArray only contains projected columns
+        // so arrow_scan_is_projected should be true
+        bool arrow_scan_is_projected = !state.column_ids.empty() && state.column_ids.size() < data.names.size();
         ArrowTableFunction::ArrowToDuckDB(state,
                                           data.arrow_table.GetColumns(),
                                           state.all_columns,
-                                          data.lines_read - output_size);
+                                          arrow_scan_is_projected,
+                                          COLUMN_IDENTIFIER_ROW_ID);
 
         // Determine if we must force geometry casting (WKT -> GEOMETRY) even if requires_cast is false
         bool geometry_cast_needed = false;
@@ -309,8 +313,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                 for (idx_t i = 0; i < output.ColumnCount(); i++) {
                     auto &src_vec = state.all_columns.data[i];
                     auto &dst_type = output.data[i].GetType();
-                    if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
-                        src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
+                    if (dst_type.id() == LogicalTypeId::GEOMETRY && src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
                         geometry_cast_needed = true;
                         break;
                     }
@@ -320,8 +323,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                     auto proj_id = gstate.projection_ids[i];
                     auto &src_vec = state.all_columns.data[proj_id];
                     auto &dst_type = output.data[i].GetType();
-                    if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
-                        src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
+                    if (dst_type.id() == LogicalTypeId::GEOMETRY && src_vec.GetType().id() == LogicalTypeId::VARCHAR) {
                         geometry_cast_needed = true;
                         break;
                     }
@@ -355,8 +357,7 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                 auto &dst_type = output.data[i].GetType();
                 // scanned type from gstate.scanned_types (physical source type)
                 const LogicalType &src_type = gstate.scanned_types[i];
-                if (dst_type.id() == LogicalTypeId::BLOB && dst_type.GetAlias() == "GEOMETRY" &&
-                    src_type.id() == LogicalTypeId::VARCHAR) {
+                if (dst_type.id() == LogicalTypeId::GEOMETRY && src_type.id() == LogicalTypeId::VARCHAR) {
                     geometry_cast_needed = true;
                     break;
                 }
@@ -366,18 +367,26 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
         if (!do_cast) {
             // Direct write to output
             ensure_column_id_coverage(output);
+            // When projection is pushed down to BigQuery, the ArrowArray only contains projected columns
+            // so arrow_scan_is_projected should be true
+            bool arrow_scan_is_projected = !state.column_ids.empty() && state.column_ids.size() < data.names.size();
             ArrowTableFunction::ArrowToDuckDB(state,
                                               data.arrow_table.GetColumns(),
                                               output,
-                                              data.lines_read - output_size);
+                                              arrow_scan_is_projected,
+                                              COLUMN_IDENTIFIER_ROW_ID);
         } else {
             state.all_columns.Reset();
             state.all_columns.SetCardinality(output_size);
             ensure_column_id_coverage(state.all_columns);
+            // When projection is pushed down to BigQuery, the ArrowArray only contains projected columns
+            // so arrow_scan_is_projected should be true
+            bool arrow_scan_is_projected = !state.column_ids.empty() && state.column_ids.size() < data.names.size();
             ArrowTableFunction::ArrowToDuckDB(state,
                                               data.arrow_table.GetColumns(),
                                               state.all_columns,
-                                              data.lines_read - output_size);
+                                              arrow_scan_is_projected,
+                                              COLUMN_IDENTIFIER_ROW_ID);
             for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
                 // perform cast; output vector already has desired logical type assigned by framework
                 VectorOperations::Cast(ctx,

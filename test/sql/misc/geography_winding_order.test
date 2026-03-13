@@ -15,9 +15,6 @@ statement ok
 LOAD spatial;
 
 statement ok
-SET bq_geography_as_geometry = true;
-
-statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 # Create a BigQuery table with a GEOGRAPHY column
@@ -43,10 +40,6 @@ ORDER BY id;
 ----
 1	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
 2	POLYGON ((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))
-
-# Reset setting
-statement ok
-SET bq_geography_as_geometry = false;
 
 # Cleanup
 statement ok

@@ -179,7 +179,7 @@ public:
             throw InvalidInputException("Max read streams must be non-negative (0 or greater). Use 0 to automatically "
                                         "match the number of DuckDB threads.");
         }
-        const bool preserve_insertion_order = DBConfig::GetSetting<PreserveInsertionOrderSetting>(context);
+        const bool preserve_insertion_order = Settings::Get<PreserveInsertionOrderSetting>(context);
         if (preserve_insertion_order && max_streams > 1) {
             std::cout << "Warning: preserve_insertion_order is set to true, but max_read_streams is set to "
                       << max_streams << ". This will effectively limit execution to a single stream." << std::endl;
@@ -188,7 +188,7 @@ public:
     }
 
     static int GetMaxReadStreams(ClientContext &context) {
-        const bool preserve_insertion_order = DBConfig::GetSetting<PreserveInsertionOrderSetting>(context);
+        const bool preserve_insertion_order = Settings::Get<PreserveInsertionOrderSetting>(context);
         if (preserve_insertion_order) {
             // when preserve_insertion_order is true, we can only use 1 stream
             return 1;
@@ -247,35 +247,6 @@ public:
         printf("WARNING: bq_experimental_use_incubating_scan is deprecated. "
                "Please use bq_use_legacy_scan=%s instead.\n",
                value ? "false" : "true");
-    }
-
-    static bool &GeographyAsGeometry() {
-        static bool BIGQUERY_GEOGRAPHY_AS_GEOMETRY = false;
-        return BIGQUERY_GEOGRAPHY_AS_GEOMETRY;
-    }
-
-    static void SetGeographyAsGeometry(ClientContext &context, SetScope scope, Value &parameter) {
-        auto geography_as_geometry = BooleanValue::Get(parameter);
-        if (BooleanValue::Get(parameter) && !IsSpatialExtensionLoaded(context)) {
-            printf("WARNING: bq_geography_as_geometry=true requires the spatial extension. "
-                   "Please first run: `INSTALL spatial; LOAD spatial;`\n");
-            return;
-        }
-        GeographyAsGeometry() = geography_as_geometry;
-    }
-
-    static bool IsSpatialExtensionLoaded(ClientContext &context) {
-        return context.db->ExtensionIsLoaded("spatial");
-    }
-
-    static bool IsGeometryConversionEnabled(ClientContext &context) {
-        if (!GeographyAsGeometry()) {
-            return false;
-        }
-        if (!IsSpatialExtensionLoaded(context)) {
-            return false;
-        }
-        return true;
     }
 };
 

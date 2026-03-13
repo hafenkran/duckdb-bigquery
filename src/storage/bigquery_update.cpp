@@ -43,9 +43,9 @@ SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
     return SinkFinalizeType::READY;
 }
 
-SourceResultType BigqueryUpdate::GetData(ExecutionContext &context,
-                                         DataChunk &chunk,
-                                         OperatorSourceInput &input) const {
+SourceResultType BigqueryUpdate::GetDataInternal(ExecutionContext &context,
+                                                 DataChunk &chunk,
+                                                 OperatorSourceInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryUpdateGlobalState>();
     chunk.SetCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.updated_count));
