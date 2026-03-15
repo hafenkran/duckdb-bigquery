@@ -110,7 +110,6 @@ BigqueryProtoWriter::~BigqueryProtoWriter() {
 void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     this->pool.~DescriptorPool();
     new (&this->pool) google::protobuf::DescriptorPool();
-    msg_factory = make_uniq<google::protobuf::DynamicMessageFactory>();
 
     google::protobuf::FileDescriptorProto file_desc_proto;
     file_desc_proto.set_syntax("proto2");
@@ -196,11 +195,6 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     if (msg_descriptor == nullptr) {
         throw BinderException("Cannot get message descriptor from file descriptor");
     }
-
-    msg_prototype = msg_factory->GetPrototype(msg_descriptor);
-    if (msg_prototype == nullptr) {
-        throw BinderException("Cannot get message prototype from message descriptor");
-    }
 }
 
 string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProto *parent_proto,
@@ -263,6 +257,8 @@ void BigqueryProtoWriter::FlushBufferedRequest() {
 }
 
 void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs) {
+    auto msg_factory_local = google::protobuf::DynamicMessageFactory();
+    auto *msg_prototype = msg_factory_local.GetPrototype(msg_descriptor);
     if (msg_prototype == nullptr) {
         throw BinderException("Cannot get message prototype from message descriptor");
     }
