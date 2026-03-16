@@ -110,6 +110,8 @@ BigqueryProtoWriter::~BigqueryProtoWriter() {
 void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     this->pool.~DescriptorPool();
     new (&this->pool) google::protobuf::DescriptorPool();
+    column_bindings.clear();
+    column_bindings_initialized = false;
 
     google::protobuf::FileDescriptorProto file_desc_proto;
     file_desc_proto.set_syntax("proto2");
@@ -230,6 +232,59 @@ string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProt
     return nested_type_name; // damit der Aufrufer das Feld korrekt setzen kann
 }
 
+void BigqueryProtoWriter::InitializeColumnBindings(const DataChunk &chunk,
+                                                   const std::map<std::string, idx_t> &column_idxs) {
+    if (column_bindings_initialized) {
+        if (column_bindings.size() != chunk.ColumnCount()) {
+            throw InternalException("Unexpected column count change in BigQuery protobuf writer");
+        }
+        return;
+    }
+
+    auto get_write_kind = [](const LogicalType &type) {
+        if (type.id() == LogicalTypeId::ARRAY || type.id() == LogicalTypeId::LIST) {
+            return BoundWriteKind::REPEATED;
+        }
+        if (type.id() == LogicalTypeId::STRUCT) {
+            return BoundWriteKind::MESSAGE;
+        }
+        return BoundWriteKind::SCALAR;
+    };
+
+    column_bindings.reserve(chunk.ColumnCount());
+    if (column_idxs.empty()) {
+        for (idx_t source_col_idx = 0; source_col_idx < chunk.ColumnCount(); source_col_idx++) {
+            auto *field = msg_descriptor->field(source_col_idx);
+            if (field == nullptr) {
+                throw BinderException("Cannot get field descriptor for BigQuery message");
+            }
+            const auto &col_type = chunk.data[source_col_idx].GetType();
+            column_bindings.push_back({source_col_idx, field, col_type, get_write_kind(col_type)});
+        }
+    } else {
+        idx_t source_col_idx = 0;
+        for (const auto &kv : column_idxs) {
+            if (source_col_idx >= chunk.ColumnCount()) {
+                throw InternalException("Unexpected source column index in BigQuery protobuf writer");
+            }
+
+            auto target_col_idx = kv.second;
+            auto *field = msg_descriptor->field(target_col_idx);
+            if (field == nullptr) {
+                throw BinderException("Cannot get field descriptor for BigQuery message");
+            }
+            const auto &col_type = chunk.data[source_col_idx].GetType();
+            column_bindings.push_back({source_col_idx, field, col_type, get_write_kind(col_type)});
+            source_col_idx++;
+        }
+
+        if (source_col_idx != chunk.ColumnCount()) {
+            throw InternalException("Unexpected column binding count in BigQuery protobuf writer");
+        }
+    }
+    column_bindings_initialized = true;
+}
+
 void BigqueryProtoWriter::EnsureRequestInitialized() {
     if (buffered_request_initialized) {
         return;
@@ -262,50 +317,37 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
     if (msg_prototype == nullptr) {
         throw BinderException("Cannot get message prototype from message descriptor");
     }
-
-    vector<idx_t> column_indexes;
-    if (column_idxs.empty()) {
-        column_indexes.resize(chunk.ColumnCount());
-        for (idx_t i = 0; i < chunk.ColumnCount(); i++) {
-            column_indexes[i] = i;
-        }
-    } else {
-        for (auto &kv : column_idxs) {
-            column_indexes.push_back(kv.second);
-        }
+    InitializeColumnBindings(chunk, column_idxs);
+    unique_ptr<google::protobuf::Message> msg(msg_prototype->New());
+    if (!msg) {
+        throw InternalException("Cannot allocate protobuf message");
     }
+    const google::protobuf::Reflection *reflection = msg->GetReflection();
+    string serialized_msg;
 
     for (idx_t i = 0; i < chunk.size(); i++) {
-        google::protobuf::Message *msg = msg_prototype->New();
-        const google::protobuf::Reflection *reflection = msg->GetReflection();
-
-        for (idx_t idx = 0; idx < column_indexes.size(); idx++) {
-            auto col_idx = column_indexes[idx];
-            auto &col = chunk.data[idx];
-            auto &col_type = col.GetType();
-            auto *field = msg_descriptor->field(col_idx);
-            if (col.GetValue(i).IsNull()) {
+        msg->Clear();
+        for (const auto &binding : column_bindings) {
+            auto &col = chunk.data[binding.source_col_idx];
+            auto val = col.GetValue(i);
+            if (val.IsNull()) {
                 continue;
             }
-            auto val = col.GetValue(i);
 
-            switch (col_type.id()) {
-            case LogicalTypeId::ARRAY:
-            case LogicalTypeId::LIST: {
-                WriteRepeatedField(msg, reflection, field, col_type, val);
+            switch (binding.write_kind) {
+            case BoundWriteKind::REPEATED:
+                WriteRepeatedField(msg.get(), reflection, binding.field, binding.col_type, val);
                 break;
-            }
-            case LogicalTypeId::STRUCT: {
-                WriteMessageField(msg, reflection, field, col_type, val);
+            case BoundWriteKind::MESSAGE:
+                WriteMessageField(msg.get(), reflection, binding.field, binding.col_type, val);
                 break;
-            }
-            default:
-                WriteField(msg, reflection, field, col_type, val);
+            case BoundWriteKind::SCALAR:
+                WriteField(msg.get(), reflection, binding.field, binding.col_type, val);
                 break;
             }
         }
 
-        string serialized_msg;
+        serialized_msg.clear();
         if (!msg->SerializeToString(&serialized_msg)) {
             throw std::runtime_error("Failed to serialize message");
         }
@@ -328,8 +370,6 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         if (buffered_request_bytes >= DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
             FlushBufferedRequest();
         }
-
-        delete msg;
     }
 }
 

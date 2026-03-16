@@ -39,9 +39,19 @@ public:
     void Finalize();
 
 private:
+    enum class BoundWriteKind { SCALAR, REPEATED, MESSAGE };
+
+    struct ColumnBinding {
+        idx_t source_col_idx;
+        const google::protobuf::FieldDescriptor *field;
+        LogicalType col_type;
+        BoundWriteKind write_kind;
+    };
+
     static constexpr idx_t DEFAULT_APPEND_ROWS_SOFT_LIMIT = 9728 * 1024; // 9.5MB
     static constexpr idx_t APPEND_ROWS_ROW_OVERHEAD = 32;
 
+    void InitializeColumnBindings(const DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs);
     void EnsureRequestInitialized();
     void FlushBufferedRequest();
     void SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request);
@@ -50,6 +60,8 @@ private:
 
     google::protobuf::DescriptorPool pool;
     const google::protobuf::Descriptor *msg_descriptor = nullptr;
+    vector<ColumnBinding> column_bindings;
+    bool column_bindings_initialized = false;
 
     google::cloud::bigquery::storage::v1::AppendRowsRequest buffered_request;
     idx_t buffered_rows = 0;
