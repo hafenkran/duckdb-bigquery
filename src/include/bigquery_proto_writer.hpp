@@ -39,17 +39,22 @@ public:
     void Finalize();
 
 private:
-    static constexpr idx_t DEFAULT_APPEND_ROWS_SOFT_LIMIT = 9 * 1024 * 1024;
+    static constexpr idx_t DEFAULT_APPEND_ROWS_SOFT_LIMIT = 9728 * 1024; // 9.5MB
     static constexpr idx_t APPEND_ROWS_ROW_OVERHEAD = 32;
 
+    void EnsureRequestInitialized();
+    void FlushBufferedRequest();
     void SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request);
 
     string table_string;
 
     google::protobuf::DescriptorPool pool;
-    unique_ptr<google::protobuf::DynamicMessageFactory> msg_factory;
     const google::protobuf::Descriptor *msg_descriptor = nullptr;
-    const google::protobuf::Message *msg_prototype = nullptr;
+
+    google::cloud::bigquery::storage::v1::AppendRowsRequest buffered_request;
+    idx_t buffered_rows = 0;
+    size_t buffered_request_bytes = 0;
+    bool buffered_request_initialized = false;
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;

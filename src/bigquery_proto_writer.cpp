@@ -110,7 +110,6 @@ BigqueryProtoWriter::~BigqueryProtoWriter() {
 void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     this->pool.~DescriptorPool();
     new (&this->pool) google::protobuf::DescriptorPool();
-    // msg_factory = make_uniq<google::protobuf::DynamicMessageFactory>();
 
     google::protobuf::FileDescriptorProto file_desc_proto;
     file_desc_proto.set_syntax("proto2");
@@ -231,9 +230,35 @@ string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProt
     return nested_type_name; // damit der Aufrufer das Feld korrekt setzen kann
 }
 
+void BigqueryProtoWriter::EnsureRequestInitialized() {
+    if (buffered_request_initialized) {
+        return;
+    }
+
+    buffered_request = google::cloud::bigquery::storage::v1::AppendRowsRequest();
+    buffered_request.set_write_stream(write_stream.name());
+    msg_descriptor->CopyTo(buffered_request.mutable_proto_rows()->mutable_writer_schema()->mutable_proto_descriptor());
+
+    buffered_rows = 0;
+    buffered_request_bytes = buffered_request.ByteSizeLong();
+    buffered_request_initialized = true;
+}
+
+void BigqueryProtoWriter::FlushBufferedRequest() {
+    if (!buffered_request_initialized || buffered_rows == 0) {
+        return;
+    }
+
+    SendAppendRequest(buffered_request);
+    buffered_request = google::cloud::bigquery::storage::v1::AppendRowsRequest();
+    buffered_rows = 0;
+    buffered_request_bytes = 0;
+    buffered_request_initialized = false;
+}
+
 void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs) {
-    auto msg_factory = google::protobuf::DynamicMessageFactory();
-    msg_prototype = msg_factory.GetPrototype(msg_descriptor);
+    auto msg_factory_local = google::protobuf::DynamicMessageFactory();
+    auto *msg_prototype = msg_factory_local.GetPrototype(msg_descriptor);
     if (msg_prototype == nullptr) {
         throw BinderException("Cannot get message prototype from message descriptor");
     }
@@ -249,18 +274,6 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
             column_indexes.push_back(kv.second);
         }
     }
-
-    auto create_request = [this]() {
-        google::cloud::bigquery::storage::v1::AppendRowsRequest new_request;
-        new_request.set_write_stream(write_stream.name());
-        msg_descriptor->CopyTo(new_request.mutable_proto_rows()->mutable_writer_schema()->mutable_proto_descriptor());
-        return new_request;
-    };
-
-    auto request = create_request();
-    auto *rows = request.mutable_proto_rows()->mutable_rows();
-    idx_t rows_in_batch = 0;
-    size_t current_request_bytes = request.ByteSizeLong();
 
     for (idx_t i = 0; i < chunk.size(); i++) {
         google::protobuf::Message *msg = msg_prototype->New();
@@ -298,30 +311,25 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
         }
         auto estimated_size_increase = serialized_msg.size() + APPEND_ROWS_ROW_OVERHEAD;
 
-        if (rows_in_batch > 0 && current_request_bytes + estimated_size_increase > DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
-            SendAppendRequest(request);
-            request = create_request();
-            rows = request.mutable_proto_rows()->mutable_rows();
-            rows_in_batch = 0;
-            current_request_bytes = request.ByteSizeLong();
+        EnsureRequestInitialized();
+        if (buffered_rows == 0 && buffered_request_bytes + estimated_size_increase > DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
+            throw IOException("Single row exceeds BigQuery AppendRows request size limit");
         }
 
-        rows->add_serialized_rows(serialized_msg);
-        rows_in_batch++;
-        current_request_bytes += estimated_size_increase;
-
-        if (current_request_bytes >= DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
-            SendAppendRequest(request);
-            request = create_request();
-            rows = request.mutable_proto_rows()->mutable_rows();
-            rows_in_batch = 0;
-            current_request_bytes = request.ByteSizeLong();
+        if (buffered_rows > 0 && buffered_request_bytes + estimated_size_increase > DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
+            FlushBufferedRequest();
+            EnsureRequestInitialized();
         }
+
+        buffered_request.mutable_proto_rows()->mutable_rows()->add_serialized_rows(serialized_msg);
+        buffered_rows++;
+        buffered_request_bytes += estimated_size_increase;
+
+        if (buffered_request_bytes >= DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
+            FlushBufferedRequest();
+        }
+
         delete msg;
-    }
-
-    if (rows_in_batch > 0) {
-        SendAppendRequest(request);
     }
 }
 
@@ -384,6 +392,8 @@ void BigqueryProtoWriter::SendAppendRequest(const google::cloud::bigquery::stora
 }
 
 void BigqueryProtoWriter::Finalize() {
+    FlushBufferedRequest();
+
     if (!grpc_stream) {
         return;
     }
