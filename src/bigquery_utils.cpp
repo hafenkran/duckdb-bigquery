@@ -31,21 +31,19 @@ constexpr int DUCKDB_DECIMAL_SCALE_MAX = 38;
 
 class BigqueryTypeException : public BinderException {
 public:
-    explicit BigqueryTypeException(const string &msg, string type_sql) : BinderException(msg) {
+    explicit BigqueryTypeException(const string &msg) : BinderException(msg) {
     }
 
     static BigqueryTypeException UnsupportedPrecision(int precision, const string &type) {
         return BigqueryTypeException("DuckDB only supports precision between 1 and " +
                                          std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + ". Invalid precision '" +
-                                         std::to_string(precision) + "' specified for type '" + type + "'.",
-                                     type);
+                                         std::to_string(precision) + "' specified for type '" + type + "'.");
     }
 
     static BigqueryTypeException UnsupportedScale(int scale, const string &type) {
         return BigqueryTypeException("DuckDB only supports scale between 0 and " +
                                          std::to_string(DUCKDB_DECIMAL_SCALE_MAX) + ". Invalid scale '" +
-                                         std::to_string(scale) + "' specified for type '" + type + "'.",
-                                     type);
+                                         std::to_string(scale) + "' specified for type '" + type + "'.");
     }
 
     static BigqueryTypeException BignumericNotSupported() {
@@ -53,12 +51,8 @@ public:
                                      "DuckDB's DECIMAL type supports precision 1-" +
                                          std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
                                          ", but BIGNUMERIC has precision " +
-                                         std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".",
-                                     "BIGNUMERIC");
+                                         std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".");
     }
-
-private:
-    string type_sql;
 };
 
 
@@ -282,32 +276,6 @@ LogicalType BigqueryUtils::FieldSchemaNumericToLogicalType(const google::cloud::
     return LogicalType::DECIMAL(precision, scale);
 }
 
-std::string MapArrowTypeToBigQuery(const std::shared_ptr<arrow::DataType> &arrow_type) {
-    if (arrow_type->id() == arrow::Int64Type::type_id) {
-        return "INT64";
-    } else if (arrow_type->id() == arrow::FloatType::type_id || arrow_type->id() == arrow::DoubleType::type_id) {
-        return "FLOAT64";
-    } else if (arrow_type->id() == arrow::BooleanType::type_id) {
-        return "BOOL";
-    } else if (arrow_type->id() == arrow::StringType::type_id) {
-        return "STRING";
-    } else if (arrow_type->id() == arrow::BinaryType::type_id) {
-        return "BYTES";
-    } else if (arrow_type->id() == arrow::Date32Type::type_id || arrow_type->id() == arrow::Date64Type::type_id) {
-        return "DATE";
-    } else if (arrow_type->id() == arrow::TimestampType::type_id) {
-        return "TIMESTAMP";
-    } else if (arrow_type->id() == arrow::Time32Type::type_id || arrow_type->id() == arrow::Time64Type::type_id) {
-        return "TIME";
-    } else if (arrow_type->id() == arrow::StructType::type_id) {
-        return "STRUCT";
-    } else if (arrow_type->id() == arrow::ListType::type_id) {
-        return "ARRAY";
-    } else {
-        return "UNSUPPORTED";
-    }
-}
-
 LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::DataType> &arrow_type) {
     switch (arrow_type->id()) {
     case arrow::Type::BOOL:
@@ -504,17 +472,12 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
     mapped_bq_types.clear();
     mapped_bq_types.reserve(return_types.size());
     for (idx_t i = 0; i < return_types.size(); i++) {
-
-        // For reading from BigQuery, we need to map GEOMETRY types to VARCHAR
-        // because BigQuery stores GEOGRAPHY as WKT strings in Arrow format
-        LogicalType bq_type;
-        if (return_types[i].id() == LogicalTypeId::GEOMETRY) {
-            // BigQuery stores GEOGRAPHY as WKT (VARCHAR) in Arrow, so we need to cast
-            bq_type = LogicalType::VARCHAR;
+        // Map logical DuckDB types to their physical BigQuery Arrow representation.
+        // For GEOMETRY this produces VARCHAR alias GEOGRAPHY, so read-time cast can
+        // convert WKT payloads back to native GEOMETRY.
+        auto bq_type = BigqueryUtils::CastToBigqueryType(return_types[i]);
+        if (bq_type != return_types[i]) {
             requires_cast = true;
-        } else {
-            // For other types, use the type as-is (no conversion needed when reading)
-            bq_type = return_types[i];
         }
         mapped_bq_types.push_back(bq_type);
     }
@@ -576,11 +539,6 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
         return geography_type;
     }
     case LogicalTypeId::BLOB:
-        // if (BigqueryUtils::IsGeometryType(type)) {
-        //     auto geom_type = LogicalType(LogicalTypeId::VARCHAR);
-        //     geom_type.SetAlias("GEOGRAPHY");
-        //     return geom_type;
-        // }
         return type;
     case LogicalTypeId::DATE:
         return LogicalType::DATE;
@@ -594,9 +552,7 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     case LogicalTypeId::TIMESTAMP_TZ:
         return LogicalType::TIMESTAMP;
     case LogicalTypeId::TIMESTAMP_NS:
-        // return LogicalType::TIMESTAMP;
         throw NotImplementedException("TIMESTAMP with Nano Seconds not supported in BigQuery.");
-        // throw NotImplementedException("TIMESTAMP WITH TIME ZONE not supported in BigQuery.");
     case LogicalTypeId::INTERVAL:
         return LogicalType::INTERVAL;
     case LogicalTypeId::VARCHAR: {
@@ -637,26 +593,11 @@ bool BigqueryUtils::IsGeometryType(const LogicalType &type) {
     return type.id() == LogicalTypeId::GEOMETRY;
 }
 
-LogicalType BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(const LogicalType &type, ClientContext *context) {
-    (void)context;
-    // BigQuery stores GEOGRAPHY as WKT; represent it as VARCHAR with GEOGRAPHY alias.
-    if (type.id() == LogicalTypeId::GEOMETRY) {
-        LogicalType geography_type = LogicalType(LogicalTypeId::VARCHAR);
-        geography_type.SetAlias("GEOGRAPHY");
-        return geography_type;
-    }
-    LogicalType result = CastToBigqueryType(type);
-    return result;
-}
-
 google::protobuf::FieldDescriptorProto::Type BigqueryUtils::LogicalTypeToProtoType(const LogicalType &type) {
     switch (type.id()) {
     case LogicalTypeId::GEOMETRY:
         return google::protobuf::FieldDescriptorProto::TYPE_STRING;
     case LogicalTypeId::BLOB:
-        if (BigqueryUtils::IsGeometryType(type)) {
-            return google::protobuf::FieldDescriptorProto::TYPE_STRING;
-        }
         return google::protobuf::FieldDescriptorProto::TYPE_BYTES;
     case LogicalTypeId::BIT:
         return google::protobuf::FieldDescriptorProto::TYPE_BOOL;
@@ -788,9 +729,6 @@ LogicalType BigqueryUtils::BigqueryNumericSQLToLogicalType(const string &type) {
         if (BigquerySettings::BignumericAsVarchar()) {
             return LogicalType::VARCHAR;
         }
-    }
-
-    if (precision == BQ_BIGNUMERIC_PRECISION_DEFAULT) {
         throw BigqueryTypeException::BignumericNotSupported();
     }
     if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
@@ -828,9 +766,6 @@ string BigqueryUtils::LogicalTypeToBigquerySQL(const LogicalType &type) {
     case LogicalTypeId::GEOMETRY:
         return "GEOGRAPHY";
     case LogicalTypeId::BLOB:
-        if (BigqueryUtils::IsGeometryType(type) || BigqueryUtils::IsGeographyType(type)) {
-            return "GEOGRAPHY";
-        }
         return "BYTES";
     case LogicalTypeId::DATE:
         return "DATE";
