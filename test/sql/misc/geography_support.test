@@ -141,6 +141,20 @@ FROM bigquery_query('${BQ_TEST_PROJECT}', '
 ----
 GEOGRAPHY
 
+# Test 6b: Verify bigquery_query returns GEOMETRY (not VARCHAR) for GEOGRAPHY columns
+query II
+SELECT
+    typeof(geom) as geom_type,
+    st_crs(geom) as crs
+FROM bigquery_query('${BQ_TEST_PROJECT}', '
+  SELECT id, geom
+  FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra`
+  ORDER BY id
+')
+LIMIT 1;
+----
+GEOMETRY('OGC:CRS84')	OGC:CRS84
+
 # Test 7: Test with different geometry types and verify CRS
 query III
 SELECT

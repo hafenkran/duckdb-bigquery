@@ -113,12 +113,15 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
             throw BinderException("Arrow schema export failed: " + status.ToString());
         }
 
-        // Populate names/types using updated DuckDB Arrow API
-        ArrowTableFunction::PopulateArrowTableSchema(context,
+        // Populate names/types, mapping GEOGRAPHY→GEOMETRY using source column info
+        vector<LogicalType> mapped_bq_types;
+        BigqueryUtils::PopulateAndMapArrowTableTypes(context,
                                                      bind_data->arrow_table,
-                                                     bind_data->schema_root.arrow_schema);
-        names = bind_data->arrow_table.GetNames();
-        return_types = bind_data->arrow_table.GetTypes();
+                                                     bind_data->schema_root,
+                                                     names,
+                                                     return_types,
+                                                     mapped_bq_types,
+                                                     &columns);
 
         if (return_types.empty()) {
             throw BinderException("BigQuery query has no columns: " + query_string);
@@ -127,21 +130,12 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         bind_data->names = names;
         bind_data->all_types = return_types;
 
-        // Check if we need type mapping for enhanced BigQuery types (including WKT to GEOMETRY conversion)
-        bool requires_cast = false;
-        vector<LogicalType> mapped_bq_types;
-        for (idx_t i = 0; i < return_types.size(); i++) {
-            auto bq_type = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(return_types[i], &context);
-            if (bq_type != return_types[i]) {
-                requires_cast = true;
-            }
-            mapped_bq_types.push_back(bq_type);
-        }
-
-        if (requires_cast) {
+        if (!mapped_bq_types.empty()) {
             bind_data->mapped_bq_types = std::move(mapped_bq_types);
+            bind_data->requires_cast = true;
+        } else {
+            bind_data->requires_cast = false;
         }
-        bind_data->requires_cast = requires_cast;
 
         return std::move(bind_data);
     } else {
