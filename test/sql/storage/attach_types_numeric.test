@@ -115,10 +115,8 @@ DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
 
 ###########################################
 # BIGNUMERIC test
+# BIGNUMERIC (precision 76) exceeds DuckDB's DECIMAL max (38); read as VARCHAR automatically.
 ###########################################
-statement ok
-SET bq_bignumeric_as_varchar=FALSE
-
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
 
@@ -133,10 +131,20 @@ CALL bigquery_clear_cache();
 query I
 SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_DATASET}' AND table_name='bignumeric_table';
 ----
+bignumeric_table
 
-statement ok
-SET bq_bignumeric_as_varchar=TRUE
+# Arrow scan (default) should now work without any settings
+query I
+SELECT typeof(numeric_column) FROM bq.${BQ_TEST_DATASET}.bignumeric_table LIMIT 1;
+----
+VARCHAR
 
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
+----
+12345.67890123400000000000000000000000000000
+
+# Legacy scan should also work
 statement ok
 SET bq_use_legacy_scan=true
 
@@ -150,9 +158,6 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
-
-statement ok
-SET bq_bignumeric_as_varchar=FALSE
 
 statement ok
 SET bq_use_legacy_scan=false
