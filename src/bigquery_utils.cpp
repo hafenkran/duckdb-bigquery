@@ -36,22 +36,21 @@ public:
 
     static BigqueryTypeException UnsupportedPrecision(int precision, const string &type) {
         return BigqueryTypeException("DuckDB only supports precision between 1 and " +
-                                         std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + ". Invalid precision '" +
-                                         std::to_string(precision) + "' specified for type '" + type + "'.");
+                                     std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + ". Invalid precision '" +
+                                     std::to_string(precision) + "' specified for type '" + type + "'.");
     }
 
     static BigqueryTypeException UnsupportedScale(int scale, const string &type) {
         return BigqueryTypeException("DuckDB only supports scale between 0 and " +
-                                         std::to_string(DUCKDB_DECIMAL_SCALE_MAX) + ". Invalid scale '" +
-                                         std::to_string(scale) + "' specified for type '" + type + "'.");
+                                     std::to_string(DUCKDB_DECIMAL_SCALE_MAX) + ". Invalid scale '" +
+                                     std::to_string(scale) + "' specified for type '" + type + "'.");
     }
 
     static BigqueryTypeException BignumericNotSupported() {
         return BigqueryTypeException("BIGNUMERIC type is not supported. "
                                      "DuckDB's DECIMAL type supports precision 1-" +
-                                         std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
-                                         ", but BIGNUMERIC has precision " +
-                                         std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".");
+                                     std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) + ", but BIGNUMERIC has precision " +
+                                     std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".");
     }
 };
 
