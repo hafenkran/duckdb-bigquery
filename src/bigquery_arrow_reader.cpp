@@ -67,8 +67,7 @@ struct BigqueryStreamState {
 
 // Replace DECIMAL256 (BIGNUMERIC) fields with utf8 in an Arrow schema.
 // BIGNUMERIC precision (76) exceeds DuckDB's DECIMAL max (38); expose as VARCHAR instead.
-static std::shared_ptr<arrow::Schema> SchemaWithDecimal256AsString(
-    const std::shared_ptr<arrow::Schema> &schema) {
+static std::shared_ptr<arrow::Schema> SchemaWithDecimal256AsString(const std::shared_ptr<arrow::Schema> &schema) {
     arrow::FieldVector new_fields;
     bool changed = false;
     for (const auto &field : schema->fields()) {
