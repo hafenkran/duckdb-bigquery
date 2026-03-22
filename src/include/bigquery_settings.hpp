@@ -155,17 +155,12 @@ public:
     }
 
     static bool &BignumericAsVarchar() {
-        static bool BIGQUERY_BIGNUMERIC_AS_VARCHAR = false;
+        static bool BIGQUERY_BIGNUMERIC_AS_VARCHAR = true;
         return BIGQUERY_BIGNUMERIC_AS_VARCHAR;
     }
 
     static void SetBignumericAsVarchar(ClientContext &context, SetScope scope, Value &parameter) {
         BignumericAsVarchar() = BooleanValue::Get(parameter);
-        if (BooleanValue::Get(parameter) && !UseLegacyScan()) {
-            printf("WARNING: bq_bignumeric_as_varchar=TRUE is only supported with legacy scan. "
-                   "Current setting uses Arrow scan by default. Consider setting bq_use_legacy_scan=TRUE "
-                   "or use use_legacy_scan=TRUE parameter in scan functions.\n");
-        }
     }
 
     static int &MaxReadStreams() {

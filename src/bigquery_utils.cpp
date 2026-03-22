@@ -259,12 +259,8 @@ LogicalType BigqueryUtils::FieldSchemaNumericToLogicalType(const google::cloud::
 
     const auto &bigquery_type = field.type();
     if (bigquery_type == "BIGNUMERIC") {
-        if (BigquerySettings::BignumericAsVarchar()) {
-            return LogicalType::VARCHAR;
-        }
-        throw BinderException(
-            "DuckDB only supports precision between 1 and " + std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
-            ". BIGNUMERIC fields have a default precision of " + std::to_string(BQ_BIGNUMERIC_PRECISION_DEFAULT) + ".");
+        // BIGNUMERIC precision (76) exceeds DuckDB's DECIMAL max (38); read as VARCHAR.
+        return LogicalType::VARCHAR;
     }
     if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
         throw BinderException("DuckDB only supports precision between 1 and " +
@@ -341,20 +337,8 @@ LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::D
         return LogicalType::DECIMAL(precision, scale);
     }
     case arrow::Type::DECIMAL256: {
-        if (BigquerySettings::BignumericAsVarchar()) {
-            return LogicalType::VARCHAR;
-        }
-
-        auto decimal_type = std::static_pointer_cast<arrow::Decimal256Type>(arrow_type);
-        int32_t precision = decimal_type->precision();
-        int32_t scale = decimal_type->scale();
-
-        if (precision > DUCKDB_DECIMAL_PRECISION_MAX) {
-            throw BinderException("Precision exceeds DuckDB's maximum of " +
-                                  std::to_string(DUCKDB_DECIMAL_PRECISION_MAX) +
-                                  ". Provided: " + std::to_string(precision) + ".");
-        }
-        return LogicalType::DECIMAL(precision, scale);
+        // BIGNUMERIC precision (76) exceeds DuckDB's DECIMAL max (38); read as VARCHAR.
+        return LogicalType::VARCHAR;
     }
     case arrow::Type::LIST: {
         auto list_type = std::static_pointer_cast<arrow::ListType>(arrow_type);
@@ -785,13 +769,8 @@ LogicalType BigqueryUtils::BigqueryNumericSQLToLogicalType(const string &type) {
     auto scale = precision_and_scale.second;
 
     if (type == "BIGNUMERIC" || type.rfind("BIGNUMERIC(", 0) == 0) {
-        if (BigquerySettings::BignumericAsVarchar()) {
-            return LogicalType::VARCHAR;
-        }
-    }
-
-    if (precision == BQ_BIGNUMERIC_PRECISION_DEFAULT) {
-        throw BigqueryTypeException::BignumericNotSupported();
+        // BIGNUMERIC precision (76) exceeds DuckDB's DECIMAL max (38); read as VARCHAR.
+        return LogicalType::VARCHAR;
     }
     if (precision < 1 || precision > DUCKDB_DECIMAL_PRECISION_MAX) {
         throw BigqueryTypeException::UnsupportedPrecision(precision, type);
