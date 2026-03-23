@@ -451,7 +451,7 @@ D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
 
 | Setting                                   | Description                                                                                                                                                                                        | Default |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `bq_bignumeric_as_varchar`                | Read BigQuery `BIGNUMERIC` columns as `VARCHAR` instead of causing a type mapping error. **Note: Only supported with legacy scan.**                                                                | `false` |
+| `bq_bignumeric_as_varchar`                | Compatibility setting kept for older workflows. `BIGNUMERIC` columns are exposed as `VARCHAR` by default in current versions.                                                                        | `true`  |
 | `bq_use_legacy_scan`                      | Use legacy scan implementation instead of optimized Arrow-based scan. Set to `true` for the old scan or `false` for the new optimized implementation.                                              | `false` |
 | `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
@@ -470,9 +470,10 @@ There are some limitations that arise from the combination of DuckDB and BigQuer
 
 * **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 
-* **BIGNUMERIC Type Not Supported**: BigQuery's `BIGNUMERIC` type is **not supported** by this extension. `BIGNUMERIC` has a precision of up to 76 digits and a scale of up to 38 digits, which exceeds DuckDB's `DECIMAL` type maximum precision of 38 digits. Tables containing `BIGNUMERIC` columns will be automatically skipped during catalog queries (you can enable debug output with `SET bq_debug_print_queries=true` to see which tables are skipped). If you need to work with `BIGNUMERIC` data, consider converting it to `STRING` in BigQuery before querying, or use the `bigquery_query()` function to handle the data directly in BigQuery.
-
-  > **Note**: The legacy setting `bq_bignumeric_as_varchar` only works with the deprecated legacy scan (`use_legacy_scan=true`) and is not recommended for new projects. The modern Arrow-based scan does not support this conversion.
+* **BIGNUMERIC Read/Write Semantics**: BigQuery `BIGNUMERIC` is read as DuckDB `VARCHAR` because its precision (up to 76)
+  exceeds DuckDB `DECIMAL` precision (max 38). This works for `bigquery_scan`, `bigquery_query`, and `ATTACH` reads.
+  For writes into `BIGNUMERIC` target columns, prefer quoted decimal text (or exact `DECIMAL`) instead of unquoted
+  numeric literals, because unquoted literals may be interpreted as `DOUBLE` and lose precision.
 
 * **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
 
