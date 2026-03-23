@@ -54,7 +54,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
 
         vector<string> physical_names;             // names extracted from arrow schema
         vector<LogicalType> physical_return_types; // physical DuckDB logical types derived from Arrow
-        vector<LogicalType> util_mapped_bq_types;  // (unused for table entry logical exposure)
+        vector<LogicalType> util_mapped_bq_types;  // source physical types used for cast path
         BigqueryUtils::PopulateAndMapArrowTableTypes(context,
                                                      result->arrow_table,
                                                      result->schema_root,
@@ -85,31 +85,16 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
                                    name));
         }
 
-        // Build mapping: if physical type differs from user-visible, we will cast (incl. spatial handling)
+        // Build mapping: if physical type differs from user-visible, we will cast.
+        // Prefer util_mapped_bq_types when present because it carries physical source
+        // semantics (e.g. GEOMETRY exposed as VARCHAR alias GEOGRAPHY in Arrow).
         bool requires_cast = false;
         vector<LogicalType> mapped_bq_types; // physical source types aligned with user types
         mapped_bq_types.reserve(user_return_types.size());
         for (idx_t i = 0; i < user_return_types.size(); i++) {
             const auto &user_type = user_return_types[i];
-            const auto &arrow_phys = physical_return_types[i];
-
-            auto spatial_source = BigqueryUtils::CastToBigqueryTypeWithSpatialConversion(user_type, &context);
-
-            LogicalType chosen_physical;
-            // SPECIAL CASE (GEOGRAPHY -> GEOMETRY):
-            // Catalog/user type: GEOMETRY (target user-facing GEOMETRY)
-            // Actual BigQuery Arrow stream delivers WKT as VARCHAR alias GEOGRAPHY.
-            // CastToBigqueryTypeWithSpatialConversion returns VARCHAR GEOGRAPHY. We must keep that as the mapped
-            // physical source so that cast logic triggers and converts WKT->GEOMETRY.
-            bool is_geometry_target = BigqueryUtils::IsGeometryType(user_type);
-            bool spatial_inversion = BigqueryUtils::IsGeographyType(spatial_source);
-            if (is_geometry_target && spatial_inversion) {
-                // Keep spatial_source (VARCHAR GEOGRAPHY) as mapped physical
-                chosen_physical = spatial_source;
-            } else {
-                // Otherwise trust Arrow's physical interpretation (incl. decimals/structs) – aliases already copied
-                chosen_physical = arrow_phys;
-            }
+            const auto &chosen_physical =
+                util_mapped_bq_types.empty() ? physical_return_types[i] : util_mapped_bq_types[i];
 
             if (chosen_physical != user_type) {
                 requires_cast = true;
@@ -138,7 +123,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     } else {
         // Use the old Bigquery scan function (bigquery_scan)
 
-        // Check if geography_as_geometry is enabled with legacy scan and GEOGRAPHY columns present
+        // Legacy scan cannot read BigQuery GEOGRAPHY columns.
         for (const auto &column : columns.Logical()) {
             const auto &type = column.GetType();
             if (BigqueryUtils::IsGeometryType(type)) {

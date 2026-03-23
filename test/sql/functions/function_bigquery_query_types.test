@@ -12,6 +12,14 @@ statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 query I
+SELECT typeof(geo)
+FROM bigquery_query('bq', '
+    SELECT ST_GEOGPOINT(13.4050, 52.5200) AS geo
+');
+----
+GEOMETRY('OGC:CRS84')
+
+query I
 SELECT * FROM bigquery_query('bq', '
 	SELECT * FROM UNNEST([
 		STRUCT(STRUCT(2 AS Order_Id, [1, 2] AS Item_Name) as holder),
