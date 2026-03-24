@@ -115,12 +115,15 @@ DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
 
 ###########################################
 # BIGNUMERIC test
+# BIGNUMERIC (precision 76) exceeds DuckDB's DECIMAL max (38); read as VARCHAR automatically.
 ###########################################
 statement ok
-SET bq_bignumeric_as_varchar=FALSE
-
-statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+
+query I
+SELECT typeof(big_value) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT CAST(''12345.678901234'' AS BIGNUMERIC) AS big_value');
+----
+VARCHAR
 
 statement ok
 CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table` AS
@@ -128,20 +131,21 @@ SELECT
     CAST(12345.678901234 AS BIGNUMERIC) AS numeric_column');
 
 statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table2` (i INTEGER, big_value BIGNUMERIC)');
+
+statement ok
 CALL bigquery_clear_cache();
 
 query I
 SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_DATASET}' AND table_name='bignumeric_table';
 ----
+bignumeric_table
 
-statement ok
-SET bq_bignumeric_as_varchar=TRUE
-
-statement ok
-SET bq_use_legacy_scan=true
-
-statement ok
-CALL bigquery_clear_cache();
+# Arrow scan (default) should now work without any settings
+query I
+SELECT typeof(numeric_column) FROM bq.${BQ_TEST_DATASET}.bignumeric_table LIMIT 1;
+----
+VARCHAR
 
 query I
 SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
@@ -149,10 +153,15 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
 12345.67890123400000000000000000000000000000
 
 statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.bignumeric_table2 VALUES (1, '98765432109876543210.987654321');
+
+query II
+SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table2;
+----
+1	98765432109876543210.98765432100000000000000000000000000000
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table2;
+
+statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
-
-statement ok
-SET bq_bignumeric_as_varchar=FALSE
-
-statement ok
-SET bq_use_legacy_scan=false

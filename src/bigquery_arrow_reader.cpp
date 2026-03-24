@@ -65,6 +65,51 @@ struct BigqueryStreamState {
     int64_t rows_delivered = 0;
 };
 
+// Replace DECIMAL256 (BIGNUMERIC) fields with utf8 in an Arrow schema.
+// BIGNUMERIC precision (76) exceeds DuckDB's DECIMAL max (38); expose as VARCHAR instead.
+static std::shared_ptr<arrow::Schema> SchemaWithDecimal256AsString(const std::shared_ptr<arrow::Schema> &schema) {
+    arrow::FieldVector new_fields;
+    bool changed = false;
+    for (const auto &field : schema->fields()) {
+        if (field->type()->id() == arrow::Type::DECIMAL256) {
+            new_fields.push_back(arrow::field(field->name(), arrow::utf8(), field->nullable()));
+            changed = true;
+        } else {
+            new_fields.push_back(field);
+        }
+    }
+    return changed ? arrow::schema(std::move(new_fields)) : schema;
+}
+
+// Convert DECIMAL256 columns in a RecordBatch to utf8 strings using the pre-mapped target schema.
+static std::shared_ptr<arrow::RecordBatch> ConvertDecimal256ToString(
+    const std::shared_ptr<arrow::RecordBatch> &batch,
+    const std::shared_ptr<arrow::Schema> &target_schema) {
+    std::vector<std::shared_ptr<arrow::Array>> columns;
+    bool changed = false;
+    for (int i = 0; i < batch->num_columns(); ++i) {
+        auto col = batch->column(i);
+        if (col->type_id() == arrow::Type::DECIMAL256) {
+            auto dec = std::static_pointer_cast<arrow::Decimal256Array>(col);
+            arrow::StringBuilder builder;
+            for (int64_t row = 0; row < col->length(); ++row) {
+                if (dec->IsNull(row)) {
+                    (void)builder.AppendNull();
+                } else {
+                    (void)builder.Append(dec->FormatValue(row));
+                }
+            }
+            std::shared_ptr<arrow::Array> str_array;
+            (void)builder.Finish(&str_array);
+            columns.push_back(std::move(str_array));
+            changed = true;
+        } else {
+            columns.push_back(col);
+        }
+    }
+    return changed ? arrow::RecordBatch::Make(target_schema, batch->num_rows(), std::move(columns)) : batch;
+}
+
 unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t factory_ptr, ArrowStreamParameters &) {
     auto *factory = reinterpret_cast<BigqueryStreamFactory *>(factory_ptr);
     auto &reader = factory->reader;
@@ -73,11 +118,15 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
     const idx_t first_idx = factory->next_stream.fetch_add(1);
     auto bq_stream = reader->GetStream(first_idx);
 
+    // Replace DECIMAL256 (BIGNUMERIC) with utf8 so DuckDB can consume the stream.
+    // BIGNUMERIC precision (76) exceeds DuckDB's DECIMAL max (38); exposed as VARCHAR.
+    auto modified_schema = SchemaWithDecimal256AsString(reader->GetSchema());
+
     auto wrapper = make_uniq<ArrowArrayStreamWrapper>();
     if (!bq_stream) {
         // Export empty stream
         auto empty_iter = arrow::MakeEmptyIterator<std::shared_ptr<arrow::RecordBatch>>();
-        auto empty_reader = std::make_shared<IteratorBatchReader>(std::move(empty_iter), reader->GetSchema());
+        auto empty_reader = std::make_shared<IteratorBatchReader>(std::move(empty_iter), modified_schema);
         auto status = arrow::ExportRecordBatchReader(empty_reader, &wrapper->arrow_array_stream);
         if (!status.ok()) {
             throw BinderException("Arrow export (empty stream) failed: " + status.ToString());
@@ -92,7 +141,7 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
     st->stream = bq_stream;
 
     // Create Arrow iterator
-    auto iter = arrow::MakeFunctionIterator([st]() -> arrow::Result<BatchPtr> {
+    auto iter = arrow::MakeFunctionIterator([st, modified_schema]() -> arrow::Result<BatchPtr> {
         while (true) {
             // Open range if not already open
             if (!st->range_open) {
@@ -129,7 +178,7 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
                 continue;
             }
 
-            // Decode batch
+            // Decode batch and convert any DECIMAL256 (BIGNUMERIC) columns to utf8 strings
             const auto &arrow_msg = resp_or->arrow_record_batch();
             auto batch = st->reader->ReadBatch(arrow_msg);
             st->it++;
@@ -138,13 +187,12 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
             }
 
             st->rows_delivered += batch->num_rows();
-            return batch;
+            return ConvertDecimal256ToString(batch, modified_schema);
         }
     });
 
     // Convert Iterator => RecordBatchReader => ArrowArrayStream
-    auto schema = reader->GetSchema();
-    auto rb_reader = std::make_shared<IteratorBatchReader>(std::move(iter), schema);
+    auto rb_reader = std::make_shared<IteratorBatchReader>(std::move(iter), modified_schema);
 
     auto export_status = arrow::ExportRecordBatchReader(rb_reader, &wrapper->arrow_array_stream);
     if (!export_status.ok()) {
@@ -158,8 +206,8 @@ void BigqueryStreamFactory::GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema
     auto *factory = reinterpret_cast<BigqueryStreamFactory *>(factory_ptr);
     auto &reader = factory->reader;
 
-    // Get the schema from the reader and set it in the ArrowSchema
-    auto arrow_schema = reader->GetSchema();
+    // Replace DECIMAL256 (BIGNUMERIC) with utf8 so DuckDB can handle the schema.
+    auto arrow_schema = SchemaWithDecimal256AsString(reader->GetSchema());
     auto status = arrow::ExportSchema(*arrow_schema, &schema);
     if (!status.ok()) {
         throw BinderException("Arrow export failed: " + status.ToString());
