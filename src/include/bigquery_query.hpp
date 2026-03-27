@@ -16,6 +16,18 @@ struct BigqueryQueryDryRunBindData : public TableFunctionData {
     bool finished = false;
 };
 
+//! Bind data for REST-only query path (default, no Storage API)
+struct BigqueryQueryRestBindData : public TableFunctionData {
+    BigqueryConfig config;
+    shared_ptr<BigqueryClient> bq_client;
+    string query;
+    vector<Value> query_parameters;
+
+    vector<string> names;
+    vector<LogicalType> types;
+    idx_t estimated_row_count = 1;
+};
+
 class BigqueryQueryFunction : public TableFunction {
 public:
     BigqueryQueryFunction();

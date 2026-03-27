@@ -233,6 +233,7 @@ struct BigQueryCommonParameters {
     string filter;
     bool use_legacy_scan = false;
     bool dry_run = false;
+    bool use_storage_api = false;
 
     //! Parse common parameters from named_parameters map
     static BigQueryCommonParameters ParseFromNamedParameters(const named_parameter_map_t &named_parameters);
