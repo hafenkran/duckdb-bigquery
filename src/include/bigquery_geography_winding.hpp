@@ -15,5 +15,13 @@ bool ForcePolygonCCW(const string_t &input_geom, string_t &result_geom, Vector &
 /// bigquery_force_polygon_ccw(GEOMETRY) -> GEOMETRY
 void BqForcePolygonCCWFunction(DataChunk &args, ExpressionState &state, Vector &result);
 
+/// SQL-visible helper that routes WKT through the GEOMETRY-based normalization
+/// path used for BigQuery GEOGRAPHY writes.
+string NormalizeBigQueryGeographyWKT(const string &wkt);
+
+/// DuckDB scalar function entry point for
+/// bigquery_normalize_geography_wkt(VARCHAR) -> VARCHAR
+void BqNormalizeGeographyWKTFunction(DataChunk &args, ExpressionState &state, Vector &result);
+
 } // namespace bigquery
 } // namespace duckdb

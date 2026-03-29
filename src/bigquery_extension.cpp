@@ -17,6 +17,7 @@
 #include "bigquery_client.hpp"
 #include "bigquery_execute.hpp"
 #include "bigquery_extension.hpp"
+#include "bigquery_geography_winding.hpp"
 #include "bigquery_geometry_cast.hpp"
 #include "bigquery_jobs.hpp"
 #include "bigquery_parser.hpp"
@@ -52,6 +53,12 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
     loader.RegisterFunction(bigquery_list_jobs_function);
+
+    ScalarFunction normalize_geography_wkt("bigquery_normalize_geography_wkt",
+                                           {LogicalType::VARCHAR},
+                                           LogicalType::VARCHAR,
+                                           bigquery::BqNormalizeGeographyWKTFunction);
+    loader.RegisterFunction(normalize_geography_wkt);
 
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     StorageExtension::Register(config, "bigquery", make_shared_ptr<bigquery::BigqueryStorageExtension>());
