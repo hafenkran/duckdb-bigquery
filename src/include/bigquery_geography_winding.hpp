@@ -7,7 +7,9 @@ namespace duckdb {
 namespace bigquery {
 
 /// Ensures OGC-compliant polygon ring winding on DuckDB GEOMETRY values.
-/// Exterior rings are forced to CCW, interior rings (holes) to CW.
+/// Exterior rings are forced to CCW, interior rings (holes) to CW, and
+/// touching holes with duplicate shared edges are merged when this can be done
+/// unambiguously, including split collinear boundary segments.
 /// Non-polygon geometry types are passed through unchanged.
 bool ForcePolygonCCW(const string_t &input_geom, string_t &result_geom, Vector &result_vector);
 
