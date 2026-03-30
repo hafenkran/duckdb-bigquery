@@ -1,8 +1,9 @@
-#include "bigquery_geography_winding.hpp"
+#include "bigquery_geography.hpp"
 
 #include "duckdb/common/bswap.hpp"
 #include "duckdb/common/types/geometry.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
+#include "duckdb/function/cast/default_casts.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,19 @@
 
 namespace duckdb {
 namespace bigquery {
+
+static BoundCastInfo BindGeographyCast(BindCastInput &input, const LogicalType &source, const LogicalType &target) {
+    return DefaultCasts::GetDefaultCastFunction(input, source, target);
+}
+
+void RegisterGeographyCast(DatabaseInstance &db) {
+    auto &casts = DBConfig::GetConfig(db).GetCastFunctions();
+    LogicalType source = LogicalType(LogicalTypeId::VARCHAR);
+    source.SetAlias("GEOGRAPHY");
+    // BigQuery uses WGS84 (OGC:CRS84) as the default CRS for GEOGRAPHY.
+    LogicalType target = LogicalType::GEOMETRY("OGC:CRS84");
+    casts.RegisterCastFunction(source, target, BindGeographyCast);
+}
 
 struct Vertex {
     double values[4] = {0, 0, 0, 0};
@@ -653,7 +667,7 @@ static bool NormalizeMultiPolygonGeometry(const string_t &input_geom,
     return true;
 }
 
-bool ForcePolygonCCW(const string_t &input_geom, string_t &result_geom, Vector &result_vector) {
+bool NormalizeGeography(const string_t &input_geom, string_t &result_geom, Vector &result_vector) {
     const auto type_info = Geometry::GetType(input_geom);
     const auto dimensions = VertexDimensions(type_info.second);
 
@@ -668,50 +682,17 @@ bool ForcePolygonCCW(const string_t &input_geom, string_t &result_geom, Vector &
     }
 }
 
-static string_t NormalizeBigQueryGeographyWKTValue(const string_t &input_wkt, Vector &result_vector) {
-    if (input_wkt.GetSize() == 0) {
-        return StringVector::AddString(result_vector, "", 0);
-    }
-
-    Vector geometry_vector(LogicalType::GEOMETRY());
-    string_t geometry_value;
-    Geometry::FromString(input_wkt, geometry_value, geometry_vector, true);
-
-    string_t normalized_geometry;
-    ForcePolygonCCW(geometry_value, normalized_geometry, geometry_vector);
-    return Geometry::ToString(result_vector, normalized_geometry);
-}
-
-string NormalizeBigQueryGeographyWKT(const string &wkt) {
-    if (wkt.empty()) {
-        return wkt;
-    }
-
-    Vector result_vector(LogicalType::VARCHAR);
-    auto input_wkt = string_t(wkt.c_str(), UnsafeNumericCast<uint32_t>(wkt.size()));
-    return NormalizeBigQueryGeographyWKTValue(input_wkt, result_vector).GetString();
-}
-
-void BqForcePolygonCCWFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+void BqNormalizeGeographyFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &input = args.data[0];
     const auto count = args.size();
 
     UnaryExecutor::Execute<string_t, string_t>(input, result, count, [&](const string_t &input_geom) {
         string_t output_geom;
-        ForcePolygonCCW(input_geom, output_geom, result);
+        NormalizeGeography(input_geom, output_geom, result);
         return output_geom;
     });
 
     StringVector::AddHeapReference(input, result);
-}
-
-void BqNormalizeGeographyWKTFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &input = args.data[0];
-    const auto count = args.size();
-
-    UnaryExecutor::Execute<string_t, string_t>(input, result, count, [&](const string_t &input_wkt) {
-        return NormalizeBigQueryGeographyWKTValue(input_wkt, result);
-    });
 }
 
 } // namespace bigquery
