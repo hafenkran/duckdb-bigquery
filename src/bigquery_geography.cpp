@@ -51,8 +51,8 @@ struct VertexKey {
 
 struct VertexKeyHash {
     size_t operator()(const VertexKey &key) const {
-        auto seed = std::hash<uint64_t> {}(key.x_bits);
-        seed ^= std::hash<uint64_t> {}(key.y_bits) + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+        auto seed = std::hash<uint64_t>{}(key.x_bits);
+        seed ^= std::hash<uint64_t>{}(key.y_bits) + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
@@ -68,8 +68,8 @@ struct CanonicalEdgeKey {
 
 struct CanonicalEdgeKeyHash {
     size_t operator()(const CanonicalEdgeKey &key) const {
-        auto seed = VertexKeyHash {}(key.first);
-        seed ^= VertexKeyHash {}(key.second) + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+        auto seed = VertexKeyHash{}(key.first);
+        seed ^= VertexKeyHash{}(key.second) + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
