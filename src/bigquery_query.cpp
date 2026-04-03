@@ -94,9 +94,11 @@ static Value RestValueToValue(const google::protobuf::Value &val, const LogicalT
         return Value(type);
     }
 
-    // STRUCT and LIST types arrive as nested protobuf structures, not strings.
+    // Complex/nested types arrive as nested protobuf structures, not strings.
     // The REST path does not support these — use the Storage API path instead.
-    if (type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::LIST) {
+    if (type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::LIST ||
+        type.id() == LogicalTypeId::MAP || type.id() == LogicalTypeId::ARRAY ||
+        type.id() == LogicalTypeId::UNION) {
         throw NotImplementedException("REST API path (use_rest_api=true) does not support %s columns. "
                                       "Remove use_rest_api to use the Storage API path instead.",
                                       LogicalTypeIdToString(type.id()));
