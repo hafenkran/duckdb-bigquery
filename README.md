@@ -298,6 +298,14 @@ The `bigquery_query` function supports the following named parameters:
 | `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
 | `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
 
+> **REST API vs Storage API**: By default, `bigquery_query` uses the [BigQuery Storage Read API](https://cloud.google.com/bigquery/docs/reference/storage) to fetch results. This executes the query as a job, materializes results into a temporary table, and reads them via gRPC — optimized for large result sets but adds overhead for small queries.
+>
+> With `use_rest_api=true`, the query is executed using the [jobs.query REST endpoint](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query) with [`JOB_CREATION_OPTIONAL`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query#JobCreationMode) mode. For short-running queries, BigQuery can return results inline without creating a job at all, significantly reducing latency. This is ideal for interactive or exploratory queries with small result sets (under ~10MB).
+>
+> ```sql
+> D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT count(*) FROM `my_dataset.my_table`', use_rest_api=true);
+> ```
+
 ### `bigquery_execute` Function
 
 The `bigquery_execute` function runs arbitrary GoogleSQL queries directly in BigQuery. These queries are executed without interpretation by DuckDB. The call is synchronous and returns a result with details about the query execution, like the following.
