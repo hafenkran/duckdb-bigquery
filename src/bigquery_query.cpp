@@ -17,6 +17,76 @@
 namespace duckdb {
 namespace bigquery {
 
+//! Parse BigQuery's canonical interval format: "Y-M D H:M:S[.F]"
+//! e.g. "1-2 3 4:5:6" = 1 year, 2 months, 3 days, 4 hours, 5 minutes, 6 seconds
+static Value ParseBigQueryInterval(const string &str) {
+    int32_t years = 0, months_part = 0, days = 0, hours = 0, minutes = 0, seconds = 0, micros = 0;
+    // Format: "Y-M D H:Min:S" or "Y-M D H:Min:S.F"
+    // Find the dash separating years and months
+    auto dash_pos = str.find('-');
+    if (dash_pos == string::npos) {
+        throw InvalidInputException("Cannot parse BigQuery INTERVAL: %s", str);
+    }
+    years = std::stoi(str.substr(0, dash_pos));
+
+    auto space1 = str.find(' ', dash_pos);
+    if (space1 == string::npos) {
+        throw InvalidInputException("Cannot parse BigQuery INTERVAL: %s", str);
+    }
+    months_part = std::stoi(str.substr(dash_pos + 1, space1 - dash_pos - 1));
+
+    auto space2 = str.find(' ', space1 + 1);
+    if (space2 == string::npos) {
+        throw InvalidInputException("Cannot parse BigQuery INTERVAL: %s", str);
+    }
+    days = std::stoi(str.substr(space1 + 1, space2 - space1 - 1));
+
+    // Parse H:M:S[.F]
+    auto colon1 = str.find(':', space2);
+    auto colon2 = str.find(':', colon1 + 1);
+    if (colon1 == string::npos || colon2 == string::npos) {
+        throw InvalidInputException("Cannot parse BigQuery INTERVAL: %s", str);
+    }
+    hours = std::stoi(str.substr(space2 + 1, colon1 - space2 - 1));
+    minutes = std::stoi(str.substr(colon1 + 1, colon2 - colon1 - 1));
+
+    auto dot_pos = str.find('.', colon2);
+    if (dot_pos != string::npos) {
+        seconds = std::stoi(str.substr(colon2 + 1, dot_pos - colon2 - 1));
+        auto frac_str = str.substr(dot_pos + 1);
+        // Pad or truncate to 6 digits for microseconds
+        while (frac_str.size() < 6) frac_str += '0';
+        micros = std::stoi(frac_str.substr(0, 6));
+    } else {
+        seconds = std::stoi(str.substr(colon2 + 1));
+    }
+
+    int32_t total_months = years * 12 + months_part;
+    int64_t total_micros = (static_cast<int64_t>(hours) * 3600 + static_cast<int64_t>(minutes) * 60 +
+                            static_cast<int64_t>(seconds)) * 1000000 + micros;
+    return Value::INTERVAL(interval_t{total_months, days, total_micros});
+}
+
+//! Decode a base64-encoded string to raw bytes (for BYTES type)
+static string Base64Decode(const string &encoded) {
+    static const string base64_chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    string decoded;
+    int val = 0, valb = -8;
+    for (char c : encoded) {
+        if (c == '=' || c == '\n' || c == '\r') break;
+        auto pos = base64_chars.find(c);
+        if (pos == string::npos) continue;
+        val = (val << 6) + static_cast<int>(pos);
+        valb += 6;
+        if (valb >= 0) {
+            decoded.push_back(static_cast<char>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return decoded;
+}
+
 //! Convert a single REST API value (from the "v" field of a row struct) to a DuckDB Value.
 //! BigQuery REST API returns all values as strings in the JSON response.
 static Value RestValueToValue(const google::protobuf::Value &val, const LogicalType &type) {
@@ -39,14 +109,29 @@ static Value RestValueToValue(const google::protobuf::Value &val, const LogicalT
         return Value(str);
     case LogicalTypeId::TIMESTAMP:
     case LogicalTypeId::TIMESTAMP_TZ: {
-        // BigQuery REST API returns timestamps as epoch seconds (fractional), not ISO strings
+        // BigQuery REST API returns TIMESTAMP as epoch seconds (fractional)
+        // but DATETIME as ISO string "YYYY-MM-DDTHH:MM:SS[.SSSSSS]".
+        // Detect which format we have.
+        if (!str.empty() && (str.find('T') != string::npos || str.find('-') != string::npos)) {
+            // ISO format (DATETIME) — let DuckDB parse it
+            return Value(str).DefaultCastAs(type);
+        }
+        // Epoch seconds (TIMESTAMP)
         double epoch_seconds = std::stod(str);
         int64_t micros = static_cast<int64_t>(epoch_seconds * 1000000.0);
         return Value::TIMESTAMP(timestamp_t(micros));
     }
+    case LogicalTypeId::BLOB: {
+        // BigQuery REST API returns BYTES as base64-encoded strings
+        auto decoded = Base64Decode(str);
+        return Value::BLOB(decoded);
+    }
+    case LogicalTypeId::INTERVAL:
+        // BigQuery REST API returns INTERVAL as "Y-M D H:M:S[.F]"
+        return ParseBigQueryInterval(str);
     default:
         // BigQuery REST API returns all scalar values as strings.
-        // This handles BOOLEAN, INTEGER, FLOAT, DATE, TIME, INTERVAL, NUMERIC,
+        // This handles BOOLEAN, INTEGER, FLOAT, DATE, TIME, NUMERIC,
         // GEOGRAPHY (WKT string → GEOMETRY), and other scalar types.
         return Value(str).DefaultCastAs(type);
     }

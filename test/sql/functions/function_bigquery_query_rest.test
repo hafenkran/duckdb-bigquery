@@ -77,6 +77,30 @@ FROM bigquery_query('${BQ_TEST_PROJECT}', '
 ----
 GEOMETRY('OGC:CRS84')
 
+# Type coverage: DATETIME (returned as ISO string, not epoch seconds)
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT DATETIME("2024-01-15 12:34:56") AS datetime_col
+', use_rest_api=true);
+----
+2024-01-15 12:34:56
+
+# Type coverage: BYTES (returned as base64)
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT b"hello" AS bytes_col
+', use_rest_api=true);
+----
+hello
+
+# Type coverage: INTERVAL
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT INTERVAL 1 YEAR + INTERVAL 2 MONTH + INTERVAL 3 DAY AS interval_col
+', use_rest_api=true);
+----
+1 year 2 months 3 days
+
 # STRUCT types should error with a clear message
 statement error
 SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
