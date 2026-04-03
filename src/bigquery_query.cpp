@@ -94,16 +94,42 @@ static Value RestValueToValue(const google::protobuf::Value &val, const LogicalT
         return Value(type);
     }
 
-    // Complex/nested types arrive as nested protobuf structures, not strings.
-    // The REST path does not support these — use the Storage API path instead.
-    if (type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::LIST ||
-        type.id() == LogicalTypeId::MAP || type.id() == LogicalTypeId::ARRAY ||
-        type.id() == LogicalTypeId::UNION) {
+    switch (type.id()) {
+    case LogicalTypeId::STRUCT: {
+        // BigQuery REST: {"f": [{"v": val1}, {"v": val2}, ...]}
+        auto &child_types = StructType::GetChildTypes(type);
+        auto &struct_fields = val.struct_value().fields();
+        auto &field_list = struct_fields.at("f").list_value().values();
+        child_list_t<Value> children;
+        for (idx_t i = 0; i < child_types.size(); i++) {
+            auto &field_val = field_list[static_cast<int>(i)].struct_value().fields().at("v");
+            children.emplace_back(child_types[i].first, RestValueToValue(field_val, child_types[i].second));
+        }
+        return Value::STRUCT(std::move(children));
+    }
+    case LogicalTypeId::LIST: {
+        // BigQuery REST: array elements as a list of {"v": elem} structs
+        auto &child_type = ListType::GetChildType(type);
+        auto &list_values = val.list_value().values();
+        vector<Value> children;
+        for (int i = 0; i < list_values.size(); i++) {
+            auto &elem = list_values[i].struct_value().fields().at("v");
+            children.emplace_back(RestValueToValue(elem, child_type));
+        }
+        return Value::LIST(child_type, std::move(children));
+    }
+    case LogicalTypeId::MAP:
+    case LogicalTypeId::ARRAY:
+    case LogicalTypeId::UNION: {
         throw NotImplementedException("REST API path (use_rest_api=true) does not support %s columns. "
                                       "Remove use_rest_api to use the Storage API path instead.",
                                       LogicalTypeIdToString(type.id()));
     }
+    default:
+        break;
+    }
 
+    // All remaining types are scalar — BigQuery REST returns them as strings
     auto str = val.string_value();
 
     switch (type.id()) {

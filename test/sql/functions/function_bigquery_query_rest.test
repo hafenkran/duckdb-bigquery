@@ -101,13 +101,33 @@ SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
 ----
 1 year 2 months 3 days
 
-# STRUCT types should error with a clear message
-statement error
+# Type coverage: STRUCT
+query I
 SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
     SELECT STRUCT(1 AS id, "hello" AS name) AS s
 ', use_rest_api=true);
 ----
-REST API path (use_rest_api=true) does not support STRUCT columns
+{'id': 1, 'name': hello}
+
+# Type coverage: ARRAY (LIST)
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT [1, 2, 3] AS arr
+', use_rest_api=true);
+----
+[1, 2, 3]
+
+# Type coverage: nested STRUCT with LIST
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT * FROM UNNEST([
+        STRUCT(STRUCT(2 AS Order_Id, [1, 2] AS Item_Name) as holder),
+        STRUCT(STRUCT(1 AS Order_Id, [3, 4] AS Item_Name) as holder)
+    ])
+', use_rest_api=true);
+----
+{'Order_Id': 2, 'Item_Name': [1, 2]}
+{'Order_Id': 1, 'Item_Name': [3, 4]}
 
 # NULL handling
 query I
