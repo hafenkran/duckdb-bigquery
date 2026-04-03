@@ -24,6 +24,14 @@ static Value RestValueToValue(const google::protobuf::Value &val, const LogicalT
         return Value(type);
     }
 
+    // STRUCT and LIST types arrive as nested protobuf structures, not strings.
+    // The REST path does not support these — use the Storage API path instead.
+    if (type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::LIST) {
+        throw NotImplementedException("REST API path (use_rest_api=true) does not support %s columns. "
+                                      "Remove use_rest_api to use the Storage API path instead.",
+                                      LogicalTypeIdToString(type.id()));
+    }
+
     auto str = val.string_value();
 
     switch (type.id()) {
@@ -37,6 +45,9 @@ static Value RestValueToValue(const google::protobuf::Value &val, const LogicalT
         return Value::TIMESTAMP(timestamp_t(micros));
     }
     default:
+        // BigQuery REST API returns all scalar values as strings.
+        // This handles BOOLEAN, INTEGER, FLOAT, DATE, TIME, INTERVAL, NUMERIC,
+        // GEOGRAPHY (WKT string → GEOMETRY), and other scalar types.
         return Value(str).DefaultCastAs(type);
     }
 }
@@ -119,8 +130,8 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         return result;
     }
 
-    // Default path: REST-only (fast, no Storage API overhead)
-    if (!params.use_storage_api) {
+    // REST-only path (opt-in, fast, no Storage API overhead)
+    if (params.use_rest_api) {
         auto bind_data = make_uniq<BigqueryQueryRestBindData>();
         bind_data->query = query_string;
         bind_data->query_parameters = query_parameters;
@@ -167,7 +178,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         return std::move(bind_data);
     }
 
-    // Storage API path: use_storage_api=true
+    // Default path: Storage API
     if (!params.use_legacy_scan) {
         auto bind_data = make_uniq<BigqueryArrowScanBindData>();
         bind_data->query = query_string;
@@ -306,12 +317,13 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(input.bind_data.get())) {
         return make_uniq<GlobalTableFunctionState>();
     }
-    // REST-only path (default)
+    // REST-only path (opt-in via use_rest_api=true)
     if (dynamic_cast<const BigqueryQueryRestBindData *>(input.bind_data.get())) {
         auto &bind_data = input.bind_data->CastNoConst<BigqueryQueryRestBindData>();
 
         // Execute the query (with JOB_CREATION_OPTIONAL)
-        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", false, bind_data.query_parameters);
+        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", false, bind_data.query_parameters,
+                                                                 /*optional_job_creation=*/true);
 
         if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
             throw BinderException("Query did not complete within the timeout.");
@@ -334,7 +346,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
 
         return std::move(gstate);
     }
-    // Storage API: Arrow scan path (use_storage_api=true)
+    // Default path: Storage API (Arrow scan)
     if (dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
         auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
 
@@ -357,7 +369,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         mutable_bind_data.table_ref = table_ref;
         return BigqueryArrowScanFunction::BigqueryArrowScanInitGlobal(context, input);
     } else {
-        // Storage API: Legacy scan path (use_storage_api=true, use_legacy_scan=true)
+        // Storage API: Legacy scan path (use_legacy_scan=true)
         auto &bind_data = input.bind_data->CastNoConst<BigqueryLegacyScanBindData>();
 
         // Force job creation (not optional) since Storage API needs a destination table
@@ -617,7 +629,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
     named_parameters["use_legacy_scan"] = LogicalType::BOOLEAN;
-    named_parameters["use_storage_api"] = LogicalType::BOOLEAN;
+    named_parameters["use_rest_api"] = LogicalType::BOOLEAN;
     named_parameters["dry_run"] = LogicalType::BOOLEAN;
     varargs = LogicalType::ANY;
 }

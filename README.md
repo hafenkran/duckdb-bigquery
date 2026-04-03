@@ -292,6 +292,7 @@ The `bigquery_query` function supports the following named parameters:
 | Parameter         | Type      | Description                                                                                                        |
 | ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
 | `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default).                                   |
+| `use_rest_api`    | `BOOLEAN` | When `true`, uses the BigQuery REST API with optional job creation instead of the Storage API. This provides lower latency for small result sets (under ~10MB) by returning results inline, avoiding the overhead of creating a job and reading via the Storage API. Default: `false`. |
 | `dry_run`         | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
 | `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                               |
 | `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |

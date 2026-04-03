@@ -16,7 +16,7 @@ struct BigqueryQueryDryRunBindData : public TableFunctionData {
     bool finished = false;
 };
 
-//! Bind data for REST-only query path (default, no Storage API)
+//! Bind data for REST-only query path (opt-in via use_rest_api=true)
 struct BigqueryQueryRestBindData : public TableFunctionData {
     BigqueryConfig config;
     shared_ptr<BigqueryClient> bq_client;

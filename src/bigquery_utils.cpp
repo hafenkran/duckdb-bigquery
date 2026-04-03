@@ -920,8 +920,8 @@ BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
             params.use_legacy_scan = BooleanValue::Get(kv.second);
         } else if (loption == "dry_run") {
             params.dry_run = BooleanValue::Get(kv.second);
-        } else if (loption == "use_storage_api") {
-            params.use_storage_api = BooleanValue::Get(kv.second);
+        } else if (loption == "use_rest_api") {
+            params.use_rest_api = BooleanValue::Get(kv.second);
         }
         // otherwise, ignore
     }
