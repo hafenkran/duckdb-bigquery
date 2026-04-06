@@ -204,6 +204,23 @@ public:
     static string DecimalToString(const hugeint_t &value, const LogicalType &type);
     static pair<int, int> ParseNumericPrecisionAndScale(const string &type);
 
+    //! Parse BigQuery's canonical interval format: "Y-M D H:M:S[.F]"
+    static Value ParseBigQueryInterval(const string &str);
+
+    //! Decode a base64-encoded string to raw bytes (for BYTES type)
+    static string Base64Decode(const string &encoded);
+
+    //! Convert a single REST API value to a DuckDB Value
+    static Value RestValueToValue(const google::protobuf::Value &val, const LogicalType &type);
+
+    //! Fill a DataChunk from REST API inline rows
+    static void FillChunkFromRestRows(
+        const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
+        idx_t start_row,
+        idx_t count,
+        const vector<LogicalType> &types,
+        DataChunk &output);
+
 private:
     static vector<string> SplitStructFields(const string &struct_field_str);
     static string StructRemoveWhitespaces(const string &struct_str);

@@ -135,5 +135,53 @@ SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT CAST(NULL AS INT64) A
 ----
 NULL
 
+# Type coverage: BIGNUMERIC (mapped to VARCHAR)
+query I
+SELECT typeof(x) FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT CAST(1234567890123456789.1234567890 AS BIGNUMERIC) AS x
+', use_rest_api=true);
+----
+VARCHAR
+
+# Type coverage: JSON
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT JSON ''{"key": "value", "num": 42}'' AS json_col
+', use_rest_api=true);
+----
+{"key":"value","num":42}
+
+# Type coverage: RANGE
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT RANGE(DATE "2024-01-01", DATE "2024-12-31") AS range_col
+', use_rest_api=true);
+----
+[2024-01-01, 2024-12-31)
+
+# Type coverage: ARRAY<STRUCT<...>>
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT [STRUCT(1 AS id, "a" AS name), STRUCT(2 AS id, "b" AS name)] AS arr_struct
+', use_rest_api=true);
+----
+[{'id': 1, 'name': a}, {'id': 2, 'name': b}]
+
+# Type coverage: STRUCT with NULL fields
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT STRUCT(CAST(NULL AS INT64) AS id, "hello" AS name) AS s
+', use_rest_api=true);
+----
+{'id': NULL, 'name': hello}
+
+# Type coverage: ARRAY with NULL elements
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT [1, NULL, 3] AS arr
+', use_rest_api=true);
+----
+[1, NULL, 3]
+
 statement ok
 SET bq_debug_show_queries = false;
