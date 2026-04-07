@@ -175,6 +175,7 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
                 return arrow::Status::IOError("ReadRows error: " + resp_or.status().message());
             }
             if (!resp_or->has_arrow_record_batch()) {
+                st->it++;
                 continue;
             }
 
