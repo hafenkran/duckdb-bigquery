@@ -13,7 +13,7 @@
 #include <google/protobuf/dynamic_message.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
-#include "bigquery_geography_winding.hpp"
+#include "bigquery_geography.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_utils.hpp"
 #include "storage/bigquery_catalog.hpp"
@@ -208,11 +208,11 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
     projected_types.reserve(child_types.size());
     select_list.reserve(child_types.size());
 
-    // Internal scalar function to fix polygon ring winding for BigQuery GEOGRAPHY
-    ScalarFunction ccw_func("bigquery_force_polygon_ccw",
-                            {LogicalType::VARCHAR},
-                            LogicalType::VARCHAR,
-                            bigquery::BqForcePolygonCCWFunction);
+    // Internal scalar function to normalize polygon topology before GEOMETRY -> VARCHAR serialization.
+    ScalarFunction normalize_geography_func("bigquery_normalize_geography",
+                                            {LogicalType::GEOMETRY()},
+                                            LogicalType::GEOMETRY(),
+                                            bigquery::BqNormalizeGeographyFunction);
 
     for (idx_t i = 0; i < child_types.size(); i++) {
         auto &type = child_types[i];
@@ -223,12 +223,15 @@ PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
         }
 
         auto geom_ref = make_uniq<BoundReferenceExpression>(type, i);
-        unique_ptr<Expression> bound =
-            BoundCastExpression::AddCastToType(context, std::move(geom_ref), LogicalType::VARCHAR);
-
-        vector<unique_ptr<Expression>> ccw_args;
-        ccw_args.push_back(std::move(bound));
-        bound = make_uniq<BoundFunctionExpression>(ccw_func.return_type, ccw_func, std::move(ccw_args), nullptr, false);
+        vector<unique_ptr<Expression>> normalize_args;
+        normalize_args.push_back(std::move(geom_ref));
+        unique_ptr<Expression> bound;
+        bound = make_uniq<BoundFunctionExpression>(normalize_geography_func.return_type,
+                                                   normalize_geography_func,
+                                                   std::move(normalize_args),
+                                                   nullptr,
+                                                   false);
+        bound = BoundCastExpression::AddCastToType(context, std::move(bound), LogicalType::VARCHAR);
 
         projected_types.push_back(LogicalType::VARCHAR);
         select_list.push_back(std::move(bound));
