@@ -948,8 +948,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     // When the caller needs a job reference (e.g. for Storage API reads),
     // they should pass optional_job_creation=false.
     if (!dry_run && optional_job_creation) {
-        query_request.set_job_creation_mode(
-            google::cloud::bigquery::v2::QueryRequest::JOB_CREATION_OPTIONAL);
+        query_request.set_job_creation_mode(google::cloud::bigquery::v2::QueryRequest::JOB_CREATION_OPTIONAL);
     }
 
     int timeout_ms = BigquerySettings::QueryTimeoutMs();

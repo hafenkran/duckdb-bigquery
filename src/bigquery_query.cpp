@@ -264,8 +264,11 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         auto &bind_data = input.bind_data->CastNoConst<BigqueryQueryRestBindData>();
 
         // Execute the query (with JOB_CREATION_OPTIONAL)
-        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", false, bind_data.query_parameters,
-                                                                 /*optional_job_creation=*/true);
+        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query,
+                                                                "",
+                                                                false,
+                                                                bind_data.query_parameters,
+                                                                /*optional_job_creation=*/true);
 
         if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
             throw BinderException("Query did not complete within the timeout.");
@@ -315,8 +318,11 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         auto &bind_data = input.bind_data->CastNoConst<BigqueryLegacyScanBindData>();
 
         // Force job creation (not optional) since Storage API needs a destination table
-        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", false, bind_data.query_parameters,
-                                                                 /*optional_job_creation=*/false);
+        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query,
+                                                                "",
+                                                                false,
+                                                                bind_data.query_parameters,
+                                                                /*optional_job_creation=*/false);
         auto job = bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
         if (job.status().has_error_result()) {
@@ -379,16 +385,15 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
             return;
         }
 
-        idx_t rows_to_read = MinValue<idx_t>(STANDARD_VECTOR_SIZE,
-                                              static_cast<idx_t>(gstate->rows.size()) - gstate->current_row);
+        idx_t rows_to_read =
+            MinValue<idx_t>(STANDARD_VECTOR_SIZE, static_cast<idx_t>(gstate->rows.size()) - gstate->current_row);
         if (rows_to_read == 0) {
             gstate->done = true;
             return;
         }
 
         output.Reset();
-        BigqueryUtils::FillChunkFromRestRows(gstate->rows, gstate->current_row, rows_to_read,
-                                              gstate->types, output);
+        BigqueryUtils::FillChunkFromRestRows(gstate->rows, gstate->current_row, rows_to_read, gstate->types, output);
         gstate->current_row += output.size();
 
         if (gstate->current_row >= static_cast<idx_t>(gstate->rows.size())) {

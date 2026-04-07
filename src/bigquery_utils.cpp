@@ -936,21 +936,23 @@ Value BigqueryUtils::ParseBigQueryInterval(const string &str) {
         seconds = std::stoi(str.substr(colon2 + 1, dot_pos - colon2 - 1));
         auto frac_str = str.substr(dot_pos + 1);
         // Pad or truncate to 6 digits for microseconds
-        while (frac_str.size() < 6) frac_str += '0';
+        while (frac_str.size() < 6)
+            frac_str += '0';
         micros = std::stoi(frac_str.substr(0, 6));
     } else {
         seconds = std::stoi(str.substr(colon2 + 1));
     }
 
     int32_t total_months = years * 12 + months_part;
-    int64_t total_micros = (static_cast<int64_t>(hours) * 3600 + static_cast<int64_t>(minutes) * 60 +
-                            static_cast<int64_t>(seconds)) * 1000000 + micros;
+    int64_t total_micros =
+        (static_cast<int64_t>(hours) * 3600 + static_cast<int64_t>(minutes) * 60 + static_cast<int64_t>(seconds)) *
+            1000000 +
+        micros;
     return Value::INTERVAL(interval_t{total_months, days, total_micros});
 }
 
 string BigqueryUtils::Base64Decode(const string &encoded) {
-    static const string base64_chars =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static const string base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     string decoded;
     int val = 0, valb = -8;
     for (char c : encoded) {
@@ -1038,12 +1040,11 @@ Value BigqueryUtils::RestValueToValue(const google::protobuf::Value &val, const 
     }
 }
 
-void BigqueryUtils::FillChunkFromRestRows(
-    const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
-    idx_t start_row,
-    idx_t count,
-    const vector<LogicalType> &types,
-    DataChunk &output) {
+void BigqueryUtils::FillChunkFromRestRows(const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
+                                          idx_t start_row,
+                                          idx_t count,
+                                          const vector<LogicalType> &types,
+                                          DataChunk &output) {
 
     idx_t actual_count = MinValue<idx_t>(count, static_cast<idx_t>(rows.size()) - start_row);
     for (idx_t row_idx = 0; row_idx < actual_count; row_idx++) {

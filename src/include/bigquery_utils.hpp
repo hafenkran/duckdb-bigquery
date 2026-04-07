@@ -214,12 +214,11 @@ public:
     static Value RestValueToValue(const google::protobuf::Value &val, const LogicalType &type);
 
     //! Fill a DataChunk from REST API inline rows
-    static void FillChunkFromRestRows(
-        const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
-        idx_t start_row,
-        idx_t count,
-        const vector<LogicalType> &types,
-        DataChunk &output);
+    static void FillChunkFromRestRows(const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
+                                      idx_t start_row,
+                                      idx_t count,
+                                      const vector<LogicalType> &types,
+                                      DataChunk &output);
 
 private:
     static vector<string> SplitStructFields(const string &struct_field_str);
