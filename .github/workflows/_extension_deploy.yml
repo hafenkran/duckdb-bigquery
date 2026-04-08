@@ -93,6 +93,8 @@ jobs:
     if: ${{ needs.generate_matrix.outputs.deploy_matrix != '{}' && needs.generate_matrix.outputs.deploy_matrix != '' }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.deploy_matrix)}}
+    env:
+      HAS_GCP_DEPLOY_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY != '' && secrets.GCS_DUCKDB_ORG_BUCKET != '' && secrets.GCS_DUCKDB_ORG_EXTENSION_SIGNING_PK != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -112,14 +114,17 @@ jobs:
             /tmp/extension
 
       - id: 'auth'
+        if: ${{ env.HAS_GCP_DEPLOY_CREDENTIALS == 'true' }}
         uses: 'google-github-actions/auth@v3'
         with:
             credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}'
 
       - name: 'Set up Cloud SDK'
+        if: ${{ env.HAS_GCP_DEPLOY_CREDENTIALS == 'true' }}
         uses: 'google-github-actions/setup-gcloud@v3'
 
       - name: Deploy GCP
+        if: ${{ env.HAS_GCP_DEPLOY_CREDENTIALS == 'true' }}
         shell: bash
         env:
           BUCKET_NAME: ${{ secrets.GCS_DUCKDB_ORG_BUCKET }}
@@ -136,3 +141,8 @@ jobs:
           export EXT_VERSION=`git tag --points-at HEAD`
           export EXT_VERSION=${EXT_VERSION:=`git log -1 --format=%h`}
           ${{ inputs.deploy_gcs_script }} ${{ inputs.extension_name }} $EXT_VERSION $DUCKDB_VERSION ${{ matrix.duckdb_arch }} $BUCKET_NAME ${{inputs.deploy_latest || 'true' && 'false'}} ${{inputs.deploy_versioned || 'true' && 'false'}}
+
+      - name: Skip deploy without GCP credentials
+        if: ${{ env.HAS_GCP_DEPLOY_CREDENTIALS != 'true' }}
+        run: |
+          echo "Skipping deploy because GCP deployment credentials are not available for this run."
