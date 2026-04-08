@@ -1,0 +1,347 @@
+#
+# Reusable workflow that runs extension tests from build artifacts produced by
+# .github/workflows/_extension_distribution.yml.
+#
+
+name: Extension tests
+on:
+  workflow_call:
+    inputs:
+      extension_name:
+        required: true
+        type: string
+      duckdb_version:
+        required: true
+        type: string
+      ci_tools_version:
+        required: true
+        type: string
+      exclude_archs:
+        required: false
+        type: string
+        default: ""
+      opt_in_archs:
+        required: false
+        type: string
+        default: ""
+      artifact_postfix:
+        required: false
+        type: string
+        default: ""
+      vcpkg_url:
+        required: false
+        type: string
+        default: "https://github.com/microsoft/vcpkg.git"
+      vcpkg_commit:
+        required: false
+        type: string
+        default: "84bab45d415d22042bd0b9081aea57f362da3f35"
+      matrix_parse_script:
+        required: false
+        type: string
+        default: "./extension-ci-tools/scripts/modify_distribution_matrix.py"
+      override_repository:
+        required: false
+        type: string
+        default: ""
+      override_ref:
+        required: false
+        type: string
+        default: ""
+      override_ci_tools_repository:
+        required: false
+        type: string
+        default: "duckdb/extension-ci-tools"
+      extra_toolchains:
+        required: false
+        type: string
+        default: ""
+      enable_rust:
+        required: false
+        type: boolean
+        default: false
+      test_config:
+        required: false
+        type: string
+        default: "{}"
+      build_type:
+        required: false
+        type: string
+        default: "release"
+      reduced_ci_mode:
+        required: false
+        type: string
+        default: "auto"
+      extensions_test_selection:
+        required: false
+        type: string
+        default: "regular"
+
+jobs:
+  generate_matrix:
+    name: Generate matrix
+    runs-on: ubuntu-latest
+    outputs:
+      linux_matrix: ${{ steps.set-matrix-linux.outputs.linux_matrix }}
+      windows_matrix: ${{ steps.set-matrix-windows.outputs.windows_matrix }}
+      osx_matrix: ${{ steps.set-matrix-osx.outputs.osx_matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout Extension CI tools
+        with:
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
+          repository: ${{ inputs.override_ci_tools_repository }}
+
+      - run: |
+          mkdir build
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os linux   --output build/linux_matrix.json   --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os osx     --output build/osx_matrix.json     --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
+          python3 ${{ inputs.matrix_parse_script }} --input extension-ci-tools/config/distribution_matrix.json --select_os windows --output build/windows_matrix.json --exclude "${{ inputs.exclude_archs }}" --opt_in "${{ inputs.opt_in_archs }}" --pretty --reduced_ci_mode ${{ inputs.reduced_ci_mode }}
+
+      - id: set-matrix-linux
+        run: |
+          linux_matrix="`cat build/linux_matrix.json`"
+          echo linux_matrix=$linux_matrix >> $GITHUB_OUTPUT
+
+      - id: set-matrix-osx
+        run: |
+          osx_matrix="`cat build/osx_matrix.json`"
+          echo osx_matrix=$osx_matrix >> $GITHUB_OUTPUT
+
+      - id: set-matrix-windows
+        run: |
+          windows_matrix="`cat build/windows_matrix.json`"
+          echo windows_matrix=$windows_matrix >> $GITHUB_OUTPUT
+
+  linux:
+    name: Linux tests
+    runs-on: ${{ matrix.runner }}
+    needs: generate_matrix
+    if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
+    strategy:
+      matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
+    env:
+      HAS_GCP_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY != '' && secrets.BQ_TEST_PROJECT != '' && secrets.BQ_TEST_DATASET != '' }}
+      BUILD_SHELL: 1
+      DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout override repository
+        if: ${{ inputs.override_repository != '' }}
+        with:
+          repository: ${{ inputs.override_repository }}
+          ref: ${{ inputs.override_ref }}
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - uses: actions/checkout@v4
+        name: Checkout current repository
+        if: ${{ inputs.override_repository == '' }}
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - uses: actions/checkout@v4
+        name: Checkout Extension CI tools
+        with:
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
+          repository: ${{ inputs.override_ci_tools_repository }}
+
+      - name: Build Docker image
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        shell: bash
+        run: |
+          docker build \
+            --build-arg 'vcpkg_url=${{ inputs.vcpkg_url }}' \
+            --build-arg 'vcpkg_commit=${{ inputs.vcpkg_commit }}' \
+            --build-arg 'extra_toolchains=${{ inputs.enable_rust  && format(';{0};rust;', inputs.extra_toolchains) || format(';{0};', inputs.extra_toolchains) }}' \
+            -t duckdb/${{ matrix.duckdb_arch }} \
+            ./extension-ci-tools/docker/${{ matrix.duckdb_arch }}
+
+      - uses: actions/download-artifact@v4
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
+        with:
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: .
+
+      - name: Create env file for docker
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        run: |
+          cat <<-EOF > docker_env.txt
+          BUILD_SHELL=1
+          DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }}
+          DUCKDB_PLATFORM=${{ matrix.duckdb_arch }}
+          LINUX_CI_IN_DOCKER=1
+          SUBSET_EXTENSIONS_TESTS=${{ inputs.extensions_test_selection }}
+          EOF
+          echo '${{ inputs.test_config }}' | jq -r '.test_env_variables // {} | to_entries | map("\(.key)=\(.value)") | .[]' >> docker_env.txt
+
+      - id: auth
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+
+      - name: Test extension
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        env:
+          BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+          BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
+        run: |
+          echo "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}" > /tmp/gcloud-service-key.json
+          docker run \
+            -e BQ_TEST_PROJECT=$BQ_TEST_PROJECT \
+            -e BQ_TEST_DATASET=$BQ_TEST_DATASET \
+            -e GOOGLE_APPLICATION_CREDENTIALS=/auth/gcloud-service-key.json \
+            -v /tmp/gcloud-service-key.json:/auth/gcloud-service-key.json \
+            --env-file=docker_env.txt \
+            -v `pwd`:/duckdb_build_dir \
+            duckdb/${{ matrix.duckdb_arch }} make test_${{ inputs.build_type }}
+
+      - name: Skip tests without GCP credentials
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS != 'true' }}
+        run: |
+          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
+
+  macos:
+    name: MacOS tests
+    runs-on: macos-latest
+    needs: generate_matrix
+    if: ${{ needs.generate_matrix.outputs.osx_matrix != '{}' && needs.generate_matrix.outputs.osx_matrix != '' }}
+    strategy:
+      matrix: ${{fromJson(needs.generate_matrix.outputs.osx_matrix)}}
+    env:
+      HAS_GCP_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY != '' && secrets.BQ_TEST_PROJECT != '' && secrets.BQ_TEST_DATASET != '' }}
+      OSX_BUILD_ARCH: ${{ matrix.osx_build_arch }}
+      GEN: ninja
+      BUILD_SHELL: 1
+      DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout override repository
+        if: ${{ inputs.override_repository != '' }}
+        with:
+          repository: ${{ inputs.override_repository }}
+          ref: ${{ inputs.override_ref }}
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - uses: actions/checkout@v4
+        name: Checkout current repository
+        if: ${{ inputs.override_repository == '' }}
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - uses: actions/checkout@v4
+        name: Checkout Extension CI tools
+        with:
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
+          repository: ${{ inputs.override_ci_tools_repository }}
+
+      - uses: actions/download-artifact@v4
+        if: ${{ matrix.osx_build_arch == 'arm64' }}
+        with:
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: .
+
+      - id: auth
+        if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+
+      - name: Test extension
+        if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        env:
+          SUBSET_EXTENSIONS_TESTS: ${{ inputs.extensions_test_selection }}
+          BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+          BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
+        shell: bash
+        run: |
+          eval "$(jq -r '.test_env_variables // {} | to_entries[] | "export \(.key)=\(.value | @sh)"' <<< '${{inputs.test_config}}')"
+          make test_${{ inputs.build_type }}
+
+      - name: Skip tests without GCP credentials
+        if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS != 'true' }}
+        run: |
+          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
+
+  windows:
+    name: Windows tests
+    runs-on: ${{ matrix.runner }}
+    needs: generate_matrix
+    if: ${{ needs.generate_matrix.outputs.windows_matrix != '{}' && needs.generate_matrix.outputs.windows_matrix != '' }}
+    strategy:
+      matrix: ${{fromJson(needs.generate_matrix.outputs.windows_matrix)}}
+    env:
+      HAS_GCP_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY != '' && secrets.BQ_TEST_PROJECT != '' && secrets.BQ_TEST_DATASET != '' }}
+      BUILD_SHELL: 1
+      DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
+      DUCKDB_PLATFORM_RTOOLS: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 1 || 0 }}
+      GEN: ninja
+    steps:
+      - name: Keep \n line endings
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - uses: actions/checkout@v4
+        name: Checkout override repository
+        if: ${{ inputs.override_repository != '' }}
+        with:
+          repository: ${{ inputs.override_repository }}
+          ref: ${{ inputs.override_ref }}
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - uses: actions/checkout@v4
+        name: Checkout current repository
+        if: ${{ inputs.override_repository == '' }}
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - uses: actions/checkout@v4
+        name: Checkout Extension CI tools
+        with:
+          path: 'extension-ci-tools'
+          ref: ${{ inputs.ci_tools_version }}
+          repository: ${{ inputs.override_ci_tools_repository }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: .
+
+      - id: auth
+        if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+
+      - name: Test extension
+        if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
+        env:
+          BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
+          BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
+          GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: ${{ github.workspace }}\roots.pem
+          SUBSET_EXTENSIONS_TESTS: ${{ inputs.extensions_test_selection }}
+        shell: bash
+        run: |
+          ROOTS_FILE="${{ github.workspace }}/roots.pem"
+          echo "Downloading roots.pem to: $ROOTS_FILE"
+          curl --create-dirs -o "$ROOTS_FILE" -L https://pki.google.com/roots.pem
+          export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ROOTS_FILE"
+          eval "$(jq -r '.test_env_variables // {} | to_entries[] | "export \(.key)=\(.value | @sh)"' <<< '${{inputs.test_config}}')"
+          make test_${{ inputs.build_type }} GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ROOTS_FILE"
+
+      - name: Skip tests without GCP credentials
+        if: ${{ env.HAS_GCP_CREDENTIALS != 'true' }}
+        shell: bash
+        run: |
+          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
