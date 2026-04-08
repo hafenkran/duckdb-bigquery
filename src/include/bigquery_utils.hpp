@@ -8,6 +8,7 @@
 #include "google/cloud/bigquerycontrol/v2/table_client.h"
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/struct.pb.h>
 
 #include <arrow/api.h>
 #include <chrono>
