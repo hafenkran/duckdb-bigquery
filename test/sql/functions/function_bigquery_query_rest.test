@@ -1,0 +1,187 @@
+# name: test/sql/functions/function_bigquery_query_rest.test
+# description: Test bigquery_query with use_rest_api=true (REST fast path with optional job creation)
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+statement ok
+SET bq_debug_show_queries = true;
+
+# Basic query with REST API
+query I
+SELECT count(*) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 1 AS x UNION ALL SELECT 2 UNION ALL SELECT 3', use_rest_api=true);
+----
+3
+
+# Simple value
+query I
+SELECT x FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 42 AS x', use_rest_api=true);
+----
+42
+
+# Query parameters
+query I
+SELECT x FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x', 42, use_rest_api=true);
+----
+42
+
+# Prepared statements with parameters
+statement ok
+PREPARE bq_rest_params_stmt AS
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x, ? AS y', ?, ?, use_rest_api=true);
+
+query IT
+EXECUTE bq_rest_params_stmt(42, 'abc');
+----
+42	abc
+
+# Type coverage: basic scalar types
+query IIIR
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT
+        TRUE AS bool_col,
+        42 AS int64_col,
+        CAST(3.14 AS FLOAT64) AS float64_col,
+        "hello" AS string_col
+', use_rest_api=true);
+----
+true	42	3.14	hello
+
+# Type coverage: temporal types
+query III
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT
+        DATE("2024-01-15") AS date_col,
+        TIME(12, 34, 56) AS time_col,
+        TIMESTAMP("2024-01-15 12:34:56 UTC") AS timestamp_col
+', use_rest_api=true);
+----
+2024-01-15	12:34:56	2024-01-15 12:34:56
+
+# Type coverage: NUMERIC
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT CAST(123.45 AS NUMERIC) AS numeric_col
+', use_rest_api=true);
+----
+123.450000000
+
+# Type coverage: GEOGRAPHY
+query I
+SELECT typeof(geo)
+FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT ST_GEOGPOINT(13.4050, 52.5200) AS geo
+', use_rest_api=true);
+----
+GEOMETRY('OGC:CRS84')
+
+# Type coverage: DATETIME (returned as ISO string, not epoch seconds)
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT DATETIME("2024-01-15 12:34:56") AS datetime_col
+', use_rest_api=true);
+----
+2024-01-15 12:34:56
+
+# Type coverage: BYTES (returned as base64)
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT b"hello" AS bytes_col
+', use_rest_api=true);
+----
+hello
+
+# Type coverage: INTERVAL
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT INTERVAL 1 YEAR + INTERVAL 2 MONTH + INTERVAL 3 DAY AS interval_col
+', use_rest_api=true);
+----
+1 year 2 months 3 days
+
+# Type coverage: STRUCT
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT STRUCT(1 AS id, "hello" AS name) AS s
+', use_rest_api=true);
+----
+{'id': 1, 'name': hello}
+
+# Type coverage: ARRAY (LIST)
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT [1, 2, 3] AS arr
+', use_rest_api=true);
+----
+[1, 2, 3]
+
+# Type coverage: nested STRUCT with LIST
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT * FROM UNNEST([
+        STRUCT(STRUCT(2 AS Order_Id, [1, 2] AS Item_Name) as holder),
+        STRUCT(STRUCT(1 AS Order_Id, [3, 4] AS Item_Name) as holder)
+    ])
+', use_rest_api=true);
+----
+{'Order_Id': 2, 'Item_Name': [1, 2]}
+{'Order_Id': 1, 'Item_Name': [3, 4]}
+
+# NULL handling
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT CAST(NULL AS INT64) AS x', use_rest_api=true);
+----
+NULL
+
+# Type coverage: BIGNUMERIC (mapped to VARCHAR)
+query I
+SELECT typeof(x) FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT CAST(1234567890123456789.1234567890 AS BIGNUMERIC) AS x
+', use_rest_api=true);
+----
+VARCHAR
+
+# Type coverage: JSON
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT JSON ''{"key": "value", "num": 42}'' AS json_col
+', use_rest_api=true);
+----
+{"key":"value","num":42}
+
+# Type coverage: RANGE
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT RANGE(DATE "2024-01-01", DATE "2024-12-31") AS range_col
+', use_rest_api=true);
+----
+[2024-01-01, 2024-12-31)
+
+# Type coverage: ARRAY<STRUCT<...>>
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT [STRUCT(1 AS id, "a" AS name), STRUCT(2 AS id, "b" AS name)] AS arr_struct
+', use_rest_api=true);
+----
+[{'id': 1, 'name': a}, {'id': 2, 'name': b}]
+
+# Type coverage: STRUCT with NULL fields
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT STRUCT(CAST(NULL AS INT64) AS id, "hello" AS name) AS s
+', use_rest_api=true);
+----
+{'id': NULL, 'name': hello}
+
+# Type coverage: ARRAY with NULL elements
+query I
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
+    SELECT [1, NULL, 3] AS arr
+', use_rest_api=true);
+----
+[1, NULL, 3]
+
+statement ok
+SET bq_debug_show_queries = false;

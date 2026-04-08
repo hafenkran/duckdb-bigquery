@@ -292,10 +292,19 @@ The `bigquery_query` function supports the following named parameters:
 | Parameter         | Type      | Description                                                                                                        |
 | ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
 | `use_legacy_scan` | `BOOLEAN` | Use legacy scan implementation: `true` (legacy) or `false` (optimized, default).                                   |
+| `use_rest_api`    | `BOOLEAN` | When `true`, uses the BigQuery REST API with optional job creation instead of the Storage API. This provides lower latency for small result sets (under ~10MB) by returning results inline, avoiding the overhead of creating a job and reading via the Storage API. Default: `false`. |
 | `dry_run`         | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
 | `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                               |
 | `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
 | `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
+
+> **REST API vs Storage API**: By default, `bigquery_query` uses the [BigQuery Storage Read API](https://cloud.google.com/bigquery/docs/reference/storage) to fetch results. This executes the query as a job, materializes results into a temporary table, and reads them via gRPC — optimized for large result sets but adds overhead for small queries.
+>
+> With `use_rest_api=true`, the query is executed using the [jobs.query REST endpoint](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query) with [`JOB_CREATION_OPTIONAL`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query#JobCreationMode) mode. For short-running queries, BigQuery can return results inline without creating a job at all, significantly reducing latency. This is ideal for interactive or exploratory queries with small result sets (under ~10MB).
+>
+> ```sql
+> D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT count(*) FROM `my_dataset.my_table`', use_rest_api=true);
+> ```
 
 ### `bigquery_execute` Function
 
