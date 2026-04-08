@@ -36,12 +36,32 @@ jobs:
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw"
             vcpkg_commit: "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
             extra_toolchains: "parser_tools"
+            skip_tests: true
+            upload_test_bundle: true
             save_cache: ${{ github.event_name != 'pull_request' }}
+            reduced_ci_mode: "disabled"
+
+    duckdb-stable-test:
+        name: Test extension binaries
+        needs: duckdb-stable-build
+        if: |
+            github.event_name == 'pull_request' ||
+            (github.event_name == 'push' && github.ref_name == 'main') ||
+            (github.event_name == 'push' && github.ref_type == 'tag')
+        uses: ./.github/workflows/_extension_tests.yml
+        secrets: inherit
+        with:
+            extension_name: bigquery
+            duckdb_version: v1.5.1
+            ci_tools_version: v1.5.1
+            exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw"
+            vcpkg_commit: "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
+            extra_toolchains: "parser_tools"
             reduced_ci_mode: "disabled"
 
     duckdb-stable-deploy:
         name: Deploy extension binaries
-        needs: duckdb-stable-build
+        needs: duckdb-stable-test
         if: |
             github.event_name == 'workflow_dispatch' ||
             (github.event_name == 'push' && github.ref_name == 'main') ||

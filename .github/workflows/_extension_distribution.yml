@@ -158,6 +158,10 @@ on:
         required: false
         type: boolean
         default: false
+      upload_test_bundle:
+        required: false
+        type: boolean
+        default: false
       extra_extension_config:
         required: false
         type: string
@@ -459,8 +463,19 @@ jobs:
           path: ./ccache_dir
           key: ccache-extension-distribution-${{ matrix.duckdb_arch }}-${{ inputs.duckdb_version }}-${{ steps.ccache_timestamp.outputs.timestamp }}
 
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_test_bundle && matrix.duckdb_arch != 'linux_arm64' }}
+        with:
+          if-no-files-found: error
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: |
+            build/${{ inputs.build_type }}/test/**
+            build/${{ inputs.build_type }}/src/**
+            build/${{ inputs.build_type }}/extension/**
+            build/${{ inputs.build_type }}/vcpkg_installed/**
+
       - id: "auth"
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        if: ${{ inputs.skip_tests == false && matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
         uses: "google-github-actions/auth@v3"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
@@ -731,8 +746,19 @@ jobs:
         run: |
           EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} ENABLE_EXTENSION_AUTOINSTALL=1 ENABLE_EXTENSION_AUTOLOADING=1 make ${{ inputs.build_type }}
 
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_test_bundle && matrix.osx_build_arch == 'arm64' }}
+        with:
+          if-no-files-found: error
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: |
+            build/${{ inputs.build_type }}/test/**
+            build/${{ inputs.build_type }}/src/**
+            build/${{ inputs.build_type }}/extension/**
+            build/${{ inputs.build_type }}/vcpkg_installed/**
+
       - id: "auth"
-        if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
+        if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         uses: "google-github-actions/auth@v2"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
@@ -1000,8 +1026,19 @@ jobs:
           )
           make ${{ inputs.build_type }}
 
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_test_bundle }}
+        with:
+          if-no-files-found: error
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: |
+            build/${{ inputs.build_type }}/test/**
+            build/${{ inputs.build_type }}/src/**
+            build/${{ inputs.build_type }}/extension/**
+            build/${{ inputs.build_type }}/vcpkg_installed/**
+
       - id: "auth"
-        if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
+        if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         uses: "google-github-actions/auth@v2"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
