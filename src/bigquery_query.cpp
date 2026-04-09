@@ -72,6 +72,55 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         return result;
     }
 
+    // REST-only path (opt-in, fast, no Storage API overhead)
+    if (params.use_rest_api) {
+        auto bind_data = make_uniq<BigqueryQueryRestBindData>();
+        bind_data->query = query_string;
+        bind_data->query_parameters = query_parameters;
+
+        if (database) {
+            auto &catalog = database->GetCatalog();
+            if (catalog.GetCatalogType() != "bigquery") {
+                throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
+            }
+            if (!params.billing_project.empty() || !params.api_endpoint.empty() || !params.grpc_endpoint.empty()) {
+                throw BinderException("Named parameters are not supported for attached databases");
+            }
+
+            auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
+            auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
+
+            bind_data->config = bigquery_catalog.config;
+            bind_data->bq_client = transaction.GetBigqueryClient();
+        } else {
+            auto bq_config = BigqueryConfig(dbname_or_project_id)
+                                 .SetBillingProjectId(params.billing_project)
+                                 .SetApiEndpoint(params.api_endpoint)
+                                 .SetGrpcEndpoint(params.grpc_endpoint);
+            auto bq_client = make_shared_ptr<BigqueryClient>(context, bq_config);
+
+            bind_data->config = bq_config;
+            bind_data->bq_client = bq_client;
+        }
+
+        ColumnList columns;
+        vector<unique_ptr<Constraint>> constraints;
+        bind_data->bq_client->GetTableInfoForQuery(query_string, bind_data->query_parameters, columns, constraints);
+
+        for (auto &column : columns.Logical()) {
+            names.push_back(column.GetName());
+            return_types.push_back(column.GetType());
+        }
+        if (names.empty()) {
+            throw BinderException("BigQuery query has no columns: " + query_string);
+        }
+
+        bind_data->names = names;
+        bind_data->types = return_types;
+        return std::move(bind_data);
+    }
+
+    // Default path: Storage API
     if (!params.use_legacy_scan) {
         auto bind_data = make_uniq<BigqueryArrowScanBindData>();
         bind_data->query = query_string;
@@ -138,7 +187,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         return std::move(bind_data);
     } else {
-        // Legacy implementation (V1)
+        // Legacy implementation (V1) with Storage API
         auto bind_data = make_uniq<BigqueryLegacyScanBindData>();
         bind_data->query = query_string;
         bind_data->query_parameters = query_parameters;
@@ -159,7 +208,6 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
             bind_data->config = bigquery_catalog.config;
             bind_data->bq_client = transaction.GetBigqueryClient();
         } else {
-            // Use the provided project_id of the gcp project
             auto bq_config = BigqueryConfig(dbname_or_project_id)
                                  .SetBillingProjectId(params.billing_project)
                                  .SetApiEndpoint(params.api_endpoint)
@@ -195,22 +243,64 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     }
 }
 
+//! Global state for REST inline results (optional job creation fast path)
+struct BigqueryQueryInlineGlobalState : public GlobalTableFunctionState {
+    google::protobuf::RepeatedPtrField<::google::protobuf::Struct> rows;
+    vector<LogicalType> types;
+
+    mutable mutex lock;
+    idx_t current_row = 0;
+    bool done = false;
+};
+
 static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContext &context,
                                                                     TableFunctionInitInput &input) {
     // Dry run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(input.bind_data.get())) {
         return make_uniq<GlobalTableFunctionState>();
     }
-    // New Scan
+    // REST-only path (opt-in via use_rest_api=true)
+    if (dynamic_cast<const BigqueryQueryRestBindData *>(input.bind_data.get())) {
+        auto &bind_data = input.bind_data->CastNoConst<BigqueryQueryRestBindData>();
+
+        // Execute the query (with JOB_CREATION_OPTIONAL)
+        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query,
+                                                                "",
+                                                                false,
+                                                                bind_data.query_parameters,
+                                                                /*optional_job_creation=*/true);
+
+        if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
+            throw BinderException("Query did not complete within the timeout.");
+        }
+
+        auto gstate = make_uniq<BigqueryQueryInlineGlobalState>();
+        gstate->types = bind_data.types;
+        gstate->rows = query_response.rows();
+
+        // Paginate if there are more results
+        string page_token = query_response.page_token();
+        if (!page_token.empty() && query_response.has_job_reference()) {
+            auto job_ref = query_response.job_reference();
+            while (!page_token.empty()) {
+                auto next_page = bind_data.bq_client->GetQueryResults(job_ref, page_token);
+                gstate->rows.MergeFrom(next_page.rows());
+                page_token = next_page.page_token();
+            }
+        }
+
+        return std::move(gstate);
+    }
+    // Default path: Storage API (Arrow scan)
     if (dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
-        // Arrow scan implementation
         auto &mutable_bind_data = input.bind_data->CastNoConst<BigqueryArrowScanBindData>();
 
-        // Execute the query and get destination table
+        // Force job creation (not optional) since Storage API needs a destination table
         auto query_response = mutable_bind_data.bq_client->ExecuteQuery(mutable_bind_data.query,
                                                                         "",
                                                                         false,
-                                                                        mutable_bind_data.query_parameters);
+                                                                        mutable_bind_data.query_parameters,
+                                                                        /*optional_job_creation=*/false);
         auto job = mutable_bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
         if (job.status().has_error_result()) {
@@ -224,11 +314,15 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
         mutable_bind_data.table_ref = table_ref;
         return BigqueryArrowScanFunction::BigqueryArrowScanInitGlobal(context, input);
     } else {
-        // Legacy scan implementation
+        // Storage API: Legacy scan path (use_legacy_scan=true)
         auto &bind_data = input.bind_data->CastNoConst<BigqueryLegacyScanBindData>();
 
-        // Execute the query and get destination table
-        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", false, bind_data.query_parameters);
+        // Force job creation (not optional) since Storage API needs a destination table
+        auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query,
+                                                                "",
+                                                                false,
+                                                                bind_data.query_parameters,
+                                                                /*optional_job_creation=*/false);
         auto job = bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
         if (job.status().has_error_result()) {
@@ -249,6 +343,10 @@ static unique_ptr<LocalTableFunctionState> BigqueryQueryInitLocal(ExecutionConte
                                                                   GlobalTableFunctionState *global_state) {
     // Dry run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(input.bind_data.get())) {
+        return make_uniq<LocalTableFunctionState>();
+    }
+    // Inline results (fast path)
+    if (dynamic_cast<BigqueryQueryInlineGlobalState *>(global_state)) {
         return make_uniq<LocalTableFunctionState>();
     }
     // New Scan
@@ -280,6 +378,30 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
         return;
     }
 
+    // Inline results (fast path - optional job creation)
+    if (auto *gstate = dynamic_cast<BigqueryQueryInlineGlobalState *>(data.global_state.get())) {
+        lock_guard<mutex> glock(gstate->lock);
+        if (gstate->done) {
+            return;
+        }
+
+        idx_t rows_to_read =
+            MinValue<idx_t>(STANDARD_VECTOR_SIZE, static_cast<idx_t>(gstate->rows.size()) - gstate->current_row);
+        if (rows_to_read == 0) {
+            gstate->done = true;
+            return;
+        }
+
+        output.Reset();
+        BigqueryUtils::FillChunkFromRestRows(gstate->rows, gstate->current_row, rows_to_read, gstate->types, output);
+        gstate->current_row += output.size();
+
+        if (gstate->current_row >= static_cast<idx_t>(gstate->rows.size())) {
+            gstate->done = true;
+        }
+        return;
+    }
+
     // New Scan
     if (dynamic_cast<const BigqueryArrowScanBindData *>(data.bind_data.get())) {
         BigqueryArrowScanFunction::BigqueryArrowScanExecute(context, data, output);
@@ -297,6 +419,11 @@ static BindInfo BigqueryQueryGetBindInfo(const optional_ptr<FunctionData> bind_d
 
     // Dry Run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(base)) {
+        return info;
+    }
+
+    // REST path
+    if (dynamic_cast<const BigqueryQueryRestBindData *>(base)) {
         return info;
     }
 
@@ -329,6 +456,13 @@ static InsertionOrderPreservingMap<string> BigqueryQueryToString(TableFunctionTo
         return result;
     }
 
+    // REST path
+    if (const auto *rest_bind_data = dynamic_cast<const BigqueryQueryRestBindData *>(base)) {
+        result["Query"] = rest_bind_data->query;
+        result["Type"] = "REST";
+        return result;
+    }
+
     // New Scan
     if (const auto *arrow_bind_data = dynamic_cast<const BigqueryArrowScanBindData *>(input.bind_data.get())) {
         result["Query"] = arrow_bind_data->query;
@@ -352,6 +486,12 @@ static unique_ptr<NodeStatistics> BigqueryQueryCardinality(ClientContext &contex
         return make_uniq<NodeStatistics>(1, 1);
     }
 
+    // REST path
+    if (const auto *rest = dynamic_cast<const BigqueryQueryRestBindData *>(base)) {
+        const idx_t n = rest->estimated_row_count;
+        return make_uniq<NodeStatistics>(n, n);
+    }
+
     // New Scan
     if (const auto *arrow = dynamic_cast<const BigqueryArrowScanBindData *>(base)) {
         const idx_t n = arrow->estimated_row_count;
@@ -373,6 +513,15 @@ static double BigqueryQueryProgress(ClientContext &context,
     // Dry run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(bind_data_p)) {
         return 100.0;
+    }
+
+    // Inline results
+    if (const auto *inline_gs = dynamic_cast<const BigqueryQueryInlineGlobalState *>(global_state)) {
+        lock_guard<mutex> glock(inline_gs->lock);
+        if (inline_gs->done || inline_gs->rows.empty()) {
+            return 100.0;
+        }
+        return 100.0 * static_cast<double>(inline_gs->current_row) / static_cast<double>(inline_gs->rows.size());
     }
 
     const auto *b = bind_data_p;
@@ -427,6 +576,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
     named_parameters["use_legacy_scan"] = LogicalType::BOOLEAN;
+    named_parameters["use_rest_api"] = LogicalType::BOOLEAN;
     named_parameters["dry_run"] = LogicalType::BOOLEAN;
     varargs = LogicalType::ANY;
 }

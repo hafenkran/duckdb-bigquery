@@ -845,27 +845,38 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query,
                                                                         const string &location,
                                                                         const bool &dry_run,
-                                                                        const vector<Value> &query_parameters) {
+                                                                        const vector<Value> &query_parameters,
+                                                                        const bool &optional_job_creation) {
     CheckAuthentication();
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response = PostQueryJobInternal(client, query, location, dry_run, query_parameters);
+    auto response = PostQueryJobInternal(client, query, location, dry_run, query_parameters, optional_job_creation);
     if (!response.ok()) {
         ThrowOnErrorStatus(response.status());
 
         if (CheckSSLError(response.status())) {
-            return ExecuteQuery(query, location, dry_run, query_parameters);
+            return ExecuteQuery(query, location, dry_run, query_parameters, optional_job_creation);
         }
 
-        throw BinderException("Query execution failed: " + response.status().message());
+        const auto &message = response.status().message();
+        if (message.find("Array cannot have a null element") != string::npos) {
+            throw BinderException("Query execution failed: BigQuery does not allow query results with ARRAY values "
+                                  "that contain NULL elements. Original error: " +
+                                  message);
+        }
+
+        throw BinderException("Query execution failed: " + message);
     }
 
     auto complete = response->job_complete().value();
     if (!complete) {
-        auto job_id = response->job_reference().job_id();
-        throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
+        if (response->has_job_reference()) {
+            auto job_id = response->job_reference().job_id();
+            throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
+        }
+        throw BinderException("Query execution exceeded the timeout.");
     }
 
     return *response;
@@ -921,7 +932,8 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     const string &query,
     const string &location,
     const bool &dry_run,
-    const vector<Value> &query_parameters) {
+    const vector<Value> &query_parameters,
+    const bool &optional_job_creation) {
 
     if (!dry_run && BigquerySettings::DebugQueryPrint()) {
         std::cout << "query: " << query << std::endl;
@@ -938,6 +950,14 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     query_request.mutable_use_legacy_sql()->set_value(false);
     // query_request.mutable_max_results()->set_value(3);
     query_request.set_dry_run(dry_run);
+
+    // Use optional job creation mode: BigQuery will return results inline
+    // for short-running queries, avoiding the overhead of job + Storage API.
+    // When the caller needs a job reference (e.g. for Storage API reads),
+    // they should pass optional_job_creation=false.
+    if (!dry_run && optional_job_creation) {
+        query_request.set_job_creation_mode(google::cloud::bigquery::v2::QueryRequest::JOB_CREATION_OPTIONAL);
+    }
 
     int timeout_ms = BigquerySettings::QueryTimeoutMs();
     query_request.mutable_timeout_ms()->set_value(timeout_ms);

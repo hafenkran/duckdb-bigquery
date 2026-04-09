@@ -79,7 +79,8 @@ public:
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query,
                                                             const string &location = "",
                                                             const bool &dry_run = false,
-                                                            const vector<Value> &query_parameters = {});
+                                                            const vector<Value> &query_parameters = {},
+                                                            const bool &optional_job_creation = false);
     google::cloud::bigquery::v2::GetQueryResultsResponse GetQueryResults(
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
@@ -111,7 +112,8 @@ private:
         const string &query,
         const string &location = "",
         const bool &dry_run = false,
-        const vector<Value> &query_parameters = {});
+        const vector<Value> &query_parameters = {},
+        const bool &optional_job_creation = false);
 
     google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> GetQueryResultsInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
