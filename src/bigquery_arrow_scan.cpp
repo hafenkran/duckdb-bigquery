@@ -290,6 +290,13 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
             state.column_ids.clear();
         }
     };
+    bool only_rowid_columns = !state.column_ids.empty();
+    for (auto col_id : state.column_ids) {
+        if (col_id != COLUMN_IDENTIFIER_ROW_ID && col_id >= 0) {
+            only_rowid_columns = false;
+            break;
+        }
+    }
 
     if (gstate.CanRemoveFilterColumns()) {
         state.all_columns.Reset();
@@ -355,7 +362,6 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
         if (!data.requires_cast) {
             for (idx_t i = 0; i < output.ColumnCount(); i++) {
                 auto &dst_type = output.data[i].GetType();
-                // scanned type from gstate.scanned_types (physical source type)
                 const LogicalType &src_type = gstate.scanned_types[i];
                 if (dst_type.id() == LogicalTypeId::GEOMETRY && src_type.id() == LogicalTypeId::VARCHAR) {
                     geometry_cast_needed = true;
@@ -376,6 +382,18 @@ void BigqueryArrowScanFunction::BigqueryArrowScanExecute(ClientContext &ctx,
                                               arrow_scan_is_projected,
                                               COLUMN_IDENTIFIER_ROW_ID);
         } else {
+            if (only_rowid_columns) {
+                for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
+                    output.data[col_idx].Sequence(NumericCast<int64_t>(gstate.position.load()), 1, output_size);
+                }
+                output.SetCardinality(output_size);
+                output.Verify();
+                state.chunk_offset += output.size();
+
+                lock_guard<mutex> glock(gstate.lock);
+                gstate.position += output.size();
+                return;
+            }
             state.all_columns.Reset();
             state.all_columns.SetCardinality(output_size);
             ensure_column_id_coverage(state.all_columns);
