@@ -859,7 +859,14 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
             return ExecuteQuery(query, location, dry_run, query_parameters, optional_job_creation);
         }
 
-        throw BinderException("Query execution failed: " + response.status().message());
+        const auto &message = response.status().message();
+        if (message.find("Array cannot have a null element") != string::npos) {
+            throw BinderException("Query execution failed: BigQuery does not allow query results with ARRAY values "
+                                  "that contain NULL elements. Original error: " +
+                                  message);
+        }
+
+        throw BinderException("Query execution failed: " + message);
     }
 
     auto complete = response->job_complete().value();
