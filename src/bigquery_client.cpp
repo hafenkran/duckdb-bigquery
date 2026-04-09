@@ -385,6 +385,7 @@ BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
 
     auto response = client->GetDataset(request);
     if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
         if (CheckSSLError(response.status())) {
             return GetDataset(dataset_id);
         }
