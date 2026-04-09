@@ -954,15 +954,16 @@ Value BigqueryUtils::ParseBigQueryInterval(const string &str) {
 string BigqueryUtils::Base64Decode(const string &encoded) {
     static const string base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     string decoded;
-    int val = 0, valb = -8;
+    uint32_t val = 0;
+    int32_t valb = -8;
     for (char c : encoded) {
         if (c == '=' || c == '\n' || c == '\r') break;
         auto pos = base64_chars.find(c);
         if (pos == string::npos) continue;
-        val = (val << 6) + static_cast<int>(pos);
+        val = (val << 6U) + static_cast<uint32_t>(pos);
         valb += 6;
         if (valb >= 0) {
-            decoded.push_back(static_cast<char>((val >> valb) & 0xFF));
+            decoded.push_back(static_cast<char>((val >> static_cast<uint32_t>(valb)) & 0xFFU));
             valb -= 8;
         }
     }
