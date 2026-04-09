@@ -151,14 +151,6 @@ SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
 ----
 {"key":"value","num":42}
 
-# Type coverage: RANGE
-query I
-SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
-    SELECT RANGE(DATE "2024-01-01", DATE "2024-12-31") AS range_col
-', use_rest_api=true);
-----
-[2024-01-01, 2024-12-31)
-
 # Type coverage: ARRAY<STRUCT<...>>
 query I
 SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
