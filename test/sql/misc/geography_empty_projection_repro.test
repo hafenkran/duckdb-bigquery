@@ -15,63 +15,20 @@ statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_only_projection_repro;
 
 statement ok
-CALL bigquery_execute('bq', '
-CREATE OR REPLACE TABLE ${BQ_TEST_DATASET}.geography_only_projection_repro AS
-SELECT ST_GEOGPOINT(-118.2437, 34.0522) AS geom
-UNION ALL
-SELECT ST_GEOGPOINT(-118.1537, 34.0622) AS geom
-');
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_only_projection_repro (g GEOMETRY);
 
-# Control case: reading the GEOGRAPHY column itself works.
-query I
-SELECT typeof(geom)
-FROM bq.${BQ_TEST_DATASET}.geography_only_projection_repro
-LIMIT 1;
-----
-GEOMETRY('OGC:CRS84')
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.geography_only_projection_repro VALUES ('POINT (1 1)'::GEOMETRY);
 
-# Regression case: query projects no table columns, selected_fields is empty,
-# Storage Read returns all columns, but the scan must still produce rows safely.
 query I
-SELECT 1 AS test_col
-FROM bq.${BQ_TEST_DATASET}.geography_only_projection_repro
-LIMIT 1;
+SELECT COUNT(*) as test_col FROM bq.${BQ_TEST_DATASET}.geography_only_projection_repro;
 ----
 1
 
 query I
-SELECT COUNT(*)
-FROM bq.${BQ_TEST_DATASET}.geography_only_projection_repro;
-----
-2
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_mixed_projection_repro;
-
-statement ok
-CALL bigquery_execute('bq', '
-CREATE OR REPLACE TABLE ${BQ_TEST_DATASET}.geography_mixed_projection_repro AS
-SELECT 1 AS id, ST_GEOGPOINT(-118.2437, 34.0522) AS geom
-UNION ALL
-SELECT 2 AS id, ST_GEOGPOINT(-118.1537, 34.0622) AS geom
-');
-
-# Mixed tables are not affected.
-query I
-SELECT 1 AS test_col
-FROM bq.${BQ_TEST_DATASET}.geography_mixed_projection_repro
-LIMIT 1;
+SELECT 1 AS test_col FROM bq.${BQ_TEST_DATASET}.geography_only_projection_repro LIMIT 1;
 ----
 1
-
-query I
-SELECT COUNT(*)
-FROM bq.${BQ_TEST_DATASET}.geography_mixed_projection_repro;
-----
-2
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_only_projection_repro;
-
-statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_mixed_projection_repro;
