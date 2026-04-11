@@ -224,7 +224,6 @@ public:
             return google::cloud::bigquery::storage::v1::ArrowSerializationOptions::LZ4_FRAME;
         }
     }
-
 };
 
 

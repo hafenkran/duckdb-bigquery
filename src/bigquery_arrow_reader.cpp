@@ -264,7 +264,8 @@ google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRows
     return read_client->ReadRows(stream_name, row_offset);
 }
 
-std::shared_ptr<arrow::Schema> BigqueryArrowReader::ReadSchema(const google::cloud::bigquery::storage::v1::ArrowSchema &schema) {
+std::shared_ptr<arrow::Schema> BigqueryArrowReader::ReadSchema(
+    const google::cloud::bigquery::storage::v1::ArrowSchema &schema) {
     const auto &serialized = schema.serialized_schema();
     auto buffer_ptr = arrow::Buffer::Wrap(serialized.data(), serialized.size());
     arrow::io::BufferReader buffer_reader(buffer_ptr);
@@ -295,8 +296,8 @@ std::shared_ptr<arrow::RecordBatch> BigqueryArrowReader::ReadBatch(
             throw BinderException("Failed to read Arrow RecordBatch");
         }
     } else {
-        auto arrow_buffer = arrow::Buffer::Wrap(batch.serialized_record_batch().data(),
-                                                batch.serialized_record_batch().size());
+        auto arrow_buffer =
+            arrow::Buffer::Wrap(batch.serialized_record_batch().data(), batch.serialized_record_batch().size());
         arrow::io::BufferReader buffer_reader(arrow_buffer);
 
         auto options = arrow::ipc::IpcReadOptions::Defaults();

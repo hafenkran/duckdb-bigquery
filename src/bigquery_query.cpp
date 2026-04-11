@@ -247,9 +247,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
     }
 
     auto destination_table = job.configuration().query().destination_table();
-    auto table_ref = BigqueryTableRef(destination_table.project_id(),
-                                      destination_table.dataset_id(),
-                                      destination_table.table_id());
+    auto table_ref =
+        BigqueryTableRef(destination_table.project_id(), destination_table.dataset_id(), destination_table.table_id());
     bind_data.table_ref = table_ref;
     return BigqueryScanFunction::BigqueryScanInitGlobalState(context, input);
 }

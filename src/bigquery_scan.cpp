@@ -84,7 +84,7 @@ unique_ptr<FunctionData> BigqueryScanFunction::BigqueryScanBind(ClientContext &c
 }
 
 unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGlobalState(ClientContext &context,
-                                                                                        TableFunctionInitInput &input) {
+                                                                                       TableFunctionInitInput &input) {
     auto &bind_data = input.bind_data->CastNoConst<BigqueryScanBindData>();
 
     vector<string> selected_fields;
@@ -114,10 +114,8 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
     }
 
     idx_t max_read_streams = BigquerySettings::GetMaxReadStreams(context);
-    auto bq_arrow_reader = bind_data.bq_client->CreateArrowReader(bind_data.table_ref,
-                                                                  max_read_streams,
-                                                                  selected_fields,
-                                                                  filter_string);
+    auto bq_arrow_reader =
+        bind_data.bq_client->CreateArrowReader(bind_data.table_ref, max_read_streams, selected_fields, filter_string);
 
     auto factory = make_shared_ptr<BigqueryStreamFactory>(bq_arrow_reader);
     auto factory_dependency = bind_data.GetFactoryDependency();
