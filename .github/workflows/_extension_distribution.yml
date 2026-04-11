@@ -158,6 +158,10 @@ on:
         required: false
         type: boolean
         default: false
+      upload_test_bundle:
+        required: false
+        type: boolean
+        default: false
       extra_extension_config:
         required: false
         type: string
@@ -237,6 +241,7 @@ jobs:
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
     env:
+      HAS_GCP_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY != '' && secrets.BQ_TEST_PROJECT != '' && secrets.BQ_TEST_DATASET != '' }}
       # VCPKG config
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_target_triplet }}
@@ -458,14 +463,25 @@ jobs:
           path: ./ccache_dir
           key: ccache-extension-distribution-${{ matrix.duckdb_arch }}-${{ inputs.duckdb_version }}-${{ steps.ccache_timestamp.outputs.timestamp }}
 
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_test_bundle && matrix.duckdb_arch != 'linux_arm64' }}
+        with:
+          if-no-files-found: error
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: |
+            build/${{ inputs.build_type }}/test/**
+            build/${{ inputs.build_type }}/src/**
+            build/${{ inputs.build_type }}/extension/**
+            build/${{ inputs.build_type }}/vcpkg_installed/**
+
       - id: "auth"
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
+        if: ${{ inputs.skip_tests == false && matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
         uses: "google-github-actions/auth@v3"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
 
       - name: Test extension (inside docker)
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' && inputs.skip_tests == false }}
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         env:
           BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
           BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
@@ -482,7 +498,7 @@ jobs:
             duckdb/${{ matrix.duckdb_arch }} make test_${{ inputs.build_type }}
 
       - name: Test extension (outside docker)
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' && inputs.skip_tests == false }}
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         env:
           DUCKDB_GIT_VERSION: ${{ inputs.duckdb_version }}
           LINUX_CI_IN_DOCKER: 0
@@ -492,6 +508,11 @@ jobs:
         run: |
           eval "$(jq -r '.test_env_variables // {} | to_entries[] | "export \(.key)=\(.value | @sh)"' <<< '${{inputs.test_config}}')"
           make test_${{ inputs.build_type }}
+
+      - name: Skip BigQuery tests without GCP credentials
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS != 'true' }}
+        run: |
+          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
 
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.upload_all_extensions }}
@@ -526,6 +547,7 @@ jobs:
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.osx_matrix)}}
     env:
+      HAS_GCP_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY != '' && secrets.BQ_TEST_PROJECT != '' && secrets.BQ_TEST_DATASET != '' }}
       # VCPKG config
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_target_triplet }}
@@ -724,13 +746,25 @@ jobs:
         run: |
           EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} ENABLE_EXTENSION_AUTOINSTALL=1 ENABLE_EXTENSION_AUTOLOADING=1 make ${{ inputs.build_type }}
 
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_test_bundle && matrix.osx_build_arch == 'arm64' }}
+        with:
+          if-no-files-found: error
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: |
+            build/${{ inputs.build_type }}/test/**
+            build/${{ inputs.build_type }}/src/**
+            build/${{ inputs.build_type }}/extension/**
+            build/${{ inputs.build_type }}/vcpkg_installed/**
+
       - id: "auth"
+        if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         uses: "google-github-actions/auth@v2"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
 
       - name: Test Extension
-        if: ${{ matrix.osx_build_arch == 'arm64' && inputs.skip_tests == false }}
+        if: ${{ matrix.osx_build_arch == 'arm64' && inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         env:
           SUBSET_EXTENSIONS_TESTS: ${{ inputs.extensions_test_selection }}
           BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
@@ -739,6 +773,11 @@ jobs:
         run: |
           eval "$(jq -r '.test_env_variables // {} | to_entries[] | "export \(.key)=\(.value | @sh)"' <<< '${{inputs.test_config}}')"
           make test_${{ inputs.build_type }}
+
+      - name: Skip BigQuery tests without GCP credentials
+        if: ${{ matrix.osx_build_arch == 'arm64' && inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS != 'true' }}
+        run: |
+          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
 
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.upload_all_extensions }}
@@ -773,6 +812,7 @@ jobs:
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.windows_matrix)}}
     env:
+      HAS_GCP_CREDENTIALS: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY != '' && secrets.BQ_TEST_PROJECT != '' && secrets.BQ_TEST_DATASET != '' }}
       # VCPKG config
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_target_triplet }}
@@ -986,13 +1026,25 @@ jobs:
           )
           make ${{ inputs.build_type }}
 
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_test_bundle }}
+        with:
+          if-no-files-found: error
+          name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
+          path: |
+            build/${{ inputs.build_type }}/test/**
+            build/${{ inputs.build_type }}/src/**
+            build/${{ inputs.build_type }}/extension/**
+            build/${{ inputs.build_type }}/vcpkg_installed/**
+
       - id: "auth"
+        if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         uses: "google-github-actions/auth@v2"
         with:
           credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
 
       - name: Test extension
-        if: ${{ inputs.skip_tests == false }}
+        if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
         env:
           BQ_TEST_PROJECT: ${{ secrets.BQ_TEST_PROJECT }}
           BQ_TEST_DATASET: ${{ secrets.BQ_TEST_DATASET }}_${{ matrix.duckdb_arch }}
@@ -1008,6 +1060,12 @@ jobs:
           export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ROOTS_FILE"
           eval "$(jq -r '.test_env_variables // {} | to_entries[] | "export \(.key)=\(.value | @sh)"' <<< '${{inputs.test_config}}')"
           make test_${{ inputs.build_type }} GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ROOTS_FILE"
+
+      - name: Skip BigQuery tests without GCP credentials
+        if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS != 'true' }}
+        shell: bash
+        run: |
+          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
 
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.upload_all_extensions }}
