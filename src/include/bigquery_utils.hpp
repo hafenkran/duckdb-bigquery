@@ -227,28 +227,11 @@ private:
 };
 
 
-// Utility function to calculate column rank mapping for proper ordering
-// Maps column IDs to their ranked positions for reordering
-inline std::vector<column_t> CalculateRanks(const std::vector<column_t> &nums) {
-    size_t n = nums.size();
-    std::vector<std::pair<column_t, column_t>> value_index_pairs(n);
-    for (size_t i = 0; i < n; ++i) {
-        value_index_pairs[i] = {nums[i], i};
-    }
-    std::sort(value_index_pairs.begin(), value_index_pairs.end());
-    std::vector<column_t> ranks(n);
-    for (column_t i = 0; i < n; ++i) {
-        ranks[value_index_pairs[i].second] = i;
-    }
-    return ranks;
-}
-
 struct BigQueryCommonParameters {
     string billing_project;
     string api_endpoint;
     string grpc_endpoint;
     string filter;
-    bool use_legacy_scan = false;
     bool dry_run = false;
     bool use_rest_api = false;
 

@@ -3,7 +3,6 @@
 #include "duckdb/storage/statistics/base_statistics.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
-#include "bigquery_arrow_scan.hpp"
 #include "bigquery_scan.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_schema_entry.hpp"
@@ -37,120 +36,83 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     auto catalog_transaction = bigquery_catalog.GetCatalogTransaction(context);
     auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
 
-    auto use_legacy_scan = BigquerySettings::UseLegacyScan();
-    if (!use_legacy_scan) {
-        auto result = make_uniq<BigqueryArrowScanBindData>();
-        result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
-        result->bq_client = bigquery_transaction->GetBigqueryClient();
-        result->bq_catalog = &bigquery_catalog;
-        result->bq_table_entry = *this;
-        result->bq_config = bigquery_catalog.config;
+    auto result = make_uniq<BigqueryScanBindData>();
+    result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
+    result->bq_client = bigquery_transaction->GetBigqueryClient();
+    result->bq_catalog = &bigquery_catalog;
+    result->bq_table_entry = *this;
+    result->bq_config = bigquery_catalog.config;
 
-        auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
-        auto status = arrow::ExportSchema(*arrow_schema_ptr, &result->schema_root.arrow_schema);
-        if (!status.ok()) {
-            throw BinderException("Arrow schema export failed: " + status.ToString());
-        }
-
-        vector<string> physical_names;             // names extracted from arrow schema
-        vector<LogicalType> physical_return_types; // physical DuckDB logical types derived from Arrow
-        vector<LogicalType> util_mapped_bq_types;  // source physical types used for cast path
-        BigqueryUtils::PopulateAndMapArrowTableTypes(context,
-                                                     result->arrow_table,
-                                                     result->schema_root,
-                                                     physical_names,
-                                                     physical_return_types,
-                                                     util_mapped_bq_types,
-                                                     &columns);
-        if (physical_return_types.empty()) {
-            throw BinderException("BigQuery table has no columns");
-        }
-
-        vector<LogicalType> user_return_types;
-        user_return_types.reserve(columns.LogicalColumnCount());
-        vector<string> user_names;
-        user_names.reserve(columns.LogicalColumnCount());
-        for (auto &col : columns.Logical()) {
-            user_return_types.push_back(col.GetType());
-            user_names.push_back(col.GetName());
-        }
-
-        if (user_return_types.size() != physical_return_types.size()) {
-            const auto physical_count = static_cast<uint64_t>(physical_return_types.size());
-            const auto user_count = static_cast<uint64_t>(user_return_types.size());
-            throw InternalException(
-                StringUtil::Format("Arrow schema column count (%llu) != catalog column count (%llu) for table %s",
-                                   physical_count,
-                                   user_count,
-                                   name));
-        }
-
-        // Build mapping: if physical type differs from user-visible, we will cast.
-        // Prefer util_mapped_bq_types when present because it carries physical source
-        // semantics (e.g. GEOMETRY exposed as VARCHAR alias GEOGRAPHY in Arrow).
-        bool requires_cast = false;
-        vector<LogicalType> mapped_bq_types; // physical source types aligned with user types
-        mapped_bq_types.reserve(user_return_types.size());
-        for (idx_t i = 0; i < user_return_types.size(); i++) {
-            const auto &user_type = user_return_types[i];
-            const auto &chosen_physical =
-                util_mapped_bq_types.empty() ? physical_return_types[i] : util_mapped_bq_types[i];
-
-            if (chosen_physical != user_type) {
-                requires_cast = true;
-            }
-            mapped_bq_types.push_back(chosen_physical);
-        }
-        if (!requires_cast) {
-            mapped_bq_types.clear(); // signal no cast path needed
-        }
-
-        result->names = std::move(user_names);
-        result->all_types = std::move(user_return_types);
-        if (requires_cast) {
-            result->mapped_bq_types = std::move(mapped_bq_types);
-        }
-        result->requires_cast = requires_cast;
-
-        bind_data = std::move(result);
-
-        auto function = BigqueryArrowScanFunction();
-        Value filter_pushdown;
-        if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
-            function.filter_pushdown = BooleanValue::Get(filter_pushdown);
-        }
-        return function;
-    } else {
-        // Use the old Bigquery scan function (bigquery_scan)
-
-        // Legacy scan cannot read BigQuery GEOGRAPHY columns.
-        for (const auto &column : columns.Logical()) {
-            const auto &type = column.GetType();
-            if (BigqueryUtils::IsGeometryType(type)) {
-                throw BinderException("BigQuery GEOGRAPHY columns are not supported in legacy scan. "
-                                      "Please set bq_use_legacy_scan=false (recommended).");
-            }
-        }
-
-        auto result = make_uniq<BigqueryLegacyScanBindData>();
-        result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
-        result->bq_client = bigquery_transaction->GetBigqueryClient();
-        result->bq_catalog = &bigquery_catalog;
-        result->bq_table_entry = *this;
-
-        for (auto &column : columns.Logical()) {
-            result->names.push_back(column.GetName());
-            result->types.push_back(column.GetType());
-        }
-        bind_data = std::move(result);
-
-        auto function = BigqueryScanFunction();
-        Value filter_pushdown;
-        if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
-            function.filter_pushdown = BooleanValue::Get(filter_pushdown);
-        }
-        return function;
+    auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
+    auto status = arrow::ExportSchema(*arrow_schema_ptr, &result->schema_root.arrow_schema);
+    if (!status.ok()) {
+        throw BinderException("Arrow schema export failed: " + status.ToString());
     }
+
+    vector<string> physical_names;
+    vector<LogicalType> physical_return_types;
+    vector<LogicalType> util_mapped_bq_types;
+    BigqueryUtils::PopulateAndMapArrowTableTypes(context,
+                                                 result->arrow_table,
+                                                 result->schema_root,
+                                                 physical_names,
+                                                 physical_return_types,
+                                                 util_mapped_bq_types,
+                                                 &columns);
+    if (physical_return_types.empty()) {
+        throw BinderException("BigQuery table has no columns");
+    }
+
+    vector<LogicalType> user_return_types;
+    user_return_types.reserve(columns.LogicalColumnCount());
+    vector<string> user_names;
+    user_names.reserve(columns.LogicalColumnCount());
+    for (auto &col : columns.Logical()) {
+        user_return_types.push_back(col.GetType());
+        user_names.push_back(col.GetName());
+    }
+
+    if (user_return_types.size() != physical_return_types.size()) {
+        const auto physical_count = static_cast<uint64_t>(physical_return_types.size());
+        const auto user_count = static_cast<uint64_t>(user_return_types.size());
+        throw InternalException(
+            StringUtil::Format("Arrow schema column count (%llu) != catalog column count (%llu) for table %s",
+                               physical_count,
+                               user_count,
+                               name));
+    }
+
+    bool requires_cast = false;
+    vector<LogicalType> mapped_bq_types;
+    mapped_bq_types.reserve(user_return_types.size());
+    for (idx_t i = 0; i < user_return_types.size(); i++) {
+        const auto &user_type = user_return_types[i];
+        const auto &chosen_physical = util_mapped_bq_types.empty() ? physical_return_types[i] : util_mapped_bq_types[i];
+
+        if (chosen_physical != user_type) {
+            requires_cast = true;
+        }
+        mapped_bq_types.push_back(chosen_physical);
+    }
+    if (!requires_cast) {
+        mapped_bq_types.clear();
+    }
+
+    result->names = std::move(user_names);
+    result->all_types = std::move(user_return_types);
+    if (requires_cast) {
+        result->mapped_bq_types = std::move(mapped_bq_types);
+    }
+    result->requires_cast = requires_cast;
+
+    bind_data = std::move(result);
+
+    auto function = BigqueryScanFunction();
+    Value filter_pushdown;
+    if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
+        function.filter_pushdown = BooleanValue::Get(filter_pushdown);
+    }
+    return function;
 }
 
 TableStorageInfo BigqueryTableEntry::GetStorageInfo(ClientContext &context) {
