@@ -820,26 +820,40 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
         throw InternalException("Error while initializing proto writer: project_id mismatch");
     }
 
-    // Check if dataset exists with an exponential backoff retry
+    // Check if table exists with an exponential backoff retry
     auto op = [this, &entry]() -> bool { return TableExists(entry->schema.name, entry->name); };
     auto success = RetryOperation(op, 10, 1000);
     if (!success) {
         throw InternalException("Failed to verify that \"%s.%s\" exists.", entry->schema.name, entry->name);
     }
 
-    auto options = OptionsGRPC()
-                       .set<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicyOption>(
-                           CustomWriteIdempotencyPolicy().clone())
-                       .set<google::cloud::bigquery_storage_v1::BigQueryWriteRetryPolicyOption>(
-                           google::cloud::bigquery_storage_v1::BigQueryWriteLimitedErrorCountRetryPolicy(5).clone())
-                       .set<google::cloud::bigquery_storage_v1::BigQueryWriteBackoffPolicyOption>(
-                           google::cloud::ExponentialBackoffPolicy(
-                               /*initial_delay=*/std::chrono::milliseconds(200),
-                               /*maximum_delay=*/std::chrono::seconds(45),
-                               /*scaling=*/2.0)
-                               .clone());
+    auto connection = GetOrCreateWriteConnection();
+    return make_shared_ptr<BigqueryProtoWriter>(entry, connection, [this]() {
+        InvalidateWriteConnection();
+        return GetOrCreateWriteConnection();
+    });
+}
 
-    return make_shared_ptr<BigqueryProtoWriter>(entry, options);
+std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection> BigqueryClient::GetOrCreateWriteConnection() {
+    if (!cached_write_connection) {
+        auto options = OptionsGRPC()
+                           .set<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicyOption>(
+                               CustomWriteIdempotencyPolicy().clone())
+                           .set<google::cloud::bigquery_storage_v1::BigQueryWriteRetryPolicyOption>(
+                               google::cloud::bigquery_storage_v1::BigQueryWriteLimitedErrorCountRetryPolicy(5).clone())
+                           .set<google::cloud::bigquery_storage_v1::BigQueryWriteBackoffPolicyOption>(
+                               google::cloud::ExponentialBackoffPolicy(
+                                   /*initial_delay=*/std::chrono::milliseconds(200),
+                                   /*maximum_delay=*/std::chrono::seconds(45),
+                                   /*scaling=*/2.0)
+                                   .clone());
+        cached_write_connection = google::cloud::bigquery_storage_v1::MakeBigQueryWriteConnection(options);
+    }
+    return cached_write_connection;
+}
+
+void BigqueryClient::InvalidateWriteConnection() {
+    cached_write_connection.reset();
 }
 
 google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const string &query,

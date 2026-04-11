@@ -63,7 +63,9 @@ void ValidateIntervalRange(const duckdb::interval_t &value) { // TODO
     }
 }
 
-BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google::cloud::Options &options) {
+BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry,
+                                         std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection> connection,
+                                         ConnectionRefreshCallback refresh_connection) {
     auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
     auto project_id = bq_catalog.GetProjectID();
     auto dataset_id = entry->schema.name;
@@ -73,25 +75,37 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
     // Create the message descriptor and prototype
     InitMessageDescriptor(entry);
 
-    int max_retries = 100;
+    // Initialize the BigQuery write client (reuses cached connection)
+    write_client = make_uniq<google::cloud::bigquery_storage_v1::BigQueryWriteClient>(connection);
+
+    // Create the write stream with retries
+    auto stream = google::cloud::bigquery::storage::v1::WriteStream();
+    stream.set_type(google::cloud::bigquery::storage::v1::WriteStream_Type::WriteStream_Type_PENDING);
+
+    int max_retries = 30;
     bool created_successfully = false;
+    bool connection_refreshed = false;
     for (int attempt = 0; attempt < max_retries; attempt++) {
-        // Initialize the BigQuery write client
-        write_client = make_uniq<google::cloud::bigquery_storage_v1::BigQueryWriteClient>(
-            google::cloud::bigquery_storage_v1::MakeBigQueryWriteConnection(options));
-
-        // Create the write stream
-        auto stream = google::cloud::bigquery::storage::v1::WriteStream();
-        stream.set_type(google::cloud::bigquery::storage::v1::WriteStream_Type::WriteStream_Type_PENDING);
-
         auto write_stream_status = write_client->CreateWriteStream(table_string, stream);
         if (write_stream_status) {
             write_stream = write_stream_status.value();
             created_successfully = true;
             break;
         } else {
+            auto status_code = write_stream_status.status().code();
             std::cout << "Failed to create write stream: " << write_stream_status.status() << std::endl
                       << write_stream_status.status().message() << std::endl;
+
+            // If we get a connection-level error, refresh the cached connection and rebuild the client
+            if (!connection_refreshed && refresh_connection &&
+                (status_code == google::cloud::StatusCode::kUnavailable ||
+                 status_code == google::cloud::StatusCode::kInternal)) {
+                std::cout << "Connection error detected, creating fresh connection..." << std::endl;
+                auto new_connection = refresh_connection();
+                write_client = make_uniq<google::cloud::bigquery_storage_v1::BigQueryWriteClient>(new_connection);
+                connection_refreshed = true;
+            }
+
             if (attempt < max_retries - 1) {
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));

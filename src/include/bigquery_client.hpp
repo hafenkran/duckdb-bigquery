@@ -133,11 +133,16 @@ private:
     bool CheckSSLError(const google::cloud::Status &status);
     bool CheckInvalidJsonError(const google::cloud::Status &status);
 
+    std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection> GetOrCreateWriteConnection();
+    void InvalidateWriteConnection();
+
 private:
     BigqueryConfig config;
     bool uses_custom_ca_bundle_path = false;
     bool authentication_checked = false;
     optional_ptr<ClientContext> context;
+
+    std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection> cached_write_connection;
 };
 
 } // namespace bigquery

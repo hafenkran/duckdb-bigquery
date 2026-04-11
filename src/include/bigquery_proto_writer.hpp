@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <google/cloud/bigquery/bigquery_write_client.h>
 #undef NO_DATA
 
@@ -11,7 +12,11 @@ namespace bigquery {
 
 class BigqueryProtoWriter {
 public:
-    explicit BigqueryProtoWriter(BigqueryTableEntry *entry, const google::cloud::Options &options);
+    using ConnectionRefreshCallback = std::function<std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection>()>;
+
+    explicit BigqueryProtoWriter(BigqueryTableEntry *entry,
+                                 std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection> connection,
+                                 ConnectionRefreshCallback refresh_connection = nullptr);
     ~BigqueryProtoWriter();
 
     void InitMessageDescriptor(BigqueryTableEntry *entry);
