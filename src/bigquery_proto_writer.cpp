@@ -1,3 +1,4 @@
+#include <chrono>
 #include <google/protobuf/compiler/parser.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/dynamic_message.h>
@@ -86,7 +87,12 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry,
     bool created_successfully = false;
     bool connection_refreshed = false;
     for (int attempt = 0; attempt < max_retries; attempt++) {
+        auto t_rpc = std::chrono::steady_clock::now();
         auto write_stream_status = write_client->CreateWriteStream(table_string, stream);
+        auto t_rpc_done = std::chrono::steady_clock::now();
+        std::cout << "[bigquery-perf] CreateWriteStream attempt " << attempt << ": "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(t_rpc_done - t_rpc).count()
+                  << "ms (status=" << (write_stream_status.ok() ? "ok" : "error") << ")" << std::endl;
         if (write_stream_status) {
             write_stream = write_stream_status.value();
             created_successfully = true;
@@ -119,6 +125,16 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry,
 }
 
 BigqueryProtoWriter::~BigqueryProtoWriter() {
+    // Ensure gRPC stream is properly closed to avoid connection leaks
+    if (grpc_stream) {
+        try {
+            grpc_stream->WritesDone().get();
+            grpc_stream->Finish().get();
+        } catch (...) {
+            // Best-effort cleanup during destruction
+        }
+        grpc_stream.reset();
+    }
 }
 
 void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
@@ -446,19 +462,34 @@ void BigqueryProtoWriter::SendAppendRequest(const google::cloud::bigquery::stora
 }
 
 void BigqueryProtoWriter::Finalize() {
+    auto t_start = std::chrono::steady_clock::now();
     FlushBufferedRequest();
 
     if (!grpc_stream) {
         return;
     }
 
+    auto t_writes_done = std::chrono::steady_clock::now();
     grpc_stream->WritesDone().get();
+    auto t_finish = std::chrono::steady_clock::now();
+    std::cout << "[bigquery-perf] Finalize WritesDone: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_finish - t_writes_done).count()
+              << "ms" << std::endl;
+
     auto finish = grpc_stream->Finish().get();
+    auto t_finish_done = std::chrono::steady_clock::now();
+    std::cout << "[bigquery-perf] Finalize stream Finish: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_finish_done - t_finish).count()
+              << "ms" << std::endl;
     if (!finish.ok()) {
         throw IOException("Unexpected streaming RPC error: %s", finish.message());
     }
 
     auto finalize = write_client->FinalizeWriteStream(write_stream.name());
+    auto t_finalize_done = std::chrono::steady_clock::now();
+    std::cout << "[bigquery-perf] FinalizeWriteStream: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_finalize_done - t_finish_done).count()
+              << "ms" << std::endl;
     if (!finalize) {
         throw IOException("Unexpected error finalizing write stream: %s", finalize.status().message());
     }
@@ -467,9 +498,17 @@ void BigqueryProtoWriter::Finalize() {
     commit_request.set_parent(table_string);
     commit_request.add_write_streams(write_stream.name());
     auto commit = write_client->BatchCommitWriteStreams(commit_request);
+    auto t_commit_done = std::chrono::steady_clock::now();
+    std::cout << "[bigquery-perf] BatchCommitWriteStreams: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_commit_done - t_finalize_done).count()
+              << "ms" << std::endl;
     if (!commit) {
         throw IOException("Unexpected error commiting write streams: %s", commit.status().message());
     }
+
+    std::cout << "[bigquery-perf] Finalize total: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_commit_done - t_start).count()
+              << "ms" << std::endl;
 }
 
 void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,

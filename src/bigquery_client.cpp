@@ -43,6 +43,7 @@
 #include "arrow/ipc/writer.h"
 #include "grpcpp/grpcpp.h"
 
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -810,6 +811,7 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const Bigquery
 }
 
 shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableEntry *entry) {
+    auto t_start = std::chrono::steady_clock::now();
     CheckAuthentication();
 
     if (entry == nullptr) {
@@ -821,21 +823,45 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
     }
 
     // Check if table exists with an exponential backoff retry
+    auto t_table_check = std::chrono::steady_clock::now();
     auto op = [this, &entry]() -> bool { return TableExists(entry->schema.name, entry->name); };
     auto success = RetryOperation(op, 10, 1000);
+    auto t_table_done = std::chrono::steady_clock::now();
+    std::cout << "[bigquery-perf] TableExists check: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_table_done - t_table_check).count()
+              << "ms" << std::endl;
     if (!success) {
         throw InternalException("Failed to verify that \"%s.%s\" exists.", entry->schema.name, entry->name);
     }
 
+    auto t_conn_start = std::chrono::steady_clock::now();
     auto connection = GetOrCreateWriteConnection();
-    return make_shared_ptr<BigqueryProtoWriter>(entry, connection, [this]() {
+    auto t_conn_done = std::chrono::steady_clock::now();
+    std::cout << "[bigquery-perf] GetOrCreateWriteConnection: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_conn_done - t_conn_start).count()
+              << "ms (cached=" << (t_conn_done - t_conn_start < std::chrono::milliseconds(10) ? "yes" : "no") << ")"
+              << std::endl;
+
+    auto t_writer_start = std::chrono::steady_clock::now();
+    auto writer = make_shared_ptr<BigqueryProtoWriter>(entry, connection, [this]() {
         InvalidateWriteConnection();
         return GetOrCreateWriteConnection();
     });
+    auto t_writer_done = std::chrono::steady_clock::now();
+    std::cout << "[bigquery-perf] ProtoWriter construction (incl. CreateWriteStream): "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_writer_done - t_writer_start).count()
+              << "ms" << std::endl;
+
+    std::cout << "[bigquery-perf] CreateProtoWriter total: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t_writer_done - t_start).count()
+              << "ms" << std::endl;
+
+    return writer;
 }
 
 std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection> BigqueryClient::GetOrCreateWriteConnection() {
     if (!cached_write_connection) {
+        auto t_start = std::chrono::steady_clock::now();
         auto options = OptionsGRPC()
                            .set<google::cloud::bigquery_storage_v1::BigQueryWriteConnectionIdempotencyPolicyOption>(
                                CustomWriteIdempotencyPolicy().clone())
@@ -848,6 +874,10 @@ std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteConnection> Big
                                    /*scaling=*/2.0)
                                    .clone());
         cached_write_connection = google::cloud::bigquery_storage_v1::MakeBigQueryWriteConnection(options);
+        auto t_end = std::chrono::steady_clock::now();
+        std::cout << "[bigquery-perf] MakeBigQueryWriteConnection (cold): "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count()
+                  << "ms" << std::endl;
     }
     return cached_write_connection;
 }
