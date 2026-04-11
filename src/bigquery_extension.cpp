@@ -11,7 +11,6 @@
 // OpenSSL linked through vcpkg
 #include <openssl/opensslv.h>
 
-#include "bigquery_arrow_scan.hpp"
 #include "bigquery_attach.hpp"
 #include "bigquery_clear_cache.hpp"
 #include "bigquery_client.hpp"
@@ -37,9 +36,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigqueryScanFunction bigquery_scan_function;
     loader.RegisterFunction(bigquery_scan_function);
-
-    bigquery::BigqueryArrowScanFunction bigquery_arrow_scan_function;
-    loader.RegisterFunction(bigquery_arrow_scan_function);
 
     bigquery::BigqueryQueryFunction bigquery_query_function;
     loader.RegisterFunction(bigquery_query_function);
@@ -127,21 +123,6 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::VARCHAR,
                               Value(bigquery::BigquerySettings::ArrowCompression()),
                               bigquery::BigquerySettings::SetArrowCompression);
-    config.AddExtensionOption("bq_use_legacy_scan",
-                              "Whether to use legacy scan implementation for BigQuery tables. "
-                              "Default is false (uses optimized Arrow-based implementation).",
-                              LogicalType::BOOLEAN,
-                              Value(bigquery::BigquerySettings::UseLegacyScan()),
-                              bigquery::BigquerySettings::SetUseLegacyScan);
-    // Deprecated setting
-    config.AddExtensionOption(
-        "bq_experimental_use_incubating_scan",
-        "Whether to use the incubating BigQuery scan implementation. This is currently "
-        "experimental and is targeted to become the default in the future. "
-        "DEPRECATED: Use bq_use_legacy_scan instead. This setting will be removed in a future version.",
-        LogicalType::BOOLEAN,
-        Value(true),
-        bigquery::BigquerySettings::SetExperimentalIncubatingScan);
 }
 
 void BigqueryExtension::Load(ExtensionLoader &loader) {
