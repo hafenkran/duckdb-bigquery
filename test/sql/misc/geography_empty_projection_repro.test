@@ -1,0 +1,34 @@
+# name: test/sql/misc/geography_empty_projection_repro.test
+# description: Repro for Storage Read failure on GEOGRAPHY-only tables when no table columns are projected
+# group: [misc]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_only_projection_repro;
+
+statement ok
+CREATE TABLE bq.${BQ_TEST_DATASET}.geography_only_projection_repro (g GEOMETRY);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.geography_only_projection_repro VALUES ('POINT (1 1)'::GEOMETRY);
+
+query I
+SELECT COUNT(*) as test_col FROM bq.${BQ_TEST_DATASET}.geography_only_projection_repro;
+----
+1
+
+query I
+SELECT 1 AS test_col FROM bq.${BQ_TEST_DATASET}.geography_only_projection_repro LIMIT 1;
+----
+1
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_only_projection_repro;
