@@ -506,6 +506,9 @@ void BigqueryProtoWriter::Finalize() {
         throw IOException("Unexpected error commiting write streams: %s", commit.status().message());
     }
 
+    // Mark stream as consumed so destructor doesn't try to finalize again
+    grpc_stream.reset();
+
     std::cout << "[bigquery-perf] Finalize total: "
               << std::chrono::duration_cast<std::chrono::milliseconds>(t_commit_done - t_start).count()
               << "ms" << std::endl;
