@@ -48,6 +48,11 @@ on:
         required: false
         type: string
         default: ""
+      # GitHub Environment for the deploy job so GCS deploy secrets can come from environment scope.
+      gcp_environment:
+        required: false
+        type: string
+        default: "ci"
       # Override the default GCS deploy script with a custom script
       deploy_gcs_script:
         required: false
@@ -91,6 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.deploy_matrix != '{}' && needs.generate_matrix.outputs.deploy_matrix != '' }}
+    environment: ${{ inputs.gcp_environment }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.deploy_matrix)}}
 

@@ -154,6 +154,12 @@ on:
         required: false
         type: string
         default: "release"
+      # Optional GitHub Environment for jobs that need BigQuery/GCS secrets during CI.
+      # Note: environments are job-scoped, so the entire job is attached to this environment.
+      gcp_environment:
+        required: false
+        type: string
+        default: "ci"
       upload_all_extensions:
         required: false
         type: boolean
@@ -234,6 +240,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.linux_matrix != '{}' && needs.generate_matrix.outputs.linux_matrix != '' }}
+    environment: ${{ inputs.gcp_environment }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.linux_matrix)}}
     env:
@@ -523,6 +530,7 @@ jobs:
     runs-on: macos-latest
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.osx_matrix != '{}' && needs.generate_matrix.outputs.osx_matrix != '' }}
+    environment: ${{ inputs.gcp_environment }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.osx_matrix)}}
     env:
@@ -770,6 +778,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.windows_matrix != '{}' && needs.generate_matrix.outputs.windows_matrix != '' }}
+    environment: ${{ inputs.gcp_environment }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.windows_matrix)}}
     env:
