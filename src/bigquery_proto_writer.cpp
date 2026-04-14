@@ -105,6 +105,17 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
 }
 
 BigqueryProtoWriter::~BigqueryProtoWriter() {
+    // Ensure gRPC stream is properly closed to avoid connection leaks
+    // when the writer is destroyed without calling Finalize() (e.g., on exception paths).
+    if (grpc_stream) {
+        try {
+            grpc_stream->WritesDone().get();
+            grpc_stream->Finish().get();
+        } catch (...) {
+            // Best-effort cleanup during destruction
+        }
+        grpc_stream.reset();
+    }
 }
 
 void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
@@ -456,6 +467,9 @@ void BigqueryProtoWriter::Finalize() {
     if (!commit) {
         throw IOException("Unexpected error commiting write streams: %s", commit.status().message());
     }
+
+    // Mark stream as consumed so destructor doesn't try to finalize again
+    grpc_stream.reset();
 }
 
 void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,
