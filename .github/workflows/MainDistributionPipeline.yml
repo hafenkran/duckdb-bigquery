@@ -16,7 +16,7 @@ jobs:
         name: Code Quality Check
         uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5.1
         with:
-            duckdb_version: v1.5.1
+            duckdb_version: v1.5.2
             ci_tools_version: v1.5.1
             extension_name: bigquery
             format_checks: "format"
@@ -31,7 +31,7 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.1
+            duckdb_version: v1.5.2
             ci_tools_version: v1.5.1
             gcp_environment: ci
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;"
@@ -47,7 +47,7 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.1
+            duckdb_version: v1.5.2
             ci_tools_version: v1.5.1
             gcp_environment: ci
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;"
