@@ -15,7 +15,6 @@
 #include "duckdb/planner/filter/null_filter.hpp"
 #include "duckdb/planner/filter/struct_filter.hpp"
 
-#include "bigquery_settings.hpp"
 #include "bigquery_utils.hpp"
 
 
@@ -1077,18 +1076,12 @@ BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
             params.grpc_endpoint = kv.second.GetValue<string>();
         } else if (loption == "filter") {
             params.filter = kv.second.GetValue<string>();
-        } else if (loption == "use_legacy_scan") {
-            params.use_legacy_scan = BooleanValue::Get(kv.second);
         } else if (loption == "dry_run") {
             params.dry_run = BooleanValue::Get(kv.second);
         } else if (loption == "use_rest_api") {
             params.use_rest_api = BooleanValue::Get(kv.second);
         }
         // otherwise, ignore
-    }
-
-    if (!named_parameters.count("use_legacy_scan") && !named_parameters.count("USE_LEGACY_SCAN")) {
-        params.use_legacy_scan = BigquerySettings::UseLegacyScan();
     }
     return params;
 }
