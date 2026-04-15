@@ -126,8 +126,7 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 # Link libraries to the extensions
 function(link_libraries_to_extension target_name)
-    target_link_libraries(
-        ${target_name}
+    set(extension_link_deps
         # Google Cloud C++ libraries (order matters!)
         google-cloud-cpp::common
         google-cloud-cpp::bigquery
@@ -155,6 +154,26 @@ function(link_libraries_to_extension target_name)
         # Arrow
         "$<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>"
     )
+
+    # The static DuckDB extension is consumed by DuckDB helper tools such as
+    # `plan_serializer`, which are built as C++11 in DuckDB v1.5.x. The BigQuery
+    # dependency graph requires C++17, so we link these dependencies normally for
+    # building the extension itself, then rewrite the static extension interface so
+    # downstream consumers only inherit link requirements, not compile features.
+    target_link_libraries(${target_name} ${extension_link_deps})
+
+    get_target_property(target_type ${target_name} TYPE)
+    if(target_type STREQUAL "STATIC_LIBRARY")
+        get_target_property(interface_link_libraries ${target_name} INTERFACE_LINK_LIBRARIES)
+        if(interface_link_libraries STREQUAL "interface_link_libraries-NOTFOUND")
+            set(interface_link_libraries "")
+        endif()
+        foreach(link_dep IN LISTS extension_link_deps)
+            list(REMOVE_ITEM interface_link_libraries "${link_dep}")
+            list(APPEND interface_link_libraries "$<LINK_ONLY:${link_dep}>")
+        endforeach()
+        set_property(TARGET ${target_name} PROPERTY INTERFACE_LINK_LIBRARIES "${interface_link_libraries}")
+    endif()
 endfunction()
 
 link_libraries_to_extension(${EXTENSION_NAME})
