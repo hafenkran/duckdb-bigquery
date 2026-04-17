@@ -90,8 +90,56 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
             created_successfully = true;
             break;
         } else {
-            std::cout << "Failed to create write stream: " << write_stream_status.status() << std::endl
-                      << write_stream_status.status().message() << std::endl;
+            auto status = write_stream_status.status();
+
+            // Fail immediately on non-retryable errors instead of retrying
+            if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
+                throw PermissionException(
+                    "BigQuery Storage Write API permission denied for %s.\n"
+                    "\n"
+                    "The BigQuery Storage Write API requires additional permissions beyond standard\n"
+                    "BigQuery access. Ensure your credentials have:\n"
+                    "  - bigquery.tables.updateData\n"
+                    "  - bigquery.readsessions.create (required by the Storage API)\n"
+                    "\n"
+                    "Alternatively, grant the BigQuery Data Editor role (roles/bigquery.dataEditor)\n"
+                    "and the BigQuery Read Session User role (roles/bigquery.readSessionUser).\n"
+                    "\n"
+                    "Error details: %s",
+                    table_string,
+                    status.message());
+            }
+            if (status.code() == google::cloud::StatusCode::kUnauthenticated) {
+                throw IOException(
+                    "BigQuery Storage Write API authentication failed for %s.\n"
+                    "\n"
+                    "The provided credentials are invalid or have expired.\n"
+                    "  - For user credentials: gcloud auth application-default login\n"
+                    "  - For service accounts: verify your service account key is valid\n"
+                    "\n"
+                    "Error details: %s",
+                    table_string,
+                    status.message());
+            }
+            if (status.code() == google::cloud::StatusCode::kNotFound) {
+                throw BinderException(
+                    "BigQuery table not found: %s.\n"
+                    "\n"
+                    "Error details: %s",
+                    table_string,
+                    status.message());
+            }
+            if (status.code() == google::cloud::StatusCode::kInvalidArgument) {
+                throw BinderException(
+                    "BigQuery Storage Write API invalid argument for %s.\n"
+                    "\n"
+                    "Error details: %s",
+                    table_string,
+                    status.message());
+            }
+
+            std::cout << "Failed to create write stream: " << status << std::endl
+                      << status.message() << std::endl;
             if (attempt < max_retries - 1) {
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
