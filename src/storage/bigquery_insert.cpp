@@ -1,7 +1,6 @@
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
-#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_create_table.hpp"
 #include "duckdb/planner/operator/logical_insert.hpp"
@@ -13,7 +12,6 @@
 #include <google/protobuf/dynamic_message.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
-#include "bigquery_geography.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_utils.hpp"
 #include "storage/bigquery_catalog.hpp"
@@ -54,7 +52,7 @@ public:
     DataChunk varchar_chunk;
 
     shared_ptr<BigqueryProtoWriter> writer;
-    std::map<std::string, idx_t> column_name_to_index;
+    vector<idx_t> target_column_indexes;
 };
 
 vector<string> GetInsertColumns(const duckdb::bigquery::BigqueryInsert &insert, BigqueryTableEntry &entry) {
@@ -100,18 +98,19 @@ unique_ptr<GlobalSinkState> BigqueryInsert::GetGlobalSinkState(ClientContext &co
     result->writer = bq_client->CreateProtoWriter(insert_table);
 
     auto insert_columns = GetInsertColumns(*this, *insert_table);
-    std::map<std::string, idx_t> column_name_to_index;
+    vector<idx_t> target_column_indexes;
+    target_column_indexes.reserve(insert_columns.size());
     for (idx_t i = 0; i < insert_columns.size(); i++) {
-        column_name_to_index[insert_columns[i]] = insert_table->GetColumnIndex(insert_columns[i]).index;
+        target_column_indexes.push_back(insert_table->GetColumnIndex(insert_columns[i]).index);
     }
-    result->column_name_to_index = column_name_to_index;
+    result->target_column_indexes = std::move(target_column_indexes);
     return std::move(result);
 }
 
 // ### SINK
 SinkResultType BigqueryInsert::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
-    gstate.writer->WriteChunk(chunk, gstate.column_name_to_index);
+    gstate.writer->WriteChunk(chunk, gstate.target_column_indexes);
     gstate.insert_count += chunk.size();
     return SinkResultType::NEED_MORE_INPUT;
 }
@@ -186,64 +185,6 @@ PhysicalOperator &AddCastToBigqueryTypes(ClientContext &context,
     return proj;
 }
 
-PhysicalOperator &AddGeometryAsTextProjection(ClientContext &context,
-                                              PhysicalPlanGenerator &planner,
-                                              PhysicalOperator &plan) {
-    auto &child_types = plan.GetTypes();
-
-    // Skip if no geometry types
-    bool has_geometry = false;
-    for (auto &type : child_types) {
-        if (BigqueryUtils::IsGeometryType(type)) {
-            has_geometry = true;
-            break;
-        }
-    }
-    if (!has_geometry) {
-        return plan; // nothing to do
-    }
-
-    vector<LogicalType> projected_types;
-    vector<unique_ptr<Expression>> select_list;
-    projected_types.reserve(child_types.size());
-    select_list.reserve(child_types.size());
-
-    // Internal scalar function to normalize polygon topology before GEOMETRY -> VARCHAR serialization.
-    ScalarFunction normalize_geography_func("bigquery_normalize_geography",
-                                            {LogicalType::GEOMETRY()},
-                                            LogicalType::GEOMETRY(),
-                                            bigquery::BqNormalizeGeographyFunction);
-
-    for (idx_t i = 0; i < child_types.size(); i++) {
-        auto &type = child_types[i];
-        if (!BigqueryUtils::IsGeometryType(type)) {
-            select_list.push_back(make_uniq<BoundReferenceExpression>(type, i));
-            projected_types.push_back(type);
-            continue;
-        }
-
-        auto geom_ref = make_uniq<BoundReferenceExpression>(type, i);
-        vector<unique_ptr<Expression>> normalize_args;
-        normalize_args.push_back(std::move(geom_ref));
-        unique_ptr<Expression> bound;
-        bound = make_uniq<BoundFunctionExpression>(normalize_geography_func.return_type,
-                                                   normalize_geography_func,
-                                                   std::move(normalize_args),
-                                                   nullptr,
-                                                   false);
-        bound = BoundCastExpression::AddCastToType(context, std::move(bound), LogicalType::VARCHAR);
-
-        projected_types.push_back(LogicalType::VARCHAR);
-        select_list.push_back(std::move(bound));
-    }
-
-    auto &proj = planner.Make<PhysicalProjection>(std::move(projected_types),
-                                                  std::move(select_list),
-                                                  plan.estimated_cardinality);
-    proj.children.push_back(plan);
-    return proj;
-}
-
 PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
                                               PhysicalPlanGenerator &planner,
                                               LogicalInsert &op,
@@ -256,8 +197,7 @@ PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
     }
 
     D_ASSERT(plan);
-    auto &geom_proj = AddGeometryAsTextProjection(context, planner, *plan);
-    auto &child_plan = AddCastToBigqueryTypes(context, planner, geom_proj);
+    auto &child_plan = AddCastToBigqueryTypes(context, planner, *plan);
     auto &insert = planner.Make<BigqueryInsert>(op, op.table, op.column_index_map);
     insert.children.push_back(child_plan);
     return insert;
@@ -267,8 +207,7 @@ PhysicalOperator &BigqueryCatalog::PlanCreateTableAs(ClientContext &context,
                                                      PhysicalPlanGenerator &planner,
                                                      LogicalCreateTable &op,
                                                      PhysicalOperator &plan) {
-    auto &geom_proj = AddGeometryAsTextProjection(context, planner, plan);
-    auto &child_plan = AddCastToBigqueryTypes(context, planner, geom_proj); // retain existing cast behavior
+    auto &child_plan = AddCastToBigqueryTypes(context, planner, plan); // retain existing cast behavior
     auto &insert = planner.Make<BigqueryInsert>(op, op.schema, std::move(op.info));
     insert.children.push_back(child_plan);
     return insert;

@@ -4,6 +4,7 @@
 #undef NO_DATA
 
 #include "google/protobuf/descriptor.h"
+#include "google/protobuf/dynamic_message.h"
 #include "storage/bigquery_table_entry.hpp"
 
 namespace duckdb {
@@ -19,17 +20,17 @@ public:
                                const string &field_name,
                                const std::vector<std::pair<std::string, LogicalType>> &child_types);
 
-    void WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs);
+    void WriteChunk(DataChunk &chunk, const vector<idx_t> &target_column_idxs);
     void WriteMessageField(google::protobuf::Message *msg,
                            const google::protobuf::Reflection *reflection,
                            const google::protobuf::FieldDescriptor *field,
                            const duckdb::LogicalType &col_type,
-                           duckdb::Value &val);
+                           const duckdb::Value &val);
     void WriteRepeatedField(google::protobuf::Message *msg,
                             const google::protobuf::Reflection *reflection,
                             const google::protobuf::FieldDescriptor *field,
                             const duckdb::LogicalType &col_type,
-                            duckdb::Value &val);
+                            const duckdb::Value &val);
     void WriteField(google::protobuf::Message *msg,
                     const google::protobuf::Reflection *reflection,
                     const google::protobuf::FieldDescriptor *field,
@@ -51,7 +52,7 @@ private:
     static constexpr idx_t DEFAULT_APPEND_ROWS_SOFT_LIMIT = 9728 * 1024; // 9.5MB
     static constexpr idx_t APPEND_ROWS_ROW_OVERHEAD = 32;
 
-    void InitializeColumnBindings(const DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs);
+    void InitializeColumnBindings(const DataChunk &chunk, const vector<idx_t> &target_column_idxs);
     void EnsureRequestInitialized();
     void FlushBufferedRequest();
     void SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request);
@@ -67,6 +68,11 @@ private:
     idx_t buffered_rows = 0;
     size_t buffered_request_bytes = 0;
     bool buffered_request_initialized = false;
+
+    unique_ptr<google::protobuf::DynamicMessageFactory> msg_factory;
+    const google::protobuf::Message *msg_prototype = nullptr;
+    unique_ptr<google::protobuf::Message> row_message;
+    const google::protobuf::Reflection *row_reflection = nullptr;
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;

@@ -583,6 +583,33 @@ static idx_t SerializedMultiPolygonGeometrySize(const vector<Polygon> &polygons,
     return size;
 }
 
+static void SerializePolygonGeometry(const Polygon &polygon, idx_t dimensions, char *result_data, idx_t result_size) {
+    GeometryBlobWriter writer(result_data, UnsafeNumericCast<uint32_t>(result_size));
+    writer.Write<uint8_t>(1);
+    writer.Write<uint32_t>(polygon.meta);
+    WritePolygonBody(writer, polygon, dimensions);
+    writer.Finalize();
+}
+
+static void SerializeMultiPolygonGeometry(const vector<Polygon> &polygons,
+                                          uint32_t meta,
+                                          idx_t dimensions,
+                                          char *result_data,
+                                          idx_t result_size) {
+    GeometryBlobWriter writer(result_data, UnsafeNumericCast<uint32_t>(result_size));
+    writer.Write<uint8_t>(1);
+    writer.Write<uint32_t>(meta);
+    writer.Write<uint32_t>(UnsafeNumericCast<uint32_t>(polygons.size()));
+
+    for (const auto &polygon : polygons) {
+        writer.Write<uint8_t>(1);
+        writer.Write<uint32_t>(polygon.meta);
+        WritePolygonBody(writer, polygon, dimensions);
+    }
+
+    writer.Finalize();
+}
+
 static bool NormalizePolygonGeometry(const string_t &input_geom,
                                      string_t &result_geom,
                                      Vector &result_vector,
@@ -602,11 +629,7 @@ static bool NormalizePolygonGeometry(const string_t &input_geom,
     }
 
     auto blob = StringVector::EmptyString(result_vector, SerializedPolygonGeometrySize(polygon, dimensions));
-    GeometryBlobWriter writer(blob.GetDataWriteable(), UnsafeNumericCast<uint32_t>(blob.GetSize()));
-    writer.Write<uint8_t>(byte_order);
-    writer.Write<uint32_t>(polygon.meta);
-    WritePolygonBody(writer, polygon, dimensions);
-    writer.Finalize();
+    SerializePolygonGeometry(polygon, dimensions, blob.GetDataWriteable(), blob.GetSize());
     blob.Finalize();
 
     result_geom = blob;
@@ -649,18 +672,7 @@ static bool NormalizeMultiPolygonGeometry(const string_t &input_geom,
     }
 
     auto blob = StringVector::EmptyString(result_vector, SerializedMultiPolygonGeometrySize(polygons, dimensions));
-    GeometryBlobWriter writer(blob.GetDataWriteable(), UnsafeNumericCast<uint32_t>(blob.GetSize()));
-    writer.Write<uint8_t>(byte_order);
-    writer.Write<uint32_t>(meta);
-    writer.Write<uint32_t>(polygon_count);
-
-    for (const auto &polygon : polygons) {
-        writer.Write<uint8_t>(1);
-        writer.Write<uint32_t>(polygon.meta);
-        WritePolygonBody(writer, polygon, dimensions);
-    }
-
-    writer.Finalize();
+    SerializeMultiPolygonGeometry(polygons, meta, dimensions, blob.GetDataWriteable(), blob.GetSize());
     blob.Finalize();
 
     result_geom = blob;
@@ -676,6 +688,86 @@ bool NormalizeGeography(const string_t &input_geom, string_t &result_geom, Vecto
         return NormalizePolygonGeometry(input_geom, result_geom, result_vector, dimensions);
     case GeometryType::MULTIPOLYGON:
         return NormalizeMultiPolygonGeometry(input_geom, result_geom, result_vector, dimensions);
+    default:
+        result_geom = input_geom;
+        return false;
+    }
+}
+
+static bool NormalizePolygonGeometry(const string_t &input_geom,
+                                     string_t &result_geom,
+                                     string &result_storage,
+                                     idx_t dimensions) {
+    GeometryBlobReader reader(input_geom.GetData(), UnsafeNumericCast<uint32_t>(input_geom.GetSize()));
+
+    const auto byte_order = reader.Read<uint8_t>();
+    if (byte_order != 1) {
+        throw InvalidInputException("Unsupported byte order %d in geometry", byte_order);
+    }
+
+    const auto meta = reader.Read<uint32_t>();
+    auto polygon = ReadPolygonBody(reader, dimensions, meta);
+    if (!FixPolygonWinding(polygon)) {
+        result_geom = input_geom;
+        return false;
+    }
+
+    result_storage.resize(SerializedPolygonGeometrySize(polygon, dimensions));
+    SerializePolygonGeometry(polygon, dimensions, result_storage.data(), result_storage.size());
+    result_geom = string_t(result_storage.data(), UnsafeNumericCast<uint32_t>(result_storage.size()));
+    return true;
+}
+
+static bool NormalizeMultiPolygonGeometry(const string_t &input_geom,
+                                          string_t &result_geom,
+                                          string &result_storage,
+                                          idx_t dimensions) {
+    GeometryBlobReader reader(input_geom.GetData(), UnsafeNumericCast<uint32_t>(input_geom.GetSize()));
+
+    const auto byte_order = reader.Read<uint8_t>();
+    if (byte_order != 1) {
+        throw InvalidInputException("Unsupported byte order %d in geometry", byte_order);
+    }
+
+    const auto meta = reader.Read<uint32_t>();
+    const auto polygon_count = reader.Read<uint32_t>();
+
+    vector<Polygon> polygons;
+    polygons.reserve(polygon_count);
+
+    bool changed = false;
+    for (uint32_t polygon_idx = 0; polygon_idx < polygon_count; polygon_idx++) {
+        const auto polygon_byte_order = reader.Read<uint8_t>();
+        if (polygon_byte_order != 1) {
+            throw InvalidInputException("Unsupported polygon byte order %d in multipolygon", polygon_byte_order);
+        }
+
+        const auto polygon_meta = reader.Read<uint32_t>();
+        auto polygon = ReadPolygonBody(reader, dimensions, polygon_meta);
+        changed |= FixPolygonWinding(polygon);
+        polygons.push_back(std::move(polygon));
+    }
+
+    if (!changed) {
+        result_geom = input_geom;
+        return false;
+    }
+
+    result_storage.resize(SerializedMultiPolygonGeometrySize(polygons, dimensions));
+    SerializeMultiPolygonGeometry(polygons, meta, dimensions, result_storage.data(), result_storage.size());
+    result_geom = string_t(result_storage.data(), UnsafeNumericCast<uint32_t>(result_storage.size()));
+    return true;
+}
+
+bool NormalizeGeography(const string_t &input_geom, string_t &result_geom, string &result_storage) {
+    const auto type_info = Geometry::GetType(input_geom);
+    const auto dimensions = VertexDimensions(type_info.second);
+
+    switch (type_info.first) {
+    case GeometryType::POLYGON:
+        return NormalizePolygonGeometry(input_geom, result_geom, result_storage, dimensions);
+    case GeometryType::MULTIPOLYGON:
+        return NormalizeMultiPolygonGeometry(input_geom, result_geom, result_storage, dimensions);
     default:
         result_geom = input_geom;
         return false;
