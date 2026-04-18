@@ -153,8 +153,10 @@ void WriteScalarUnifiedField(google::protobuf::Message *msg,
         reflection->SetInt32(msg, field, UnifiedVectorFormat::GetData<int32_t>(format)[source_idx]);
         return;
     case LogicalTypeId::INTERVAL:
-        reflection->SetString(
-            msg, field, BigqueryUtils::IntervalToBigqueryIntervalString(UnifiedVectorFormat::GetData<interval_t>(format)[source_idx]));
+        reflection->SetString(msg,
+                              field,
+                              BigqueryUtils::IntervalToBigqueryIntervalString(
+                                  UnifiedVectorFormat::GetData<interval_t>(format)[source_idx]));
         return;
     case LogicalTypeId::SMALLINT:
         reflection->SetInt32(msg, field, UnifiedVectorFormat::GetData<int16_t>(format)[source_idx]);
@@ -193,7 +195,8 @@ void WriteScalarUnifiedField(google::protobuf::Message *msg,
         reflection->SetString(msg, field, UUID::ToString(UnifiedVectorFormat::GetData<hugeint_t>(format)[source_idx]));
         return;
     default:
-        throw InternalException("Unsupported scalar fast path type in BigQuery protobuf writer: %s", col_type.ToString());
+        throw InternalException("Unsupported scalar fast path type in BigQuery protobuf writer: %s",
+                                col_type.ToString());
     }
 }
 
@@ -284,36 +287,32 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
                     status.message());
             }
             if (status.code() == google::cloud::StatusCode::kUnauthenticated) {
-                throw IOException(
-                    "BigQuery Storage Write API authentication failed for %s.\n"
-                    "\n"
-                    "The provided credentials are invalid or have expired.\n"
-                    "  - For user credentials: gcloud auth application-default login\n"
-                    "  - For service accounts: verify your service account key is valid\n"
-                    "\n"
-                    "Error details: %s",
-                    table_string,
-                    status.message());
+                throw IOException("BigQuery Storage Write API authentication failed for %s.\n"
+                                  "\n"
+                                  "The provided credentials are invalid or have expired.\n"
+                                  "  - For user credentials: gcloud auth application-default login\n"
+                                  "  - For service accounts: verify your service account key is valid\n"
+                                  "\n"
+                                  "Error details: %s",
+                                  table_string,
+                                  status.message());
             }
             if (status.code() == google::cloud::StatusCode::kNotFound) {
-                throw BinderException(
-                    "BigQuery table not found: %s.\n"
-                    "\n"
-                    "Error details: %s",
-                    table_string,
-                    status.message());
+                throw BinderException("BigQuery table not found: %s.\n"
+                                      "\n"
+                                      "Error details: %s",
+                                      table_string,
+                                      status.message());
             }
             if (status.code() == google::cloud::StatusCode::kInvalidArgument) {
-                throw BinderException(
-                    "BigQuery Storage Write API invalid argument for %s.\n"
-                    "\n"
-                    "Error details: %s",
-                    table_string,
-                    status.message());
+                throw BinderException("BigQuery Storage Write API invalid argument for %s.\n"
+                                      "\n"
+                                      "Error details: %s",
+                                      table_string,
+                                      status.message());
             }
 
-            std::cout << "Failed to create write stream: " << status << std::endl
-                      << status.message() << std::endl;
+            std::cout << "Failed to create write stream: " << status << std::endl << status.message() << std::endl;
             if (attempt < max_retries - 1) {
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -574,7 +573,9 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const vector<idx_t> &targ
         }
 
         geometry_text_vectors[binding_idx] = make_uniq<Vector>(LogicalType::VARCHAR);
-        ConvertGeometryVectorToText(chunk.data[binding.source_col_idx], chunk.size(), *geometry_text_vectors[binding_idx]);
+        ConvertGeometryVectorToText(chunk.data[binding.source_col_idx],
+                                    chunk.size(),
+                                    *geometry_text_vectors[binding_idx]);
         geometry_text_vectors[binding_idx]->ToUnifiedFormat(chunk.size(), geometry_text_formats[binding_idx]);
         has_geometry_text[binding_idx] = true;
     }
@@ -596,7 +597,12 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const vector<idx_t> &targ
             }
 
             if (has_scalar_fast_path[binding_idx]) {
-                WriteScalarUnifiedField(msg, reflection, binding.field, binding.col_type, scalar_formats[binding_idx], i);
+                WriteScalarUnifiedField(msg,
+                                        reflection,
+                                        binding.field,
+                                        binding.col_type,
+                                        scalar_formats[binding_idx],
+                                        i);
                 continue;
             }
 
