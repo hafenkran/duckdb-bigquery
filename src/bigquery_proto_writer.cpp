@@ -3,6 +3,7 @@
 #include <google/protobuf/dynamic_message.h>
 #include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+#include <google/rpc/code.pb.h>
 
 #include "duckdb.hpp"
 #include "duckdb/common/types/decimal.hpp"
@@ -16,6 +17,7 @@
 
 #include "bigquery_geography.hpp"
 #include "bigquery_proto_writer.hpp"
+#include "bigquery_settings.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_table_entry.hpp"
 
@@ -246,6 +248,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
     auto dataset_id = entry->schema.name;
     auto table_id = entry->name;
     table_string = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
+    enable_inflight_request_windowing = BigquerySettings::EnableInflightRequestWindowing();
 
     // Create the message descriptor and prototype
     InitMessageDescriptor(entry);
@@ -545,7 +548,15 @@ void BigqueryProtoWriter::FlushBufferedRequest() {
         return;
     }
 
-    SendAppendRequest(buffered_request);
+    PendingAppend pending;
+    pending.request = std::move(buffered_request);
+    pending.row_count = buffered_rows;
+    pending.request_bytes = buffered_request_bytes;
+    pending.offset = next_request_offset;
+    pending.request.mutable_offset()->set_value(pending.offset);
+    next_request_offset += UnsafeNumericCast<int64_t>(pending.row_count);
+
+    SendAppendRequest(std::move(pending));
     buffered_request = google::cloud::bigquery::storage::v1::AppendRowsRequest();
     buffered_rows = 0;
     buffered_request_bytes = 0;
@@ -653,66 +664,131 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const vector<idx_t> &targ
     }
 }
 
-void BigqueryProtoWriter::SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request) {
-    if (!request.has_proto_rows() || request.proto_rows().rows().serialized_rows_size() == 0) {
+void BigqueryProtoWriter::EnsureGrpcStreamWithReplay() {
+    if (grpc_stream) {
         return;
     }
 
     int max_retries = 100;
     for (int attempt = 0; attempt < max_retries; attempt++) {
-        auto handle_broken_stream = [this](char const *where) {
-            auto status = grpc_stream->Finish().get();
-            throw IOException("Unexpected streaming RPC error in %s: %s", where, status.message());
-        };
-
-        if (!grpc_stream) {
-            grpc_stream = write_client->AsyncAppendRows();
-
-            if (!grpc_stream->Start().get()) {
-                handle_broken_stream("Start");
-            }
-        }
-
-        auto write = grpc_stream->Write(request, grpc::WriteOptions()).get();
-        if (!write) {
+        grpc_stream = write_client->AsyncAppendRows();
+        if (!grpc_stream->Start().get()) {
+            grpc_stream.reset();
             if (attempt < max_retries - 1) {
-                grpc_stream.reset();
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 continue;
-            } else {
-                handle_broken_stream("Write");
-                throw std::runtime_error("Write failed");
+            }
+            throw IOException("Unexpected streaming RPC error in Start: failed to start AppendRows stream");
+        }
+
+        bool replay_ok = true;
+        for (const auto &pending : inflight_requests) {
+            if (!grpc_stream->Write(pending.request, grpc::WriteOptions()).get()) {
+                replay_ok = false;
+                break;
             }
         }
 
-        auto response = grpc_stream->Read().get();
-        if (!response) {
-            if (attempt < max_retries - 1) {
-                grpc_stream.reset();
-                std::cout << "Retrying..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                continue;
-            } else {
-                handle_broken_stream("Read");
-                throw std::runtime_error("Read failed");
-            }
+        if (replay_ok) {
+            return;
         }
 
-        if (response && response->has_error()) {
+        grpc_stream.reset();
+        if (attempt < max_retries - 1) {
+            std::cout << "Retrying..." << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            continue;
+        }
+        throw IOException("Unexpected streaming RPC error in Replay: failed to restore inflight AppendRows requests");
+    }
+}
+
+void BigqueryProtoWriter::DrainInflightResponse() {
+    if (inflight_requests.empty()) {
+        return;
+    }
+
+    std::optional<google::cloud::bigquery::storage::v1::AppendRowsResponse> response;
+    int max_retries = 100;
+    for (int attempt = 0; attempt < max_retries; attempt++) {
+        EnsureGrpcStreamWithReplay();
+
+        response = grpc_stream->Read().get();
+        if (response) {
+            break;
+        }
+
+        grpc_stream.reset();
+        if (attempt < max_retries - 1) {
+            std::cout << "Retrying..." << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            continue;
+        }
+        throw std::runtime_error("Read failed");
+    }
+
+    const auto &pending = inflight_requests.front();
+    if (response->has_error()) {
+        if (response->error().code() != google::rpc::ALREADY_EXISTS) {
             for (const auto &error : response->row_errors()) {
                 std::cerr << "Row " << error.index() << " failed: " << error.message() << "\n";
             }
 
             throw IOException("Failed to write chunk: %s", response->error().message());
         }
-
-        break;
     }
+
+    if (response->has_append_result() && response->append_result().has_offset() &&
+        response->append_result().offset().value() != pending.offset) {
+        throw IOException("Unexpected AppendRows response offset: expected %lld, got %lld",
+                          static_cast<long long>(pending.offset),
+                          static_cast<long long>(response->append_result().offset().value()));
+    }
+
+    inflight_request_bytes -= pending.request_bytes;
+    inflight_requests.pop_front();
+}
+
+void BigqueryProtoWriter::DrainInflightRequestsToWindow() {
+    if (!enable_inflight_request_windowing) {
+        while (!inflight_requests.empty()) {
+            DrainInflightResponse();
+        }
+        return;
+    }
+
+    while (inflight_requests.size() > MAX_INFLIGHT_REQUESTS || inflight_request_bytes > MAX_INFLIGHT_BYTES) {
+        DrainInflightResponse();
+    }
+}
+
+void BigqueryProtoWriter::SendAppendRequest(PendingAppend pending) {
+    if (!pending.request.has_proto_rows() || pending.request.proto_rows().rows().serialized_rows_size() == 0) {
+        return;
+    }
+
+    inflight_request_bytes += pending.request_bytes;
+    inflight_requests.push_back(std::move(pending));
+
+    if (!grpc_stream) {
+        EnsureGrpcStreamWithReplay();
+    } else {
+        auto write = grpc_stream->Write(inflight_requests.back().request, grpc::WriteOptions()).get();
+        if (!write) {
+            grpc_stream.reset();
+            EnsureGrpcStreamWithReplay();
+        }
+    }
+
+    DrainInflightRequestsToWindow();
 }
 
 void BigqueryProtoWriter::Finalize() {
     FlushBufferedRequest();
+    while (!inflight_requests.empty()) {
+        DrainInflightResponse();
+    }
 
     if (!grpc_stream) {
         return;

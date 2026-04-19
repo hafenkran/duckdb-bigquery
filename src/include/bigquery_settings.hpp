@@ -197,6 +197,15 @@ public:
         return max_read_streams;
     }
 
+    static bool &EnableInflightRequestWindowing() {
+        static bool BIGQUERY_ENABLE_INFLIGHT_REQUEST_WINDOWING = true;
+        return BIGQUERY_ENABLE_INFLIGHT_REQUEST_WINDOWING;
+    }
+
+    static void SetEnableInflightRequestWindowing(ClientContext &context, SetScope scope, Value &parameter) {
+        EnableInflightRequestWindowing() = BooleanValue::Get(parameter);
+    }
+
     static string &ArrowCompression() {
         static string BIGQUERY_COMPRESSION = "ZSTD";
         return BIGQUERY_COMPRESSION;

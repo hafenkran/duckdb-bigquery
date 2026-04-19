@@ -3,6 +3,8 @@
 #include <google/cloud/bigquery/bigquery_write_client.h>
 #undef NO_DATA
 
+#include <deque>
+
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/dynamic_message.h"
 #include "storage/bigquery_table_entry.hpp"
@@ -49,13 +51,25 @@ private:
         BoundWriteKind write_kind;
     };
 
+    struct PendingAppend {
+        google::cloud::bigquery::storage::v1::AppendRowsRequest request;
+        idx_t row_count;
+        size_t request_bytes;
+        int64_t offset;
+    };
+
     static constexpr idx_t DEFAULT_APPEND_ROWS_SOFT_LIMIT = 9728 * 1024; // 9.5MB
     static constexpr idx_t APPEND_ROWS_ROW_OVERHEAD = 32;
+    static constexpr idx_t MAX_INFLIGHT_REQUESTS = 4;
+    static constexpr idx_t MAX_INFLIGHT_BYTES = DEFAULT_APPEND_ROWS_SOFT_LIMIT * MAX_INFLIGHT_REQUESTS;
 
     void InitializeColumnBindings(const DataChunk &chunk, const vector<idx_t> &target_column_idxs);
     void EnsureRequestInitialized();
     void FlushBufferedRequest();
-    void SendAppendRequest(const google::cloud::bigquery::storage::v1::AppendRowsRequest &request);
+    void EnsureGrpcStreamWithReplay();
+    void DrainInflightResponse();
+    void DrainInflightRequestsToWindow();
+    void SendAppendRequest(PendingAppend pending);
 
     string table_string;
 
@@ -68,11 +82,15 @@ private:
     idx_t buffered_rows = 0;
     size_t buffered_request_bytes = 0;
     bool buffered_request_initialized = false;
+    std::deque<PendingAppend> inflight_requests;
+    size_t inflight_request_bytes = 0;
+    int64_t next_request_offset = 0;
 
     unique_ptr<google::protobuf::DynamicMessageFactory> msg_factory;
     const google::protobuf::Message *msg_prototype = nullptr;
     unique_ptr<google::protobuf::Message> row_message;
     const google::protobuf::Reflection *row_reflection = nullptr;
+    bool enable_inflight_request_windowing = true;
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;
