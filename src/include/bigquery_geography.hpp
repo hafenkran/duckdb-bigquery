@@ -15,6 +15,7 @@ void RegisterGeographyCast(DatabaseInstance &db);
 /// can be done unambiguously, including split collinear boundary segments.
 /// Non-polygon geometry types are passed through unchanged.
 bool NormalizeGeography(const string_t &input_geom, string_t &result_geom, Vector &result_vector);
+bool NormalizeGeography(const string_t &input_geom, string_t &result_geom, string &result_storage);
 
 /// DuckDB scalar function entry point for
 /// bigquery_normalize_geography(GEOMETRY) -> GEOMETRY

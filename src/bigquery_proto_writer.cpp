@@ -5,6 +5,8 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
 #include "duckdb.hpp"
+#include "duckdb/common/types/decimal.hpp"
+#include "duckdb/common/types/geometry.hpp"
 #include "duckdb/common/types/time.hpp"
 #include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/common/types/uuid.hpp"
@@ -12,6 +14,7 @@
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 
+#include "bigquery_geography.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_table_entry.hpp"
@@ -24,6 +27,180 @@
 
 namespace duckdb {
 namespace bigquery {
+
+void ValidateDateRange(const duckdb::date_t &value);
+void ValidateTimeRange(const duckdb::dtime_t &value);
+void ValidateTimestampRange(const duckdb::timestamp_t &value);
+
+namespace {
+
+void SetProtoString(google::protobuf::Message *msg,
+                    const google::protobuf::Reflection *reflection,
+                    const google::protobuf::FieldDescriptor *field,
+                    const string_t &value) {
+    reflection->SetString(msg, field, string(value.GetData(), value.GetSize()));
+}
+
+string GeometryToBigqueryText(const string_t &input_geom) {
+    string normalized_geom_storage;
+    string_t normalized_geom;
+    NormalizeGeography(input_geom, normalized_geom, normalized_geom_storage);
+
+    auto text_vector = Vector(LogicalType::VARCHAR);
+    auto text = Geometry::ToString(text_vector, normalized_geom);
+    return text.GetString();
+}
+
+void ConvertGeometryVectorToText(Vector &source, idx_t count, Vector &result) {
+    UnaryExecutor::Execute<string_t, string_t>(source, result, count, [&](const string_t &input_geom) {
+        string normalized_geom_storage;
+        string_t normalized_geom;
+        NormalizeGeography(input_geom, normalized_geom, normalized_geom_storage);
+        return Geometry::ToString(result, normalized_geom);
+    });
+}
+
+bool SupportsScalarUnifiedWrite(const LogicalType &col_type) {
+    switch (col_type.id()) {
+    case LogicalTypeId::BIGINT:
+    case LogicalTypeId::BIT:
+    case LogicalTypeId::BLOB:
+    case LogicalTypeId::BOOLEAN:
+    case LogicalTypeId::DATE:
+    case LogicalTypeId::DECIMAL:
+    case LogicalTypeId::DOUBLE:
+    case LogicalTypeId::FLOAT:
+    case LogicalTypeId::HUGEINT:
+    case LogicalTypeId::INTEGER:
+    case LogicalTypeId::INTERVAL:
+    case LogicalTypeId::SMALLINT:
+    case LogicalTypeId::TIME:
+    case LogicalTypeId::TIMESTAMP:
+    case LogicalTypeId::TINYINT:
+    case LogicalTypeId::UBIGINT:
+    case LogicalTypeId::UHUGEINT:
+    case LogicalTypeId::UINTEGER:
+    case LogicalTypeId::USMALLINT:
+    case LogicalTypeId::UTINYINT:
+    case LogicalTypeId::UUID:
+    case LogicalTypeId::VARCHAR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+string DecimalToBigqueryString(const UnifiedVectorFormat &format, const LogicalType &col_type, idx_t source_idx) {
+    auto width = DecimalType::GetWidth(col_type);
+    auto scale = DecimalType::GetScale(col_type);
+    switch (format.physical_type) {
+    case PhysicalType::INT16:
+        return Decimal::ToString(UnifiedVectorFormat::GetData<int16_t>(format)[source_idx], width, scale);
+    case PhysicalType::INT32:
+        return Decimal::ToString(UnifiedVectorFormat::GetData<int32_t>(format)[source_idx], width, scale);
+    case PhysicalType::INT64:
+        return Decimal::ToString(UnifiedVectorFormat::GetData<int64_t>(format)[source_idx], width, scale);
+    case PhysicalType::INT128:
+        return Decimal::ToString(UnifiedVectorFormat::GetData<hugeint_t>(format)[source_idx], width, scale);
+    default:
+        throw InternalException("Unsupported decimal physical type in BigQuery protobuf writer: %s",
+                                TypeIdToString(format.physical_type));
+    }
+}
+
+void WriteScalarUnifiedField(google::protobuf::Message *msg,
+                             const google::protobuf::Reflection *reflection,
+                             const google::protobuf::FieldDescriptor *field,
+                             const LogicalType &col_type,
+                             const UnifiedVectorFormat &format,
+                             idx_t row_idx) {
+    auto source_idx = format.sel->get_index(row_idx);
+    if (!format.validity.RowIsValid(source_idx)) {
+        return;
+    }
+
+    switch (col_type.id()) {
+    case LogicalTypeId::BIGINT:
+        reflection->SetInt64(msg, field, UnifiedVectorFormat::GetData<int64_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::BIT:
+    case LogicalTypeId::BLOB:
+    case LogicalTypeId::VARCHAR:
+        SetProtoString(msg, reflection, field, UnifiedVectorFormat::GetData<string_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::BOOLEAN:
+        reflection->SetBool(msg, field, UnifiedVectorFormat::GetData<bool>(format)[source_idx]);
+        return;
+    case LogicalTypeId::DATE: {
+        auto value = UnifiedVectorFormat::GetData<date_t>(format)[source_idx];
+        ValidateDateRange(value);
+        reflection->SetInt32(msg, field, Date::EpochDays(value));
+        return;
+    }
+    case LogicalTypeId::DECIMAL:
+        reflection->SetString(msg, field, DecimalToBigqueryString(format, col_type, source_idx));
+        return;
+    case LogicalTypeId::DOUBLE:
+        reflection->SetDouble(msg, field, UnifiedVectorFormat::GetData<double>(format)[source_idx]);
+        return;
+    case LogicalTypeId::FLOAT:
+        reflection->SetFloat(msg, field, UnifiedVectorFormat::GetData<float>(format)[source_idx]);
+        return;
+    case LogicalTypeId::HUGEINT:
+        reflection->SetString(msg, field, UnifiedVectorFormat::GetData<hugeint_t>(format)[source_idx].ToString());
+        return;
+    case LogicalTypeId::INTEGER:
+        reflection->SetInt32(msg, field, UnifiedVectorFormat::GetData<int32_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::INTERVAL:
+        reflection->SetString(msg,
+                              field,
+                              BigqueryUtils::IntervalToBigqueryIntervalString(
+                                  UnifiedVectorFormat::GetData<interval_t>(format)[source_idx]));
+        return;
+    case LogicalTypeId::SMALLINT:
+        reflection->SetInt32(msg, field, UnifiedVectorFormat::GetData<int16_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::TIME: {
+        auto value = UnifiedVectorFormat::GetData<dtime_t>(format)[source_idx];
+        ValidateTimeRange(value);
+        reflection->SetString(msg, field, Time::ToString(value));
+        return;
+    }
+    case LogicalTypeId::TIMESTAMP: {
+        auto value = UnifiedVectorFormat::GetData<timestamp_t>(format)[source_idx];
+        ValidateTimestampRange(value);
+        reflection->SetInt64(msg, field, Timestamp::GetEpochMicroSeconds(value));
+        return;
+    }
+    case LogicalTypeId::TINYINT:
+        reflection->SetInt32(msg, field, UnifiedVectorFormat::GetData<int8_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::UBIGINT:
+        reflection->SetString(msg, field, std::to_string(UnifiedVectorFormat::GetData<uint64_t>(format)[source_idx]));
+        return;
+    case LogicalTypeId::UHUGEINT:
+        reflection->SetString(msg, field, UnifiedVectorFormat::GetData<uhugeint_t>(format)[source_idx].ToString());
+        return;
+    case LogicalTypeId::UINTEGER:
+        reflection->SetUInt32(msg, field, UnifiedVectorFormat::GetData<uint32_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::USMALLINT:
+        reflection->SetUInt32(msg, field, UnifiedVectorFormat::GetData<uint16_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::UTINYINT:
+        reflection->SetUInt32(msg, field, UnifiedVectorFormat::GetData<uint8_t>(format)[source_idx]);
+        return;
+    case LogicalTypeId::UUID:
+        reflection->SetString(msg, field, UUID::ToString(UnifiedVectorFormat::GetData<hugeint_t>(format)[source_idx]));
+        return;
+    default:
+        throw InternalException("Unsupported scalar fast path type in BigQuery protobuf writer: %s",
+                                col_type.ToString());
+    }
+}
+
+} // namespace
 
 void ValidateDateRange(const duckdb::date_t &value) {
     // Range: 0001-01-01 to 9999-12-31
@@ -110,36 +287,32 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
                     status.message());
             }
             if (status.code() == google::cloud::StatusCode::kUnauthenticated) {
-                throw IOException(
-                    "BigQuery Storage Write API authentication failed for %s.\n"
-                    "\n"
-                    "The provided credentials are invalid or have expired.\n"
-                    "  - For user credentials: gcloud auth application-default login\n"
-                    "  - For service accounts: verify your service account key is valid\n"
-                    "\n"
-                    "Error details: %s",
-                    table_string,
-                    status.message());
+                throw IOException("BigQuery Storage Write API authentication failed for %s.\n"
+                                  "\n"
+                                  "The provided credentials are invalid or have expired.\n"
+                                  "  - For user credentials: gcloud auth application-default login\n"
+                                  "  - For service accounts: verify your service account key is valid\n"
+                                  "\n"
+                                  "Error details: %s",
+                                  table_string,
+                                  status.message());
             }
             if (status.code() == google::cloud::StatusCode::kNotFound) {
-                throw BinderException(
-                    "BigQuery table not found: %s.\n"
-                    "\n"
-                    "Error details: %s",
-                    table_string,
-                    status.message());
+                throw BinderException("BigQuery table not found: %s.\n"
+                                      "\n"
+                                      "Error details: %s",
+                                      table_string,
+                                      status.message());
             }
             if (status.code() == google::cloud::StatusCode::kInvalidArgument) {
-                throw BinderException(
-                    "BigQuery Storage Write API invalid argument for %s.\n"
-                    "\n"
-                    "Error details: %s",
-                    table_string,
-                    status.message());
+                throw BinderException("BigQuery Storage Write API invalid argument for %s.\n"
+                                      "\n"
+                                      "Error details: %s",
+                                      table_string,
+                                      status.message());
             }
 
-            std::cout << "Failed to create write stream: " << status << std::endl
-                      << status.message() << std::endl;
+            std::cout << "Failed to create write stream: " << status << std::endl << status.message() << std::endl;
             if (attempt < max_retries - 1) {
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -167,6 +340,10 @@ BigqueryProtoWriter::~BigqueryProtoWriter() {
 }
 
 void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
+    row_message.reset();
+    msg_prototype = nullptr;
+    row_reflection = nullptr;
+    msg_factory.reset();
     this->pool.~DescriptorPool();
     new (&this->pool) google::protobuf::DescriptorPool();
     column_bindings.clear();
@@ -256,6 +433,18 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
     if (msg_descriptor == nullptr) {
         throw BinderException("Cannot get message descriptor from file descriptor");
     }
+
+    msg_factory = make_uniq<google::protobuf::DynamicMessageFactory>();
+    msg_prototype = msg_factory->GetPrototype(msg_descriptor);
+    if (msg_prototype == nullptr) {
+        throw BinderException("Cannot get message prototype from message descriptor");
+    }
+
+    row_message.reset(msg_prototype->New());
+    if (!row_message) {
+        throw InternalException("Cannot allocate protobuf message");
+    }
+    row_reflection = row_message->GetReflection();
 }
 
 string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProto *parent_proto,
@@ -291,8 +480,7 @@ string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProt
     return nested_type_name; // damit der Aufrufer das Feld korrekt setzen kann
 }
 
-void BigqueryProtoWriter::InitializeColumnBindings(const DataChunk &chunk,
-                                                   const std::map<std::string, idx_t> &column_idxs) {
+void BigqueryProtoWriter::InitializeColumnBindings(const DataChunk &chunk, const vector<idx_t> &target_column_idxs) {
     if (column_bindings_initialized) {
         if (column_bindings.size() != chunk.ColumnCount()) {
             throw InternalException("Unexpected column count change in BigQuery protobuf writer");
@@ -311,7 +499,7 @@ void BigqueryProtoWriter::InitializeColumnBindings(const DataChunk &chunk,
     };
 
     column_bindings.reserve(chunk.ColumnCount());
-    if (column_idxs.empty()) {
+    if (target_column_idxs.empty()) {
         for (idx_t source_col_idx = 0; source_col_idx < chunk.ColumnCount(); source_col_idx++) {
             auto *field = msg_descriptor->field(source_col_idx);
             if (field == nullptr) {
@@ -321,24 +509,18 @@ void BigqueryProtoWriter::InitializeColumnBindings(const DataChunk &chunk,
             column_bindings.push_back({source_col_idx, field, col_type, get_write_kind(col_type)});
         }
     } else {
-        idx_t source_col_idx = 0;
-        for (const auto &kv : column_idxs) {
-            if (source_col_idx >= chunk.ColumnCount()) {
-                throw InternalException("Unexpected source column index in BigQuery protobuf writer");
-            }
+        if (target_column_idxs.size() != chunk.ColumnCount()) {
+            throw InternalException("Unexpected column binding count in BigQuery protobuf writer");
+        }
 
-            auto target_col_idx = kv.second;
+        for (idx_t source_col_idx = 0; source_col_idx < target_column_idxs.size(); source_col_idx++) {
+            auto target_col_idx = target_column_idxs[source_col_idx];
             auto *field = msg_descriptor->field(target_col_idx);
             if (field == nullptr) {
                 throw BinderException("Cannot get field descriptor for BigQuery message");
             }
             const auto &col_type = chunk.data[source_col_idx].GetType();
             column_bindings.push_back({source_col_idx, field, col_type, get_write_kind(col_type)});
-            source_col_idx++;
-        }
-
-        if (source_col_idx != chunk.ColumnCount()) {
-            throw InternalException("Unexpected column binding count in BigQuery protobuf writer");
         }
     }
     column_bindings_initialized = true;
@@ -370,23 +552,60 @@ void BigqueryProtoWriter::FlushBufferedRequest() {
     buffered_request_initialized = false;
 }
 
-void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::string, idx_t> &column_idxs) {
-    auto msg_factory_local = google::protobuf::DynamicMessageFactory();
-    auto *msg_prototype = msg_factory_local.GetPrototype(msg_descriptor);
-    if (msg_prototype == nullptr) {
-        throw BinderException("Cannot get message prototype from message descriptor");
+void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const vector<idx_t> &target_column_idxs) {
+    InitializeColumnBindings(chunk, target_column_idxs);
+    auto *msg = row_message.get();
+    const google::protobuf::Reflection *reflection = row_reflection;
+    vector<UnifiedVectorFormat> scalar_formats(column_bindings.size());
+    vector<bool> has_scalar_fast_path(column_bindings.size(), false);
+    vector<unique_ptr<Vector>> geometry_text_vectors(column_bindings.size());
+    vector<UnifiedVectorFormat> geometry_text_formats(column_bindings.size());
+    vector<bool> has_geometry_text(column_bindings.size(), false);
+
+    for (idx_t binding_idx = 0; binding_idx < column_bindings.size(); binding_idx++) {
+        const auto &binding = column_bindings[binding_idx];
+        if (binding.write_kind != BoundWriteKind::SCALAR || !BigqueryUtils::IsGeometryType(binding.col_type)) {
+            if (binding.write_kind == BoundWriteKind::SCALAR && SupportsScalarUnifiedWrite(binding.col_type)) {
+                chunk.data[binding.source_col_idx].ToUnifiedFormat(chunk.size(), scalar_formats[binding_idx]);
+                has_scalar_fast_path[binding_idx] = true;
+            }
+            continue;
+        }
+
+        geometry_text_vectors[binding_idx] = make_uniq<Vector>(LogicalType::VARCHAR);
+        ConvertGeometryVectorToText(chunk.data[binding.source_col_idx],
+                                    chunk.size(),
+                                    *geometry_text_vectors[binding_idx]);
+        geometry_text_vectors[binding_idx]->ToUnifiedFormat(chunk.size(), geometry_text_formats[binding_idx]);
+        has_geometry_text[binding_idx] = true;
     }
-    InitializeColumnBindings(chunk, column_idxs);
-    unique_ptr<google::protobuf::Message> msg(msg_prototype->New());
-    if (!msg) {
-        throw InternalException("Cannot allocate protobuf message");
-    }
-    const google::protobuf::Reflection *reflection = msg->GetReflection();
-    string serialized_msg;
 
     for (idx_t i = 0; i < chunk.size(); i++) {
         msg->Clear();
-        for (const auto &binding : column_bindings) {
+        for (idx_t binding_idx = 0; binding_idx < column_bindings.size(); binding_idx++) {
+            const auto &binding = column_bindings[binding_idx];
+            if (has_geometry_text[binding_idx]) {
+                const auto &geometry_text_format = geometry_text_formats[binding_idx];
+                auto source_idx = geometry_text_format.sel->get_index(i);
+                if (!geometry_text_format.validity.RowIsValid(source_idx)) {
+                    continue;
+                }
+
+                auto text_value = UnifiedVectorFormat::GetData<string_t>(geometry_text_format)[source_idx];
+                SetProtoString(msg, reflection, binding.field, text_value);
+                continue;
+            }
+
+            if (has_scalar_fast_path[binding_idx]) {
+                WriteScalarUnifiedField(msg,
+                                        reflection,
+                                        binding.field,
+                                        binding.col_type,
+                                        scalar_formats[binding_idx],
+                                        i);
+                continue;
+            }
+
             auto &col = chunk.data[binding.source_col_idx];
             auto val = col.GetValue(i);
             if (val.IsNull()) {
@@ -395,22 +614,19 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
 
             switch (binding.write_kind) {
             case BoundWriteKind::REPEATED:
-                WriteRepeatedField(msg.get(), reflection, binding.field, binding.col_type, val);
+                WriteRepeatedField(msg, reflection, binding.field, binding.col_type, val);
                 break;
             case BoundWriteKind::MESSAGE:
-                WriteMessageField(msg.get(), reflection, binding.field, binding.col_type, val);
+                WriteMessageField(msg, reflection, binding.field, binding.col_type, val);
                 break;
             case BoundWriteKind::SCALAR:
-                WriteField(msg.get(), reflection, binding.field, binding.col_type, val);
+                WriteField(msg, reflection, binding.field, binding.col_type, val);
                 break;
             }
         }
 
-        serialized_msg.clear();
-        if (!msg->SerializeToString(&serialized_msg)) {
-            throw std::runtime_error("Failed to serialize message");
-        }
-        auto estimated_size_increase = serialized_msg.size() + APPEND_ROWS_ROW_OVERHEAD;
+        auto serialized_size = msg->ByteSizeLong();
+        auto estimated_size_increase = serialized_size + APPEND_ROWS_ROW_OVERHEAD;
 
         EnsureRequestInitialized();
         if (buffered_rows == 0 && buffered_request_bytes + estimated_size_increase > DEFAULT_APPEND_ROWS_SOFT_LIMIT) {
@@ -422,7 +638,12 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const std::map<std::strin
             EnsureRequestInitialized();
         }
 
-        buffered_request.mutable_proto_rows()->mutable_rows()->add_serialized_rows(serialized_msg);
+        auto *serialized_row = buffered_request.mutable_proto_rows()->mutable_rows()->add_serialized_rows();
+        serialized_row->clear();
+        serialized_row->reserve(serialized_size);
+        if (!msg->SerializeToString(serialized_row)) {
+            throw std::runtime_error("Failed to serialize message");
+        }
         buffered_rows++;
         buffered_request_bytes += estimated_size_increase;
 
@@ -524,7 +745,7 @@ void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,
                                             const google::protobuf::Reflection *reflection,
                                             const google::protobuf::FieldDescriptor *field,
                                             const duckdb::LogicalType &col_type,
-                                            duckdb::Value &val) {
+                                            const duckdb::Value &val) {
     // Get the children vals/types
     auto &child_types = StructType::GetChildTypes(col_type);
     auto &child_values = StructValue::GetChildren(val);
@@ -548,11 +769,7 @@ void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,
         const auto *nested_field = nested_msg->GetDescriptor()->field(j);
         if (child_type.id() == LogicalTypeId::STRUCT) {
             // Handle nested STRUCT types
-            WriteMessageField(nested_msg,
-                              nested_reflection,
-                              nested_field,
-                              child_type,
-                              const_cast<duckdb::Value &>(child_value));
+            WriteMessageField(nested_msg, nested_reflection, nested_field, child_type, child_value);
         } else {
             WriteField(nested_msg, nested_reflection, nested_field, child_type, child_value);
         }
@@ -563,17 +780,18 @@ void BigqueryProtoWriter::WriteRepeatedField(google::protobuf::Message *msg,
                                              const google::protobuf::Reflection *reflection,
                                              const google::protobuf::FieldDescriptor *field,
                                              const duckdb::LogicalType &col_type,
-                                             duckdb::Value &val) {
+                                             const duckdb::Value &val) {
     // Get the children vals/types
     duckdb::LogicalType child_type;
-    duckdb::vector<duckdb::Value> children;
+    const duckdb::vector<duckdb::Value> *children_ptr = nullptr;
     if (col_type.id() == LogicalTypeId::ARRAY) {
         child_type = ArrayType::GetChildType(col_type);
-        children = ArrayValue::GetChildren(val);
+        children_ptr = &ArrayValue::GetChildren(val);
     } else {
         child_type = ListType::GetChildType(col_type);
-        children = ListValue::GetChildren(val);
+        children_ptr = &ListValue::GetChildren(val);
     }
+    const auto &children = *children_ptr;
     if (children.empty()) {
         return;
     }
@@ -690,9 +908,9 @@ void BigqueryProtoWriter::WriteRepeatedField(google::protobuf::Message *msg,
     case LogicalTypeId::TIMESTAMP: {
         for (const auto &item : children) {
             if (!item.IsNull()) {
-                reflection->AddInt64(msg,
-                                     field,
-                                     Timestamp::GetEpochMicroSeconds(val.GetValueUnsafe<duckdb::timestamp_t>()));
+                auto value = item.GetValueUnsafe<duckdb::timestamp_t>();
+                ValidateTimestampRange(value);
+                reflection->AddInt64(msg, field, Timestamp::GetEpochMicroSeconds(value));
             }
         }
         break;
@@ -783,6 +1001,15 @@ void BigqueryProtoWriter::WriteRepeatedField(google::protobuf::Message *msg,
                 if (!item.IsNull()) {
                     reflection->AddString(msg, field, UUID::ToString(item.GetValueUnsafe<hugeint_t>()));
                 }
+            }
+        }
+        break;
+    }
+    case LogicalTypeId::GEOMETRY: {
+        for (const auto &item : children) {
+            if (!item.IsNull()) {
+                auto geometry_value = string_t(StringValue::Get(item));
+                reflection->AddString(msg, field, GeometryToBigqueryText(geometry_value));
             }
         }
         break;
@@ -946,6 +1173,11 @@ void BigqueryProtoWriter::WriteField(google::protobuf::Message *msg,
     case LogicalTypeId::UUID: {
         auto value = val.GetValueUnsafe<hugeint_t>();
         reflection->SetString(msg, field, UUID::ToString(value));
+        break;
+    }
+    case LogicalTypeId::GEOMETRY: {
+        auto geometry_value = string_t(StringValue::Get(val));
+        reflection->SetString(msg, field, GeometryToBigqueryText(geometry_value));
         break;
     }
     case LogicalTypeId::VARCHAR: {
