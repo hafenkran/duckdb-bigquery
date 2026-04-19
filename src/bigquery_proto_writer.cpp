@@ -17,6 +17,7 @@
 
 #include "bigquery_geography.hpp"
 #include "bigquery_proto_writer.hpp"
+#include "bigquery_settings.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_table_entry.hpp"
 
@@ -247,6 +248,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
     auto dataset_id = entry->schema.name;
     auto table_id = entry->name;
     table_string = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
+    enable_inflight_request_windowing = BigquerySettings::EnableInflightRequestWindowing();
 
     // Create the message descriptor and prototype
     InitMessageDescriptor(entry);
@@ -749,6 +751,13 @@ void BigqueryProtoWriter::DrainInflightResponse() {
 }
 
 void BigqueryProtoWriter::DrainInflightRequestsToWindow() {
+    if (!enable_inflight_request_windowing) {
+        while (!inflight_requests.empty()) {
+            DrainInflightResponse();
+        }
+        return;
+    }
+
     while (inflight_requests.size() > MAX_INFLIGHT_REQUESTS || inflight_request_bytes > MAX_INFLIGHT_BYTES) {
         DrainInflightResponse();
     }

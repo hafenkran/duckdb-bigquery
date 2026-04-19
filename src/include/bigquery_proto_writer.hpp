@@ -90,6 +90,7 @@ private:
     const google::protobuf::Message *msg_prototype = nullptr;
     unique_ptr<google::protobuf::Message> row_message;
     const google::protobuf::Reflection *row_reflection = nullptr;
+    bool enable_inflight_request_windowing = true;
 
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryWriteClient> write_client;
     google::cloud::bigquery::storage::v1::WriteStream write_stream;

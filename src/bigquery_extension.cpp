@@ -117,6 +117,13 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::MaxReadStreams()),
                               bigquery::BigquerySettings::SetMaxReadStreams);
+    config.AddExtensionOption("bq_enable_inflight_request_windowing",
+                              "Whether to allow multiple BigQuery Storage Write AppendRows requests to remain in "
+                              "flight before waiting for acknowledgements. Usually faster, but slightly less memory "
+                              "efficient because more unacknowledged requests can be buffered at once.",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::EnableInflightRequestWindowing()),
+                              bigquery::BigquerySettings::SetEnableInflightRequestWindowing);
     config.AddExtensionOption("bq_arrow_compression",
                               "Compression codec for BigQuery Storage Read API. Options: UNSPECIFIED, LZ4_FRAME, ZSTD."
                               "Default is LZ4_FRAME.",
