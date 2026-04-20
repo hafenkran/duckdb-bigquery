@@ -48,7 +48,7 @@ string GeometryToBigqueryText(const string_t &input_geom) {
     string_t normalized_geom;
     NormalizeGeography(input_geom, normalized_geom, normalized_geom_storage);
 
-    auto text_vector = Vector(LogicalType::VARCHAR);
+    auto text_vector = Vector(LogicalType(LogicalTypeId::VARCHAR));
     auto text = Geometry::ToString(text_vector, normalized_geom);
     return text.GetString();
 }
@@ -583,7 +583,7 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const vector<idx_t> &targ
             continue;
         }
 
-        geometry_text_vectors[binding_idx] = make_uniq<Vector>(LogicalType::VARCHAR);
+        geometry_text_vectors[binding_idx] = make_uniq<Vector>(LogicalType(LogicalTypeId::VARCHAR));
         ConvertGeometryVectorToText(chunk.data[binding.source_col_idx],
                                     chunk.size(),
                                     *geometry_text_vectors[binding_idx]);

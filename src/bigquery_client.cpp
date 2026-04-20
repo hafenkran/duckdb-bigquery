@@ -9,7 +9,10 @@
 
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/file_system.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/time.hpp"
+#include "duckdb/main/extension_helper.hpp"
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
@@ -18,7 +21,9 @@
 #include "duckdb/parser/parsed_data/drop_info.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/parser.hpp"
+#include "duckdb/parser/qualified_name.hpp"
 
+#include "google/cloud/bigquery/v2/job_config.pb.h"
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_options.h"
@@ -183,6 +188,20 @@ static google::cloud::bigquery::v2::QueryParameter BuildPositionalQueryParameter
     }
 
     return parameter;
+}
+
+static string GetLoadStagingDirectory(FileSystem &fs) {
+    auto temp_dir = FileSystem::GetEnvVariable("TMPDIR");
+    if (temp_dir.empty()) {
+        temp_dir = FileSystem::GetEnvVariable("TEMP");
+    }
+    if (temp_dir.empty()) {
+        temp_dir = FileSystem::GetEnvVariable("TMP");
+    }
+    if (temp_dir.empty()) {
+        temp_dir = FileSystem::GetWorkingDirectory();
+    }
+    return fs.ExpandPath(temp_dir);
 }
 
 } // namespace
@@ -541,6 +560,73 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, co
 
     auto job = response.value();
     return job;
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryTableRef &destination_table,
+                                                                 const string &file_path,
+                                                                 const string &write_disposition,
+                                                                 const string &create_disposition,
+                                                                 const string &location) {
+    CheckAuthentication();
+
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto response =
+        InsertLoadJobInternal(client, destination_table, file_path, write_disposition, create_disposition, location);
+    if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
+
+        if (CheckSSLError(response.status())) {
+            return LoadParquetFile(destination_table, file_path, write_disposition, create_disposition, location);
+        }
+
+        throw BinderException("Load job submission failed: " + response.status().message());
+    }
+
+    if (!response->has_job_reference()) {
+        throw BinderException("Load job submission succeeded but did not return a job reference");
+    }
+    return WaitForJobCompletion(response->job_reference());
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &table_name,
+                                                                 const BigqueryTableRef &destination_table,
+                                                                 const string &write_disposition,
+                                                                 const string &create_disposition,
+                                                                 const string &location) {
+    if (!context) {
+        throw InternalException("LoadDuckDBTable requires an active DuckDB client context");
+    }
+
+    auto &fs = FileSystem::GetFileSystem(*context);
+    auto temp_dir = GetLoadStagingDirectory(fs);
+    if (!fs.DirectoryExists(temp_dir)) {
+        fs.CreateDirectoriesRecursive(temp_dir);
+    }
+
+    auto temp_file_name = "duckdb-bigquery-load-" + StringUtil::GenerateRandomName() + ".parquet";
+    auto temp_file_path = fs.JoinPath(temp_dir, temp_file_name);
+    auto escaped_temp_file_path = StringUtil::Replace(temp_file_path, "'", "''");
+    auto relation_name = QualifiedName::Parse(table_name).ToString();
+
+    ExtensionHelper::AutoLoadExtension(*context, "parquet");
+
+    try {
+        auto copy_query =
+            "COPY (SELECT * FROM " + relation_name + ") TO '" + escaped_temp_file_path + "' (FORMAT PARQUET)";
+        auto result = context->Query(copy_query, QueryResultOutputType::FORCE_MATERIALIZED);
+        if (result->HasError()) {
+            result->ThrowError("Failed to materialize DuckDB source table for bigquery_load: ");
+        }
+
+        auto job = LoadParquetFile(destination_table, temp_file_path, write_disposition, create_disposition, location);
+        fs.TryRemoveFile(temp_file_path);
+        return job;
+    } catch (...) {
+        fs.TryRemoveFile(temp_file_path);
+        throw;
+    }
 }
 
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
@@ -980,6 +1066,47 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     return job_client.Query(request);
 }
 
+google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::InsertLoadJobInternal(
+    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+    const BigqueryTableRef &destination_table,
+    const string &file_path,
+    const string &write_disposition,
+    const string &create_disposition,
+    const string &location) {
+    if (!context) {
+        throw InternalException("InsertLoadJobInternal requires an active DuckDB client context");
+    }
+
+    auto &fs = FileSystem::GetFileSystem(*context);
+    auto absolute_file_path = fs.ExpandPath(file_path);
+    if (!fs.FileExists(absolute_file_path)) {
+        throw IOException("Parquet file not found: %s", absolute_file_path);
+    }
+
+    google::cloud::bigquery::v2::Job job;
+    auto *job_reference = job.mutable_job_reference();
+    job_reference->set_project_id(config.BillingProject());
+    job_reference->set_job_id(GenerateJobId("load"));
+    if (!location.empty()) {
+        job_reference->mutable_location()->set_value(location);
+    }
+
+    auto *load_config = job.mutable_configuration()->mutable_load();
+    load_config->set_source_format("PARQUET");
+    load_config->set_create_disposition(create_disposition);
+    load_config->set_write_disposition(write_disposition);
+    auto *destination = load_config->mutable_destination_table();
+    destination->set_project_id(destination_table.project_id);
+    destination->set_dataset_id(destination_table.dataset_id);
+    destination->set_table_id(destination_table.table_id);
+
+    google::cloud::bigquery::v2::InsertJobRequest request;
+    request.set_project_id(config.BillingProject());
+    *request.mutable_job() = job;
+
+    return job_client.InsertJobUpload(request, absolute_file_path);
+}
+
 google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> BigqueryClient::GetQueryResultsInternal(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const google::cloud::bigquery::v2::JobReference &job_ref,
@@ -1003,6 +1130,24 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
         throw BinderException(response.status().message());
     }
     return response;
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
+    const google::cloud::bigquery::v2::JobReference &job_ref) {
+    if (job_ref.job_id().empty()) {
+        throw BinderException("Load job reference did not contain a job ID");
+    }
+
+    while (true) {
+        auto job = GetJobByReference(job_ref);
+        if (!job.has_status() || job.status().state() == "DONE") {
+            if (job.has_status()) {
+                ThrowOnJobStatusError(job.status(), "Load job");
+            }
+            return job;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
 }
 
 string BigqueryClient::GenerateJobId(const string &prefix) {
@@ -1144,6 +1289,33 @@ void BigqueryClient::CheckAuthentication() {
         "     • Set GOOGLE_APPLICATION_CREDENTIALS to your service account key file path\n"
         "  3. DuckDB secret for this project:\n"
         "     • Run: CREATE SECRET (TYPE bigquery, SCOPE 'bq://your-project', ACCESS_TOKEN 'your-token')");
+}
+
+void BigqueryClient::ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status,
+                                           const string &operation_name) {
+    if (!status.has_error_result()) {
+        return;
+    }
+
+    auto message = status.error_result().message();
+    if (message.empty()) {
+        message = operation_name + " failed";
+    }
+
+    if (!status.errors().empty()) {
+        vector<string> additional_errors;
+        additional_errors.reserve(status.errors_size());
+        for (const auto &error : status.errors()) {
+            if (!error.message().empty() && error.message() != message) {
+                additional_errors.push_back(error.message());
+            }
+        }
+        if (!additional_errors.empty()) {
+            message += " | Details: " + StringUtil::Join(additional_errors, " | ");
+        }
+    }
+
+    throw BinderException("%s failed: %s", operation_name, message);
 }
 
 void BigqueryClient::ThrowOnErrorStatus(const google::cloud::Status &status) {
