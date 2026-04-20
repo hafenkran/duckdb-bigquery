@@ -1,0 +1,97 @@
+# name: test/sql/functions/function_bigquery_load.test
+# description: Tests the bigquery_load(...) function
+# group: [functions]
+
+require bigquery
+require parquet
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table`')
+
+statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_table_table`')
+
+statement ok
+CREATE OR REPLACE TEMP TABLE local_load_source AS
+SELECT *
+FROM read_parquet('test/data/multiple_row_groups.parquet');
+
+query IIIIIII
+SELECT success,
+       job_id <> '',
+       project_id = '${BQ_TEST_PROJECT}',
+       location <> '',
+       destination_table = '${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table',
+       output_rows > 0,
+       json_extract_string(status, '$.state') = 'DONE'
+FROM bigquery_load('${BQ_TEST_PROJECT}',
+                   '${BQ_TEST_DATASET}.load_file_table',
+                   file='test/data/multiple_row_groups.parquet');
+----
+true	true	true	true	true	true	true
+
+query I
+SELECT (SELECT count(*)
+        FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table`'))
+       =
+       (SELECT count(*) FROM local_load_source);
+----
+true
+
+statement ok
+CREATE OR REPLACE TEMP TABLE local_single_row AS
+SELECT *
+FROM local_load_source
+LIMIT 1;
+
+statement ok
+CALL bigquery_load('bq', '${BQ_TEST_DATASET}.load_file_table', table='local_single_row');
+
+query I
+SELECT count(*) = 1
+FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table`');
+----
+true
+
+statement ok
+CREATE OR REPLACE TEMP TABLE load_job_info AS
+SELECT job_id
+FROM bigquery_load('bq', '${BQ_TEST_DATASET}.load_table_table', table='local_load_source');
+
+query I
+SELECT (SELECT count(*)
+        FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_table_table`'))
+       =
+       (SELECT count(*) FROM local_load_source);
+----
+true
+
+query II
+SELECT state, job_type
+FROM bigquery_jobs('bq', maxResults=20)
+WHERE job_id = (SELECT job_id FROM load_job_info);
+----
+Completed	LOAD
+
+statement ok
+COPY (SELECT 'not parquet') TO '/tmp/bigquery_load_invalid_${BQ_TEST_PROJECT}.csv' (FORMAT CSV, HEADER false);
+
+statement error
+CALL bigquery_load('${BQ_TEST_PROJECT}',
+                   '${BQ_TEST_DATASET}.load_invalid_table',
+                   file='/tmp/bigquery_load_invalid_${BQ_TEST_PROJECT}.csv');
+----
+<REGEX>:Binder Error: Load job failed: .+
+
+statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table`')
+
+statement ok
+CALL bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_table_table`')
