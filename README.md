@@ -346,6 +346,58 @@ The `bigquery_execute` function supports the following named parameters:
 | `api_endpoint`  | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
 | `grpc_endpoint` | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
 
+### `bigquery_load` Function
+
+The `bigquery_load` function submits a BigQuery load job that writes data into a destination BigQuery table. The source can either be a local Parquet file (`source_file`) or a DuckDB table/view (`source_table`).
+
+```sql
+D SELECT * FROM bigquery_load(
+    'my_gcp_project',
+    'my_dataset.target_table',
+    source_file := '/path/to/data.parquet',
+    location := 'EU'
+);
+┌─────────┬──────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┐
+│ success │            job_id            │   project_id   │ location │              destination_table               │ output_rows │      status      │
+│ boolean │           varchar            │    varchar     │ varchar  │                   varchar                    │   uint64    │       json       │
+├─────────┼──────────────────────────────┼────────────────┼──────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┤
+│ true    │ job_duckdb_load_rpamgsjlffwi │ my_gcp_project │ EU       │ my_gcp_project.my_dataset.target_table       │       10878 │ {"state":"DONE"} │
+└─────────┴──────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┘
+
+D CALL bigquery_load(
+    'bq',
+    'my_dataset.target_table',
+    source_table := 'local_staging_table',
+    write_disposition := 'WRITE_APPEND',
+    location := 'EU'
+);
+┌─────────┬──────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┐
+│ success │            job_id            │   project_id   │ location │              destination_table               │ output_rows │      status      │
+│ boolean │           varchar            │    varchar     │ varchar  │                   varchar                    │   uint64    │       json       │
+├─────────┼──────────────────────────────┼────────────────┼──────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┤
+│ true    │ job_duckdb_load_wifsj1ffusqo │ my_gcp_project │ EU       │ my_gcp_project.my_dataset.target_table       │       10878 │ {"state":"DONE"} │
+└─────────┴──────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┘
+```
+
+Compared to `CREATE TABLE ... AS` or `INSERT INTO ...`, `bigquery_load` uses a different write path:
+
+- `CREATE TABLE ... AS` and `INSERT INTO bq...` use the BigQuery Storage Write API and stream rows with `AppendRows`.
+- `bigquery_load` uses a BigQuery load job. With `source_file` it loads a Parquet file directly; with `source_table` it first stages the DuckDB relation as a temporary Parquet file and then submits the load job.
+
+Use `CREATE TABLE ... AS` when you want the normal streaming write path from a DuckDB query result. Use `bigquery_load` when you already have Parquet files or when you explicitly want load-job semantics such as `write_disposition` and `create_disposition`.
+
+The `bigquery_load` function supports the following named parameters:
+
+| Parameter            | Type      | Description                                                                            |
+| -------------------- | --------- | -------------------------------------------------------------------------------------- |
+| `source_file`        | `VARCHAR` | Path to a local Parquet file to load.                                                  |
+| `source_table`       | `VARCHAR` | Name of a DuckDB table or view to load.                                                |
+| `write_disposition`  | `VARCHAR` | BigQuery write behavior: `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`. |
+| `create_disposition` | `VARCHAR` | BigQuery create behavior: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`.              |
+| `location`           | `VARCHAR` | BigQuery job location.                                                                 |
+
+Exactly one of `source_file` or `source_table` must be provided.
+
 ### `bigquery_jobs` Function
 
 The `bigquery_jobs` fucntion retrieves a list of jobs within the specified project. It displays job metadata such as
