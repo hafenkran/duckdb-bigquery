@@ -149,6 +149,23 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
 
             auto &resp_or = *st->it;
             if (!resp_or) {
+                auto status = resp_or.status();
+                if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
+                    return arrow::Status::IOError(
+                        "BigQuery Storage Read API permission denied while reading rows for " +
+                        st->reader->GetTableRef().TableString() + ".\n"
+                        "\n"
+                        "This path requires both table/view read access and permission to create and use read "
+                        "sessions.\n"
+                        "\n"
+                        "Required permissions usually include:\n"
+                        "  - bigquery.tables.getData on the referenced table or view\n"
+                        "  - bigquery.readsessions.create on the project\n"
+                        "  - bigquery.readsessions.getData and bigquery.readsessions.update on the table or higher\n"
+                        "\n"
+                        "Error details: " +
+                        status.message());
+                }
                 return arrow::Status::IOError("ReadRows error: " + resp_or.status().message());
             }
             if (!resp_or->has_arrow_record_batch()) {
@@ -232,7 +249,27 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
 
     auto new_session = read_client->CreateReadSession(parent, session, num_streams);
     if (!new_session) {
-        throw BinderException("Error while creating read session: " + new_session.status().message());
+        auto status = new_session.status();
+        if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
+            throw PermissionException(
+                "BigQuery Storage Read API permission denied while creating a read session for %s.\n"
+                "\n"
+                "This path requires both table/view read access and permission to create and use read sessions.\n"
+                "\n"
+                "Required permissions usually include:\n"
+                "  - bigquery.tables.getData on the referenced table or view\n"
+                "  - bigquery.readsessions.create on the project\n"
+                "  - bigquery.readsessions.getData and bigquery.readsessions.update on the table or higher\n"
+                "\n"
+                "Common predefined roles:\n"
+                "  - roles/bigquery.dataViewer on the referenced dataset, table, or view\n"
+                "  - roles/bigquery.readSessionUser on the project that creates the read session\n"
+                "\n"
+                "Error details: %s",
+                table_string,
+                status.message());
+        }
+        throw BinderException("Error while creating read session: " + status.message());
     }
 
     read_session = make_uniq<google::cloud::bigquery::storage::v1::ReadSession>(std::move(new_session.value()));

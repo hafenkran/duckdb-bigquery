@@ -243,7 +243,20 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
     auto job = bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
     if (job.status().has_error_result()) {
-        throw BinderException(job.status().error_result().message());
+        const auto &error = job.status().error_result();
+        if (error.reason() == "accessDenied") {
+            throw PermissionException(
+                "BigQuery query permission denied.\n"
+                "\n"
+                "The query job was created, but BigQuery rejected access while executing it.\n"
+                "\n"
+                "Check query-job permission on the project (`bigquery.jobs.create`) and read access on the "
+                "referenced tables or views (`bigquery.tables.getData`).\n"
+                "\n"
+                "Error details: %s",
+                error.message());
+        }
+        throw BinderException(error.message());
     }
 
     auto destination_table = job.configuration().query().destination_table();
