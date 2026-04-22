@@ -1,9 +1,18 @@
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/file_system.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/client_config.hpp"
 #include "duckdb/main/database_manager.hpp"
+#include "duckdb/main/extension_helper.hpp"
+#include "duckdb/execution/executor.hpp"
+#include "duckdb/execution/physical_plan_generator.hpp"
+#include "duckdb/optimizer/optimizer.hpp"
+#include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
+#include "duckdb/parser/qualified_name.hpp"
+#include "duckdb/planner/planner.hpp"
 
 #include <google/protobuf/util/json_util.h>
 
@@ -14,6 +23,7 @@
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_transaction.hpp"
 
+#include <cstdio>
 #include <optional>
 
 namespace duckdb {
@@ -28,7 +38,14 @@ struct BigQueryLoadBindData : public TableFunctionData {
     string write_disposition;
     string create_disposition;
     string location;
+    bool remove_staged_source_file = false;
     bool finished = false;
+
+    ~BigQueryLoadBindData() override {
+        if (remove_staged_source_file && source_file.has_value()) {
+            std::remove(source_file->c_str());
+        }
+    }
 };
 
 struct BigQueryLoadParameters {
@@ -72,10 +89,22 @@ static std::optional<string> ParseOptionalStringParameter(const named_parameter_
     return entry->second.GetValue<string>();
 }
 
+static std::optional<string> ParseOptionalAliasedStringParameter(const named_parameter_map_t &named_parameters,
+                                                                 const string &parameter_name,
+                                                                 const string &legacy_parameter_name) {
+    auto value = ParseOptionalStringParameter(named_parameters, parameter_name);
+    auto legacy_value = ParseOptionalStringParameter(named_parameters, legacy_parameter_name);
+    if (value && legacy_value) {
+        throw BinderException("Cannot specify both named parameters '%s' and '%s'", parameter_name,
+                              legacy_parameter_name);
+    }
+    return value ? value : legacy_value;
+}
+
 static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &named_parameters) {
     BigQueryLoadParameters params;
-    params.source_file = ParseOptionalStringParameter(named_parameters, "file");
-    params.source_table = ParseOptionalStringParameter(named_parameters, "table");
+    params.source_file = ParseOptionalAliasedStringParameter(named_parameters, "source_file", "file");
+    params.source_table = ParseOptionalAliasedStringParameter(named_parameters, "source_table", "table");
     params.location = ParseOptionalStringParameter(named_parameters, "location");
     auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
     params.api_endpoint = api_endpoint ? *api_endpoint : string();
@@ -91,10 +120,102 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
     const auto source_count =
         static_cast<int>(params.source_file.has_value()) + static_cast<int>(params.source_table.has_value());
     if (source_count != 1) {
-        throw BinderException("Exactly one of the named parameters 'file' or 'table' must be provided");
+        throw BinderException(
+            "Exactly one of the named parameters 'source_file'/'file' or 'source_table'/'table' must be provided");
     }
 
     return params;
+}
+
+static string GetLoadStagingDirectory(FileSystem &fs) {
+    auto temp_dir = FileSystem::GetEnvVariable("TMPDIR");
+    if (temp_dir.empty()) {
+        temp_dir = FileSystem::GetEnvVariable("TEMP");
+    }
+    if (temp_dir.empty()) {
+        temp_dir = FileSystem::GetEnvVariable("TMP");
+    }
+    if (temp_dir.empty()) {
+        temp_dir = FileSystem::GetWorkingDirectory();
+    }
+    return fs.ExpandPath(temp_dir);
+}
+
+static string MaterializeSourceTableToParquet(ClientContext &context, const string &table_name) {
+    auto &fs = FileSystem::GetFileSystem(context);
+    auto temp_dir = GetLoadStagingDirectory(fs);
+    if (!fs.DirectoryExists(temp_dir)) {
+        fs.CreateDirectoriesRecursive(temp_dir);
+    }
+
+    auto temp_file_name = "duckdb-bigquery-load-" + StringUtil::GenerateRandomName() + ".parquet";
+    auto temp_file_path = fs.JoinPath(temp_dir, temp_file_name);
+    auto escaped_temp_file_path = StringUtil::Replace(temp_file_path, "'", "''");
+    auto relation_name = QualifiedName::Parse(table_name).ToString();
+
+    ExtensionHelper::AutoLoadExtension(context, "parquet");
+
+    auto copy_query =
+        "COPY (SELECT * FROM " + relation_name + ") TO '" + escaped_temp_file_path + "' (FORMAT PARQUET)";
+
+    try {
+        Parser parser(context.GetParserOptions());
+        parser.ParseQuery(copy_query);
+        if (parser.statements.size() != 1) {
+            throw InternalException("Expected a single COPY statement for source table materialization");
+        }
+
+        Planner logical_planner(context);
+        logical_planner.CreatePlan(std::move(parser.statements[0]));
+        auto logical_plan = std::move(logical_planner.plan);
+        if (!logical_plan) {
+            throw InternalException("Failed to plan source table materialization");
+        }
+
+#ifdef DEBUG
+        logical_plan->Verify(context);
+#endif
+        if (ClientConfig::GetConfig(context).enable_optimizer && logical_plan->RequireOptimizer()) {
+            Optimizer optimizer(*logical_planner.binder, context);
+            logical_plan = optimizer.Optimize(std::move(logical_plan));
+#ifdef DEBUG
+            logical_plan->Verify(context);
+#endif
+        }
+
+        PhysicalPlanGenerator physical_planner(context);
+        auto physical_plan = physical_planner.Plan(std::move(logical_plan));
+
+        Executor executor(context);
+        executor.Initialize(physical_plan->Root());
+
+        while (true) {
+            auto execution_result = executor.ExecuteTask(false);
+            if (execution_result == PendingExecutionResult::BLOCKED) {
+                executor.WaitForTask();
+                continue;
+            }
+            if (execution_result == PendingExecutionResult::RESULT_READY ||
+                execution_result == PendingExecutionResult::EXECUTION_FINISHED) {
+                break;
+            }
+        }
+
+        if (executor.HasResultCollector()) {
+            auto result = executor.GetResult();
+            if (result->HasError()) {
+                result->ThrowError();
+            }
+        }
+
+        return temp_file_path;
+    } catch (std::exception &ex) {
+        fs.TryRemoveFile(temp_file_path);
+        throw BinderException("Failed to materialize DuckDB source table for bigquery_load: %s", ex.what());
+    } catch (...) {
+        fs.TryRemoveFile(temp_file_path);
+        throw;
+    }
 }
 
 static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<string> &names) {
@@ -164,6 +285,12 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     destination_table.project_id = bind_data->config.project_id;
     bind_data->destination_table = std::move(destination_table);
 
+    if (bind_data->source_table.has_value()) {
+        bind_data->source_file = MaterializeSourceTableToParquet(context, *bind_data->source_table);
+        bind_data->source_table.reset();
+        bind_data->remove_staged_source_file = true;
+    }
+
     InitializeNamesAndReturnTypes(return_types, names);
     return bind_data;
 }
@@ -217,7 +344,9 @@ BigQueryLoadFunction::BigQueryLoadFunction()
                     {LogicalType(LogicalTypeId::VARCHAR), LogicalType(LogicalTypeId::VARCHAR)},
                     BigQueryLoadFunc,
                     BigQueryLoadBind) {
+    named_parameters["source_file"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["file"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["source_table"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["table"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["write_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["create_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
