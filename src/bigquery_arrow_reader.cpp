@@ -153,7 +153,8 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
                 if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
                     return arrow::Status::IOError(
                         "BigQuery Storage Read API permission denied while reading rows for " +
-                        st->reader->GetTableRef().TableString() + ".\n"
+                        st->reader->GetTableRef().TableString() +
+                        ".\n"
                         "\n"
                         "This path requires both table/view read access and permission to create and use read "
                         "sessions.\n"
