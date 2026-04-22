@@ -95,7 +95,8 @@ static std::optional<string> ParseOptionalAliasedStringParameter(const named_par
     auto value = ParseOptionalStringParameter(named_parameters, parameter_name);
     auto legacy_value = ParseOptionalStringParameter(named_parameters, legacy_parameter_name);
     if (value && legacy_value) {
-        throw BinderException("Cannot specify both named parameters '%s' and '%s'", parameter_name,
+        throw BinderException("Cannot specify both named parameters '%s' and '%s'",
+                              parameter_name,
                               legacy_parameter_name);
     }
     return value ? value : legacy_value;
@@ -155,8 +156,7 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
 
     ExtensionHelper::AutoLoadExtension(context, "parquet");
 
-    auto copy_query =
-        "COPY (SELECT * FROM " + relation_name + ") TO '" + escaped_temp_file_path + "' (FORMAT PARQUET)";
+    auto copy_query = "COPY (SELECT * FROM " + relation_name + ") TO '" + escaped_temp_file_path + "' (FORMAT PARQUET)";
 
     try {
         Parser parser(context.GetParserOptions());
