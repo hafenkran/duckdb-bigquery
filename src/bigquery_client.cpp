@@ -472,6 +472,7 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     int num_results = 0;
     for (const auto &job : response) {
         if (!job.ok()) {
+            ThrowOnErrorStatus(job.status());
             if (CheckSSLError(job.status())) {
                 return ListJobs(params);
             }
@@ -506,6 +507,7 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJobByReference(
 
     auto response = client.GetJob(request);
     if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
         if (CheckSSLError(response.status())) {
             return GetJobByReference(job_ref);
         }
@@ -533,6 +535,7 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, co
 
     auto response = client.GetJob(request);
     if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
         if (CheckSSLError(response.status())) {
             return GetJob(job_id, location);
         }
@@ -554,6 +557,7 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
 
     auto response = client->GetTable(request);
     if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
         if (CheckSSLError(response.status())) {
             return GetTable(dataset_id, table_id);
         }
@@ -580,6 +584,11 @@ bool BigqueryClient::DatasetExists(const string &dataset_id) {
 
     auto response = client.GetDataset(request);
     if (!response.ok()) {
+        if (response.status().code() == google::cloud::StatusCode::kNotFound) {
+            std::cerr << "Error: " << response.status().message() << "\n";
+            return false;
+        }
+        ThrowOnErrorStatus(response.status());
         std::cerr << "Error: " << response.status().message() << "\n";
         return false;
     }
@@ -597,6 +606,11 @@ bool BigqueryClient::TableExists(const string &dataset_id, const string &table_i
 
     auto response = client.GetTable(request);
     if (!response.ok()) {
+        if (response.status().code() == google::cloud::StatusCode::kNotFound) {
+            std::cerr << "Error: " << response.status().message() << "\n";
+            return false;
+        }
+        ThrowOnErrorStatus(response.status());
         std::cerr << "Error: " << response.status().message() << "\n";
         return false;
     }
@@ -890,6 +904,7 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
 
     auto response = GetQueryResultsInternal(client, job_ref, page_token);
     if (!response) {
+        ThrowOnErrorStatus(response.status());
         if (CheckSSLError(response.status())) {
             return GetQueryResults(job_ref, page_token);
         }
@@ -920,6 +935,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
 
     auto response = client.GetJob(request);
     if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
         throw BinderException(response.status().message());
     }
 
@@ -1000,6 +1016,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
 
     auto response = job_client.GetQueryResults(get_results_request);
     if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
         throw BinderException(response.status().message());
     }
     return response;
@@ -1170,16 +1187,16 @@ void BigqueryClient::ThrowOnErrorStatus(const google::cloud::Status &status) {
         throw PermissionException( //
             "BigQuery Permission Denied\n"
             "\n"
-            "Your credentials are valid, but lack the necessary permissions for this operation.\n"
+            "Your credentials are valid, but they do not have enough IAM permissions for this operation.\n"
             "\n"
             "Required actions:\n"
-            "  1. Verify you are using the correct credentials for this project"
-            "  2. Verify your credentials have the required BigQuery roles:\n"
-            "     • BigQuery Data Viewer (roles/bigquery.dataViewer) - for read access\n"
-            "     • BigQuery Data Editor (roles/bigquery.dataEditor) - for write access\n"
-            "     • BigQuery Job User (roles/bigquery.jobUser) - for running queries\n"
-            "     • BigQuery Read Session User (roles/bigquery.readSessionUser) - for creating read sessions\n"
-            "  3. Check project-level and dataset-level permissions\n"
+            "  1. Verify you are using the correct credentials for this project.\n"
+            "  2. Verify your credentials have the required BigQuery roles for this path:\n"
+            "     • BigQuery Data Viewer (roles/bigquery.dataViewer) - read access to tables and views\n"
+            "     • BigQuery Data Editor (roles/bigquery.dataEditor) - write access to destination tables\n"
+            "     • BigQuery Job User (roles/bigquery.jobUser) - query and job execution\n"
+            "     • BigQuery Read Session User (roles/bigquery.readSessionUser) - Storage Read API access\n"
+            "  3. Check both project-level and dataset/table/view-level permissions.\n"
             "\n"
             "Error details from BigQuery API:\n"
             "  %s",

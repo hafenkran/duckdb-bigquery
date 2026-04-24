@@ -12,7 +12,7 @@ You must configure authentication before using the BigQuery extension. The exten
 2. **Environment Variable** ([Option 2](#authentication-option-2-configure-adc-with-service-account-keys)) - `GOOGLE_APPLICATION_CREDENTIALS` pointing to a service-account JSON key.
 3. **User Account** ([Option 1](#authentication-option-1-configure-adc-with-your-google-account)) - Application Default Credentials created by gcloud auth application-default login.
 
-This priority order prefers explicit, connection-scoped credentials (DuckDB Secrets) over machine-wide settings (environment variables) and developer-local user credentials (gcloud).
+This priority order prefers explicit, connection-scoped credentials (DuckDB Secrets) over machine-wide settings (environment variables) and developer-local user credentials (gcloud). See [Required Permissions](#required-permissions) for the BigQuery roles and permissions commonly needed by the extension.
 
 ### Authentication Option 1: Configure ADC with your Google Account
 
@@ -75,6 +75,36 @@ set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=%cd%\roots.pem
 ```
 
 This downloads the `roots.pem` file and sets the `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` environment variable to its location.
+
+## Required Permissions
+
+The exact IAM setup depends on which extension path you use. In practice, you usually need a mix of:
+
+- project-level job permissions such as `bigquery.jobs.create`, `bigquery.jobs.list`, or `bigquery.jobs.listAll`
+- project-level Storage Read API permissions such as `bigquery.readsessions.create`
+- dataset/table/view permissions such as `bigquery.tables.getData`, `bigquery.tables.updateData`, `bigquery.tables.create`, and `bigquery.tables.update`
+
+Common predefined roles:
+
+- Project level:
+  - `roles/bigquery.jobUser` for `bigquery.jobs.create`
+  - `roles/bigquery.readSessionUser` for `bigquery.readsessions.create`, `bigquery.readsessions.getData`, and `bigquery.readsessions.update`
+  - `roles/bigquery.user` as a broader project-level role that includes `bigquery.jobs.create`, `bigquery.jobs.list`, and `bigquery.readsessions.*`
+- Dataset/table/view level:
+  - `roles/bigquery.dataViewer` for read access, including `bigquery.tables.getData`
+  - `roles/bigquery.dataEditor` for write access, including `bigquery.tables.updateData`
+
+Project-level and dataset/table/view grants both matter.
+
+Operation-specific notes:
+
+- `ATTACH` and `bigquery_scan` use the BigQuery Storage Read API. Google documents `bigquery.readsessions.create` on the project plus `bigquery.readsessions.getData` and `bigquery.readsessions.update` on the table or higher. You also need read access to the referenced tables or views.
+- `bigquery_query` on the default path runs a query job and then fetches results through the Storage Read API. Google documents `bigquery.jobs.create` for the query job, `bigquery.tables.getData` on referenced tables and views, and the Storage Read API read-session permissions above.
+- `bigquery_query(..., use_rest_api=true)` avoids the Storage Read API fetch path. It still needs the permissions required by the query itself. For long-running or large-result requests, BigQuery can still create a job, so `bigquery.jobs.create` may still be required.
+- `bigquery_execute` uses the query-job path. It needs `bigquery.jobs.create`; any additional table or dataset permissions depend on the SQL being executed.
+- `INSERT INTO bq...` uses the Storage Write API write-stream path. Google documents `bigquery.tables.updateData` for that API, and the statement still needs whatever read permissions its source query requires.
+- `CREATE TABLE ... AS` creates the destination table and then writes rows through the Storage Write API path. In practice this combines the usual query permissions with the documented table-write permissions: `bigquery.jobs.create`, `bigquery.tables.create`, and `bigquery.tables.updateData`.
+- `bigquery_jobs` uses the BigQuery jobs listing APIs. Listing your own jobs needs `bigquery.jobs.list`. Using `allUsers=true` needs `bigquery.jobs.listAll`, which is included in roles such as `roles/bigquery.resourceViewer`.
 
 ## Quickstart
 

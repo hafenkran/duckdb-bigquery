@@ -202,6 +202,45 @@ void WriteScalarUnifiedField(google::protobuf::Message *msg,
     }
 }
 
+[[noreturn]] void ThrowStorageWritePermissionDenied(const string &table_string,
+                                                    const string &operation,
+                                                    const string &details) {
+    throw PermissionException("BigQuery Storage Write API permission denied while %s for %s.\n"
+                              "\n"
+                              "This path needs permission to write table data.\n"
+                              "\n"
+                              "Required permission:\n"
+                              "  - bigquery.tables.updateData\n"
+                              "\n"
+                              "Common predefined roles that include this permission:\n"
+                              "  - roles/bigquery.dataEditor\n"
+                              "  - roles/bigquery.dataOwner\n"
+                              "  - roles/bigquery.admin\n"
+                              "\n"
+                              "Check that this permission is granted on the destination dataset or table.\n"
+                              "\n"
+                              "Error details: %s",
+                              operation.c_str(),
+                              table_string,
+                              details);
+}
+
+void ThrowIfStorageWritePermissionDenied(const string &table_string,
+                                         const string &operation,
+                                         const google::cloud::Status &status) {
+    if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
+        ThrowStorageWritePermissionDenied(table_string, operation, status.message());
+    }
+}
+
+void ThrowIfStorageWritePermissionDenied(const string &table_string,
+                                         const string &operation,
+                                         const google::rpc::Status &status) {
+    if (status.code() == google::rpc::PERMISSION_DENIED) {
+        ThrowStorageWritePermissionDenied(table_string, operation, status.message());
+    }
+}
+
 } // namespace
 
 void ValidateDateRange(const duckdb::date_t &value) {
@@ -273,22 +312,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
             auto status = write_stream_status.status();
 
             // Fail immediately on non-retryable errors instead of retrying
-            if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
-                throw PermissionException(
-                    "BigQuery Storage Write API permission denied for %s.\n"
-                    "\n"
-                    "The BigQuery Storage Write API requires additional permissions beyond standard\n"
-                    "BigQuery access. Ensure your credentials have:\n"
-                    "  - bigquery.tables.updateData\n"
-                    "  - bigquery.readsessions.create (required by the Storage API)\n"
-                    "\n"
-                    "Alternatively, grant the BigQuery Data Editor role (roles/bigquery.dataEditor)\n"
-                    "and the BigQuery Read Session User role (roles/bigquery.readSessionUser).\n"
-                    "\n"
-                    "Error details: %s",
-                    table_string,
-                    status.message());
-            }
+            ThrowIfStorageWritePermissionDenied(table_string, "creating a write stream", status);
             if (status.code() == google::cloud::StatusCode::kUnauthenticated) {
                 throw IOException("BigQuery Storage Write API authentication failed for %s.\n"
                                   "\n"
@@ -673,18 +697,27 @@ void BigqueryProtoWriter::EnsureGrpcStreamWithReplay() {
     for (int attempt = 0; attempt < max_retries; attempt++) {
         grpc_stream = write_client->AsyncAppendRows();
         if (!grpc_stream->Start().get()) {
+            auto finish = grpc_stream->Finish().get();
+            ThrowIfStorageWritePermissionDenied(table_string, "starting the AppendRows stream", finish);
+            auto finish_message =
+                finish.ok() ? string("AppendRows start failed without an error status") : finish.message();
             grpc_stream.reset();
             if (attempt < max_retries - 1) {
                 std::cout << "Retrying..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 continue;
             }
-            throw IOException("Unexpected streaming RPC error in Start: failed to start AppendRows stream");
+            throw IOException("Unexpected streaming RPC error in Start: %s", finish_message);
         }
 
         bool replay_ok = true;
+        string replay_error;
         for (const auto &pending : inflight_requests) {
             if (!grpc_stream->Write(pending.request, grpc::WriteOptions()).get()) {
+                auto finish = grpc_stream->Finish().get();
+                ThrowIfStorageWritePermissionDenied(table_string, "replaying AppendRows requests", finish);
+                replay_error =
+                    finish.ok() ? string("AppendRows replay failed without an error status") : finish.message();
                 replay_ok = false;
                 break;
             }
@@ -700,7 +733,7 @@ void BigqueryProtoWriter::EnsureGrpcStreamWithReplay() {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
         }
-        throw IOException("Unexpected streaming RPC error in Replay: failed to restore inflight AppendRows requests");
+        throw IOException("Unexpected streaming RPC error in Replay: %s", replay_error);
     }
 }
 
@@ -710,6 +743,7 @@ void BigqueryProtoWriter::DrainInflightResponse() {
     }
 
     std::optional<google::cloud::bigquery::storage::v1::AppendRowsResponse> response;
+    string read_error;
     int max_retries = 100;
     for (int attempt = 0; attempt < max_retries; attempt++) {
         EnsureGrpcStreamWithReplay();
@@ -719,18 +753,22 @@ void BigqueryProtoWriter::DrainInflightResponse() {
             break;
         }
 
+        auto finish = grpc_stream->Finish().get();
+        ThrowIfStorageWritePermissionDenied(table_string, "reading AppendRows responses", finish);
+        read_error = finish.ok() ? string("AppendRows read failed without an error status") : finish.message();
         grpc_stream.reset();
         if (attempt < max_retries - 1) {
             std::cout << "Retrying..." << std::endl;
             std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
         }
-        throw std::runtime_error("Read failed");
+        throw IOException("Unexpected streaming RPC error in Read: %s", read_error);
     }
 
     const auto &pending = inflight_requests.front();
     if (response->has_error()) {
         if (response->error().code() != google::rpc::ALREADY_EXISTS) {
+            ThrowIfStorageWritePermissionDenied(table_string, "appending rows", response->error());
             for (const auto &error : response->row_errors()) {
                 std::cerr << "Row " << error.index() << " failed: " << error.message() << "\n";
             }
@@ -776,6 +814,8 @@ void BigqueryProtoWriter::SendAppendRequest(PendingAppend pending) {
     } else {
         auto write = grpc_stream->Write(inflight_requests.back().request, grpc::WriteOptions()).get();
         if (!write) {
+            auto finish = grpc_stream->Finish().get();
+            ThrowIfStorageWritePermissionDenied(table_string, "writing an AppendRows request", finish);
             grpc_stream.reset();
             EnsureGrpcStreamWithReplay();
         }
@@ -796,12 +836,14 @@ void BigqueryProtoWriter::Finalize() {
 
     grpc_stream->WritesDone().get();
     auto finish = grpc_stream->Finish().get();
+    ThrowIfStorageWritePermissionDenied(table_string, "closing the AppendRows stream", finish);
     if (!finish.ok()) {
         throw IOException("Unexpected streaming RPC error: %s", finish.message());
     }
 
     auto finalize = write_client->FinalizeWriteStream(write_stream.name());
     if (!finalize) {
+        ThrowIfStorageWritePermissionDenied(table_string, "finalizing the write stream", finalize.status());
         throw IOException("Unexpected error finalizing write stream: %s", finalize.status().message());
     }
 
@@ -810,6 +852,7 @@ void BigqueryProtoWriter::Finalize() {
     commit_request.add_write_streams(write_stream.name());
     auto commit = write_client->BatchCommitWriteStreams(commit_request);
     if (!commit) {
+        ThrowIfStorageWritePermissionDenied(table_string, "committing the write stream", commit.status());
         throw IOException("Unexpected error commiting write streams: %s", commit.status().message());
     }
 
