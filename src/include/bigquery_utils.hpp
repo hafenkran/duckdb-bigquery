@@ -158,6 +158,7 @@ struct BigqueryUtils {
 public:
     // static ConnectionDetails ParseConnectionString(const string &connection_string);
     static BigqueryTableRef ParseTableString(const string &table_string);
+    static BigqueryTableRef ParseDatasetTableString(const string &table_string);
 
     static std::string FormatParentString(const string &project_id);
     static std::string FormatTableString(const std::string &project_id,

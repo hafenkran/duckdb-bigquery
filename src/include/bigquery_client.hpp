@@ -75,6 +75,16 @@ public:
     vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
     google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
     google::cloud::bigquery::v2::Job GetJobByReference(const google::cloud::bigquery::v2::JobReference &job_ref);
+    google::cloud::bigquery::v2::Job LoadParquetFile(const BigqueryTableRef &destination_table,
+                                                     const string &file_path,
+                                                     const string &write_disposition = "WRITE_TRUNCATE",
+                                                     const string &create_disposition = "CREATE_IF_NEEDED",
+                                                     const string &location = "");
+    google::cloud::bigquery::v2::Job LoadDuckDBTable(const string &table_name,
+                                                     const BigqueryTableRef &destination_table,
+                                                     const string &write_disposition = "WRITE_TRUNCATE",
+                                                     const string &create_disposition = "CREATE_IF_NEEDED",
+                                                     const string &location = "");
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query,
                                                             const string &location = "",
@@ -119,6 +129,15 @@ private:
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
+    google::cloud::StatusOr<google::cloud::bigquery::v2::Job> InsertLoadJobInternal(
+        google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+        const BigqueryTableRef &destination_table,
+        const string &file_path,
+        const string &write_disposition,
+        const string &create_disposition,
+        const string &location);
+    google::cloud::bigquery::v2::Job WaitForJobCompletion(const google::cloud::bigquery::v2::JobReference &job_ref);
+    void ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status, const string &operation_name);
 
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
                         ColumnList &res_columns,
