@@ -56,6 +56,7 @@ endif()
 ExternalProject_Add(
     gcp
     URL ${CMAKE_CURRENT_SOURCE_DIR}/vendor/google-cloud-cpp-2.38.0.zip
+    PATCH_COMMAND patch -p1 -i ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.38.0-bigquery-load.patch
     # CONFIGURE_HANDLED_BY_BUILD TRUE
     CMAKE_ARGS ${GCP_CMAKE_ARGS}
                -DBUILD_TESTING=OFF

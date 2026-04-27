@@ -18,6 +18,7 @@
 #include "bigquery_extension.hpp"
 #include "bigquery_geography.hpp"
 #include "bigquery_jobs.hpp"
+#include "bigquery_load.hpp"
 #include "bigquery_parser.hpp"
 #include "bigquery_query.hpp"
 #include "bigquery_scan.hpp"
@@ -48,6 +49,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
     loader.RegisterFunction(bigquery_list_jobs_function);
+
+    bigquery::BigQueryLoadFunction bigquery_load_function;
+    loader.RegisterFunction(bigquery_load_function);
 
     ScalarFunction normalize_geography("bigquery_normalize_geography",
                                        {LogicalType::GEOMETRY()},

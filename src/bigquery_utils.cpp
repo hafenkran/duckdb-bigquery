@@ -153,6 +153,20 @@ BigqueryTableRef BigqueryUtils::ParseTableString(const string &table_string) {
     throw std::invalid_argument("Invalid table string: " + table_string);
 }
 
+BigqueryTableRef BigqueryUtils::ParseDatasetTableString(const string &table_string) {
+    std::regex pattern(R"(([^\.]+)\.([^\.]+))");
+    std::smatch matches;
+    if (!std::regex_match(table_string, matches, pattern) || matches.size() != 3) {
+        throw std::invalid_argument("Invalid destination table string: " + table_string +
+                                    ". Expected format: dataset.table");
+    }
+
+    BigqueryTableRef result;
+    result.dataset_id = matches[1].str();
+    result.table_id = matches[2].str();
+    return result;
+}
+
 std::string BigqueryUtils::FormatParentString(const string &project) {
     return "projects/" + project;
 }
