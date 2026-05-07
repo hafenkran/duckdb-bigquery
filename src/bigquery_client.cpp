@@ -23,13 +23,13 @@
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/qualified_name.hpp"
 
-#include "google/cloud/bigquery/v2/job_config.pb.h"
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_options.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_write_options.h"
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
+#include "google/cloud/bigquery/v2/job_config.pb.h"
 
 #include "google/cloud/bigquerycontrol/v2/dataset_client.h"
 #include "google/cloud/bigquerycontrol/v2/job_client.h"
@@ -593,6 +593,50 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
     return WaitForJobCompletion(response->job_reference());
 }
 
+google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryTableRef &destination_table,
+                                                                 const vector<string> &source_uris,
+                                                                 const string &write_disposition,
+                                                                 const string &create_disposition,
+                                                                 const string &location) {
+    if (source_uris.empty()) {
+        throw BinderException("At least one source URI must be provided for a BigQuery load job");
+    }
+    for (const auto &source_uri : source_uris) {
+        if (source_uri.empty()) {
+            throw BinderException("BigQuery load source URIs cannot be empty");
+        }
+        if (!StringUtil::CIStartsWith(source_uri, "gs://")) {
+            throw BinderException("BigQuery Parquet load source URI must use the gs:// scheme: %s", source_uri);
+        }
+    }
+
+    CheckAuthentication();
+
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto response = InsertLoadJobFromUrisInternal(client,
+                                                  destination_table,
+                                                  source_uris,
+                                                  write_disposition,
+                                                  create_disposition,
+                                                  location);
+    if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
+
+        if (CheckSSLError(response.status())) {
+            return LoadParquetUris(destination_table, source_uris, write_disposition, create_disposition, location);
+        }
+
+        throw BinderException("Load job submission failed: " + response.status().message());
+    }
+
+    if (!response->has_job_reference()) {
+        throw BinderException("Load job submission succeeded but did not return a job reference");
+    }
+    return WaitForJobCompletion(response->job_reference());
+}
+
 google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &table_name,
                                                                  const BigqueryTableRef &destination_table,
                                                                  const string &write_disposition,
@@ -1082,23 +1126,11 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     return job_client.Query(request);
 }
 
-google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::InsertLoadJobInternal(
-    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildLoadJobRequest(
     const BigqueryTableRef &destination_table,
-    const string &file_path,
     const string &write_disposition,
     const string &create_disposition,
     const string &location) {
-    if (!context) {
-        throw InternalException("InsertLoadJobInternal requires an active DuckDB client context");
-    }
-
-    auto &fs = FileSystem::GetFileSystem(*context);
-    auto absolute_file_path = fs.ExpandPath(file_path);
-    if (!fs.FileExists(absolute_file_path)) {
-        throw IOException("Parquet file not found: %s", absolute_file_path);
-    }
-
     google::cloud::bigquery::v2::Job job;
     auto *job_reference = job.mutable_job_reference();
     job_reference->set_project_id(config.BillingProject());
@@ -1119,8 +1151,45 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
     google::cloud::bigquery::v2::InsertJobRequest request;
     request.set_project_id(config.BillingProject());
     *request.mutable_job() = job;
+    return request;
+}
+
+google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::InsertLoadJobInternal(
+    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+    const BigqueryTableRef &destination_table,
+    const string &file_path,
+    const string &write_disposition,
+    const string &create_disposition,
+    const string &location) {
+    if (!context) {
+        throw InternalException("InsertLoadJobInternal requires an active DuckDB client context");
+    }
+
+    auto &fs = FileSystem::GetFileSystem(*context);
+    auto absolute_file_path = fs.ExpandPath(file_path);
+    if (!fs.FileExists(absolute_file_path)) {
+        throw IOException("Parquet file not found: %s", absolute_file_path);
+    }
+
+    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location);
 
     return job_client.InsertJobUpload(request, absolute_file_path);
+}
+
+google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::InsertLoadJobFromUrisInternal(
+    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+    const BigqueryTableRef &destination_table,
+    const vector<string> &source_uris,
+    const string &write_disposition,
+    const string &create_disposition,
+    const string &location) {
+    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location);
+    auto *load_config = request.mutable_job()->mutable_configuration()->mutable_load();
+    for (const auto &source_uri : source_uris) {
+        load_config->add_source_uris(source_uri);
+    }
+
+    return job_client.InsertJob(request);
 }
 
 google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> BigqueryClient::GetQueryResultsInternal(

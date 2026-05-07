@@ -2,15 +2,15 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/execution/executor.hpp"
+#include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/client_config.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/extension_helper.hpp"
-#include "duckdb/execution/executor.hpp"
-#include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/optimizer/optimizer.hpp"
-#include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
+#include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/qualified_name.hpp"
 #include "duckdb/planner/planner.hpp"
 
@@ -34,6 +34,7 @@ struct BigQueryLoadBindData : public TableFunctionData {
     shared_ptr<BigqueryClient> bq_client;
     BigqueryTableRef destination_table;
     std::optional<string> source_file;
+    vector<string> source_uris;
     std::optional<string> source_table;
     string write_disposition;
     string create_disposition;
@@ -50,6 +51,7 @@ struct BigQueryLoadBindData : public TableFunctionData {
 
 struct BigQueryLoadParameters {
     std::optional<string> source_file;
+    vector<string> source_uris;
     std::optional<string> source_table;
     string write_disposition = "WRITE_TRUNCATE";
     string create_disposition = "CREATE_IF_NEEDED";
@@ -89,6 +91,33 @@ static std::optional<string> ParseOptionalStringParameter(const named_parameter_
     return entry->second.GetValue<string>();
 }
 
+static std::optional<vector<string>> ParseOptionalSourceUrisParameter(const named_parameter_map_t &named_parameters,
+                                                                      const string &parameter_name) {
+    auto entry = named_parameters.find(parameter_name);
+    if (entry == named_parameters.end() || entry->second.IsNull()) {
+        return std::nullopt;
+    }
+
+    if (entry->second.type().id() == LogicalTypeId::VARCHAR) {
+        return vector<string>{entry->second.GetValue<string>()};
+    }
+    if (entry->second.type().id() != LogicalTypeId::LIST) {
+        throw BinderException("Parameter '%s' must be a VARCHAR or LIST<VARCHAR>", parameter_name);
+    }
+
+    vector<string> result;
+    for (const auto &child : ListValue::GetChildren(entry->second)) {
+        if (child.IsNull()) {
+            throw BinderException("Null entries are not allowed in parameter '%s'", parameter_name);
+        }
+        if (child.type().id() != LogicalTypeId::VARCHAR) {
+            throw BinderException("Parameter '%s' must contain only VARCHAR entries", parameter_name);
+        }
+        result.push_back(child.GetValue<string>());
+    }
+    return result;
+}
+
 static std::optional<string> ParseOptionalAliasedStringParameter(const named_parameter_map_t &named_parameters,
                                                                  const string &parameter_name,
                                                                  const string &legacy_parameter_name) {
@@ -106,6 +135,13 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
     BigQueryLoadParameters params;
     params.source_file = ParseOptionalAliasedStringParameter(named_parameters, "source_file", "file");
     params.source_table = ParseOptionalAliasedStringParameter(named_parameters, "source_table", "table");
+    auto source_uris = ParseOptionalSourceUrisParameter(named_parameters, "source_uris");
+    if (source_uris) {
+        params.source_uris = *source_uris;
+    }
+    if (source_uris && source_uris->empty()) {
+        throw BinderException("Parameter 'source_uris' must contain at least one URI");
+    }
     params.location = ParseOptionalStringParameter(named_parameters, "location");
     auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
     params.api_endpoint = api_endpoint ? *api_endpoint : string();
@@ -118,14 +154,30 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
                                                    "CREATE_IF_NEEDED",
                                                    {"CREATE_IF_NEEDED", "CREATE_NEVER"});
 
-    const auto source_count =
-        static_cast<int>(params.source_file.has_value()) + static_cast<int>(params.source_table.has_value());
+    const auto source_count = static_cast<int>(params.source_file.has_value()) +
+                              static_cast<int>(params.source_table.has_value()) +
+                              static_cast<int>(source_uris.has_value());
     if (source_count != 1) {
-        throw BinderException(
-            "Exactly one of the named parameters 'source_file'/'file' or 'source_table'/'table' must be provided");
+        throw BinderException("Exactly one of the named parameters 'source_file'/'file', 'source_uris', or "
+                              "'source_table'/'table' must be provided");
     }
 
     return params;
+}
+
+static bool IsGcsUri(const string &source) {
+    return StringUtil::CIStartsWith(source, "gs://");
+}
+
+static void ValidateGcsSourceUris(const vector<string> &source_uris) {
+    for (const auto &source_uri : source_uris) {
+        if (source_uri.empty()) {
+            throw BinderException("BigQuery load source URIs cannot be empty");
+        }
+        if (!IsGcsUri(source_uri)) {
+            throw BinderException("BigQuery Parquet load source URI must use the gs:// scheme: %s", source_uri);
+        }
+    }
 }
 
 static string GetLoadStagingDirectory(FileSystem &fs) {
@@ -253,6 +305,7 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     bind_data->write_disposition = params.write_disposition;
     bind_data->create_disposition = params.create_disposition;
     bind_data->source_file = params.source_file;
+    bind_data->source_uris = params.source_uris;
     bind_data->source_table = params.source_table;
     bind_data->location = params.location ? *params.location : BigquerySettings::DefaultLocation();
 
@@ -285,6 +338,14 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     destination_table.project_id = bind_data->config.project_id;
     bind_data->destination_table = std::move(destination_table);
 
+    if (bind_data->source_file.has_value() && IsGcsUri(*bind_data->source_file)) {
+        bind_data->source_uris.push_back(*bind_data->source_file);
+        bind_data->source_file.reset();
+    }
+    if (!bind_data->source_uris.empty()) {
+        ValidateGcsSourceUris(bind_data->source_uris);
+    }
+
     if (bind_data->source_table.has_value()) {
         bind_data->source_file = MaterializeSourceTableToParquet(context, *bind_data->source_table);
         bind_data->source_table.reset();
@@ -308,12 +369,14 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
                                               data.write_disposition,
                                               data.create_disposition,
                                               data.location);
-    } else {
-        job = data.bq_client->LoadDuckDBTable(*data.source_table,
-                                              data.destination_table,
+    } else if (!data.source_uris.empty()) {
+        job = data.bq_client->LoadParquetUris(data.destination_table,
+                                              data.source_uris,
                                               data.write_disposition,
                                               data.create_disposition,
                                               data.location);
+    } else {
+        throw InternalException("bigquery_load has no source to load");
     }
 
     std::string status_json;
@@ -346,6 +409,7 @@ BigQueryLoadFunction::BigQueryLoadFunction()
                     BigQueryLoadBind) {
     named_parameters["source_file"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["file"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["source_uris"] = LogicalType::ANY;
     named_parameters["source_table"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["table"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["write_disposition"] = LogicalType(LogicalTypeId::VARCHAR);

@@ -80,6 +80,11 @@ public:
                                                      const string &write_disposition = "WRITE_TRUNCATE",
                                                      const string &create_disposition = "CREATE_IF_NEEDED",
                                                      const string &location = "");
+    google::cloud::bigquery::v2::Job LoadParquetUris(const BigqueryTableRef &destination_table,
+                                                     const vector<string> &source_uris,
+                                                     const string &write_disposition = "WRITE_TRUNCATE",
+                                                     const string &create_disposition = "CREATE_IF_NEEDED",
+                                                     const string &location = "");
     google::cloud::bigquery::v2::Job LoadDuckDBTable(const string &table_name,
                                                      const BigqueryTableRef &destination_table,
                                                      const string &write_disposition = "WRITE_TRUNCATE",
@@ -129,10 +134,21 @@ private:
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
+    google::cloud::bigquery::v2::InsertJobRequest BuildLoadJobRequest(const BigqueryTableRef &destination_table,
+                                                                      const string &write_disposition,
+                                                                      const string &create_disposition,
+                                                                      const string &location);
     google::cloud::StatusOr<google::cloud::bigquery::v2::Job> InsertLoadJobInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const BigqueryTableRef &destination_table,
         const string &file_path,
+        const string &write_disposition,
+        const string &create_disposition,
+        const string &location);
+    google::cloud::StatusOr<google::cloud::bigquery::v2::Job> InsertLoadJobFromUrisInternal(
+        google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+        const BigqueryTableRef &destination_table,
+        const vector<string> &source_uris,
         const string &write_disposition,
         const string &create_disposition,
         const string &location);
