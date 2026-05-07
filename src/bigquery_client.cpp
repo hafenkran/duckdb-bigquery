@@ -286,8 +286,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
-        options.set<google::cloud::UnifiedCredentialsOption>(
-            google::cloud::MakeGoogleDefaultCredentials(options));
+        options.set<google::cloud::UnifiedCredentialsOption>(google::cloud::MakeGoogleDefaultCredentials(options));
     }
 
     return options;
@@ -315,8 +314,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
-        options.set<google::cloud::UnifiedCredentialsOption>(
-            google::cloud::MakeGoogleDefaultCredentials(options));
+        options.set<google::cloud::UnifiedCredentialsOption>(google::cloud::MakeGoogleDefaultCredentials(options));
     }
 
     return options;
