@@ -273,7 +273,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
         auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
         if (credentials) {
-            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+            options.set<google::cloud::UnifiedCredentialsOption>(credentials);
             credentials_set = true;
         }
     }
@@ -281,12 +281,12 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     // Set CA bundle path if provided
     auto ca_path = BigquerySettings::CurlCaBundlePath();
     if (!ca_path.empty()) {
-        options.set<google::cloud::v2_38::CARootsFilePathOption>(ca_path);
+        options.set<google::cloud::CARootsFilePathOption>(ca_path);
     }
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
-        options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
+        options.set<google::cloud::UnifiedCredentialsOption>(
             google::cloud::MakeGoogleDefaultCredentials(options));
     }
 
@@ -308,14 +308,14 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
         auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
         if (credentials) {
-            options.set<google::cloud::v2_38::UnifiedCredentialsOption>(credentials);
+            options.set<google::cloud::UnifiedCredentialsOption>(credentials);
             credentials_set = true;
         }
     }
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
-        options.set<google::cloud::v2_38::UnifiedCredentialsOption>(
+        options.set<google::cloud::UnifiedCredentialsOption>(
             google::cloud::MakeGoogleDefaultCredentials(options));
     }
 
@@ -486,7 +486,7 @@ vector<google::cloud::bigquery::v2::ListFormatJob> BigqueryClient::ListJobs(cons
     }
 
     vector<google::cloud::bigquery::v2::ListFormatJob> result;
-    google::cloud::v2_38::StreamRange<google::cloud::bigquery::v2::ListFormatJob> response = client.ListJobs(request);
+    google::cloud::StreamRange<google::cloud::bigquery::v2::ListFormatJob> response = client.ListJobs(request);
 
     int num_results = 0;
     for (const auto &job : response) {

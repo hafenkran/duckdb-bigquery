@@ -1,0 +1,669 @@
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.cc b/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.cc
+index c71b7316..168cc051 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.cc
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.cc
+@@ -81,6 +81,23 @@ JobServiceRestConnectionImpl::InsertJob(
+       *current, request, __func__);
+ }
+ 
++StatusOr<google::cloud::bigquery::v2::Job>
++JobServiceRestConnectionImpl::InsertJobUpload(
++    google::cloud::bigquery::v2::InsertJobRequest const& request,
++    std::string const& upload_file_path) {
++  auto current = google::cloud::internal::SaveCurrentOptions();
++  return google::cloud::rest_internal::RestRetryLoop(
++      retry_policy(*current), backoff_policy(*current),
++      idempotency_policy(*current)->InsertJob(request),
++      [this, upload_file_path](rest_internal::RestContext& rest_context,
++                               Options const& options,
++                               google::cloud::bigquery::v2::InsertJobRequest const& request) {
++        return stub_->InsertJobUpload(rest_context, options, request,
++                                      upload_file_path);
++      },
++      *current, request, __func__);
++}
++
+ Status JobServiceRestConnectionImpl::DeleteJob(
+     google::cloud::bigquery::v2::DeleteJobRequest const& request) {
+   auto current = google::cloud::internal::SaveCurrentOptions();
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.h b/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.h
+index a01de2f7..98ea62c5 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.h
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_connection_impl.h
+@@ -31,6 +31,7 @@
+ #include "google/cloud/stream_range.h"
+ #include "google/cloud/version.h"
+ #include <memory>
++#include <string>
+ 
+ namespace google {
+ namespace cloud {
+@@ -57,6 +58,9 @@ class JobServiceRestConnectionImpl
+ 
+   StatusOr<google::cloud::bigquery::v2::Job> InsertJob(
+       google::cloud::bigquery::v2::InsertJobRequest const& request) override;
++  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path) override;
+ 
+   Status DeleteJob(
+       google::cloud::bigquery::v2::DeleteJobRequest const& request) override;
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.cc b/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.cc
+index 05f2fbc3..2da4bc4e 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.cc
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.cc
+@@ -68,6 +68,21 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceRestLogging::InsertJob(
+       rest_context, options, request, __func__, tracing_options_);
+ }
+ 
++StatusOr<google::cloud::bigquery::v2::Job>
++JobServiceRestLogging::InsertJobUpload(
++    rest_internal::RestContext& rest_context, Options const& options,
++    google::cloud::bigquery::v2::InsertJobRequest const& request,
++    std::string const& upload_file_path) {
++  return google::cloud::internal::LogWrapper(
++      [this, upload_file_path](rest_internal::RestContext& rest_context,
++                               Options const& options,
++                               google::cloud::bigquery::v2::InsertJobRequest const& request) {
++        return child_->InsertJobUpload(rest_context, options, request,
++                                       upload_file_path);
++      },
++      rest_context, options, request, __func__, tracing_options_);
++}
++
+ Status JobServiceRestLogging::DeleteJob(
+     rest_internal::RestContext& rest_context, Options const& options,
+     google::cloud::bigquery::v2::DeleteJobRequest const& request) {
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.h b/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.h
+index 1eba27bd..87c4899d 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.h
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.h
+@@ -55,6 +55,11 @@ class JobServiceRestLogging : public JobServiceRestStub {
+       google::cloud::rest_internal::RestContext& rest_context,
+       Options const& options,
+       google::cloud::bigquery::v2::InsertJobRequest const& request) override;
++  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::rest_internal::RestContext& rest_context,
++      Options const& options,
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path) override;
+ 
+   Status DeleteJob(
+       google::cloud::rest_internal::RestContext& rest_context,
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.cc b/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.cc
+index a8483fdb..e5a52920 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.cc
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.cc
+@@ -60,6 +60,16 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceRestMetadata::InsertJob(
+   return child_->InsertJob(rest_context, options, request);
+ }
+ 
++StatusOr<google::cloud::bigquery::v2::Job>
++JobServiceRestMetadata::InsertJobUpload(
++    rest_internal::RestContext& rest_context, Options const& options,
++    google::cloud::bigquery::v2::InsertJobRequest const& request,
++    std::string const& upload_file_path) {
++  SetMetadata(rest_context, options);
++  return child_->InsertJobUpload(rest_context, options, request,
++                                 upload_file_path);
++}
++
+ Status JobServiceRestMetadata::DeleteJob(
+     rest_internal::RestContext& rest_context, Options const& options,
+     google::cloud::bigquery::v2::DeleteJobRequest const& request) {
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.h b/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.h
+index 0f4e6897..38f4bbd3 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.h
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.h
+@@ -52,6 +52,11 @@ class JobServiceRestMetadata : public JobServiceRestStub {
+       google::cloud::rest_internal::RestContext& rest_context,
+       Options const& options,
+       google::cloud::bigquery::v2::InsertJobRequest const& request) override;
++  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::rest_internal::RestContext& rest_context,
++      Options const& options,
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path) override;
+ 
+   Status DeleteJob(
+       google::cloud::rest_internal::RestContext& rest_context,
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc b/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc
+index 2a468e83..c3e649a9 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc
+@@ -87,6 +87,42 @@ StatusOr<google::cloud::bigquery::v2::Job> DefaultJobServiceRestStub::InsertJob(
+       std::move(query_params));
+ }
+ 
++StatusOr<google::cloud::bigquery::v2::Job>
++DefaultJobServiceRestStub::InsertJobUpload(
++    google::cloud::rest_internal::RestContext& rest_context,
++    Options const& options,
++    google::cloud::bigquery::v2::InsertJobRequest const& request,
++    std::string const& upload_file_path) {
++  auto json_payload = rest_internal::ProtoRequestToJsonPayload(request.job(), false);
++  if (!json_payload.ok()) return std::move(json_payload).status();
++
++  auto boundary =
++      absl::StrCat("duckdb-bigquery-load-", request.job().job_reference().job_id());
++  auto rest_request = rest_internal::CreateRestRequest(
++      absl::StrCat("/", "upload", "/", "bigquery", "/",
++                   rest_internal::DetermineApiVersion("v2", options), "/",
++                   "projects", "/", request.project_id(), "/", "jobs"),
++      {{"uploadType", "multipart"}});
++  rest_request.AddHeader(
++      "content-type",
++      absl::StrCat("multipart/related; boundary=", boundary));
++
++  rest_internal::MultipartUploadRequest payload;
++  payload.payload_prefix = absl::StrCat(
++      "--", boundary, "\r\n",
++      "Content-Type: application/json; charset=UTF-8\r\n\r\n",
++      *json_payload, "\r\n",
++      "--", boundary, "\r\n",
++      "Content-Type: application/octet-stream\r\n\r\n");
++  payload.upload_file_path = upload_file_path;
++  payload.payload_suffix = absl::StrCat("\r\n--", boundary, "--\r\n");
++
++  auto response = service_->PostMultipart(rest_context, rest_request, payload);
++  if (!response.ok()) return response.status();
++  return rest_internal::RestResponseToProto<google::cloud::bigquery::v2::Job>(
++      std::move(**response));
++}
++
+ Status DefaultJobServiceRestStub::DeleteJob(
+     google::cloud::rest_internal::RestContext& rest_context,
+     Options const& options,
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.h b/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.h
+index a6b24b0a..b55104f3 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.h
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.h
+@@ -26,6 +26,7 @@
+ #include "google/cloud/version.h"
+ #include <google/cloud/bigquery/v2/job.pb.h>
+ #include <memory>
++#include <string>
+ 
+ namespace google {
+ namespace cloud {
+@@ -50,6 +51,11 @@ class JobServiceRestStub {
+       google::cloud::rest_internal::RestContext& rest_context,
+       Options const& options,
+       google::cloud::bigquery::v2::InsertJobRequest const& request) = 0;
++  virtual StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::rest_internal::RestContext& rest_context,
++      Options const& options,
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path) = 0;
+ 
+   virtual Status DeleteJob(
+       google::cloud::rest_internal::RestContext& rest_context,
+@@ -95,6 +101,11 @@ class DefaultJobServiceRestStub : public JobServiceRestStub {
+       google::cloud::rest_internal::RestContext& rest_context,
+       Options const& options,
+       google::cloud::bigquery::v2::InsertJobRequest const& request) override;
++  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::rest_internal::RestContext& rest_context,
++      Options const& options,
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path) override;
+ 
+   Status DeleteJob(
+       google::cloud::rest_internal::RestContext& rest_context,
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.cc b/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.cc
+index 8a9e1763..a63fd608 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.cc
++++ b/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.cc
+@@ -59,6 +59,17 @@ JobServiceTracingConnection::InsertJob(
+   return internal::EndSpan(*span, child_->InsertJob(request));
+ }
+ 
++StatusOr<google::cloud::bigquery::v2::Job>
++JobServiceTracingConnection::InsertJobUpload(
++    google::cloud::bigquery::v2::InsertJobRequest const& request,
++    std::string const& upload_file_path) {
++  auto span = internal::MakeSpan(
++      "bigquerycontrol_v2::JobServiceConnection::InsertJobUpload");
++  auto scope = opentelemetry::trace::Scope(span);
++  return internal::EndSpan(*span,
++                           child_->InsertJobUpload(request, upload_file_path));
++}
++
+ Status JobServiceTracingConnection::DeleteJob(
+     google::cloud::bigquery::v2::DeleteJobRequest const& request) {
+   auto span =
+diff --git a/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.h b/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.h
+index ef7c3a09..b681ef46 100644
+--- a/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.h
++++ b/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.h
+@@ -22,6 +22,7 @@
+ #include "google/cloud/bigquerycontrol/v2/job_connection.h"
+ #include "google/cloud/version.h"
+ #include <memory>
++#include <string>
+ 
+ namespace google {
+ namespace cloud {
+@@ -48,6 +49,9 @@ class JobServiceTracingConnection
+ 
+   StatusOr<google::cloud::bigquery::v2::Job> InsertJob(
+       google::cloud::bigquery::v2::InsertJobRequest const& request) override;
++  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path) override;
+ 
+   Status DeleteJob(
+       google::cloud::bigquery::v2::DeleteJobRequest const& request) override;
+diff --git a/google/cloud/bigquerycontrol/v2/job_client.cc b/google/cloud/bigquerycontrol/v2/job_client.cc
+index 1d1d96ef..b1a219ca 100644
+--- a/google/cloud/bigquerycontrol/v2/job_client.cc
++++ b/google/cloud/bigquerycontrol/v2/job_client.cc
+@@ -53,6 +53,13 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceClient::InsertJob(
+   return connection_->InsertJob(request);
+ }
+ 
++StatusOr<google::cloud::bigquery::v2::Job> JobServiceClient::InsertJobUpload(
++    google::cloud::bigquery::v2::InsertJobRequest const& request,
++    std::string const& upload_file_path, Options opts) {
++  internal::OptionsSpan span(internal::MergeOptions(std::move(opts), options_));
++  return connection_->InsertJobUpload(request, upload_file_path);
++}
++
+ Status JobServiceClient::DeleteJob(
+     google::cloud::bigquery::v2::DeleteJobRequest const& request,
+     Options opts) {
+diff --git a/google/cloud/bigquerycontrol/v2/job_client.h b/google/cloud/bigquerycontrol/v2/job_client.h
+index 705cf0d3..8f351199 100644
+--- a/google/cloud/bigquerycontrol/v2/job_client.h
++++ b/google/cloud/bigquerycontrol/v2/job_client.h
+@@ -190,6 +190,10 @@ class JobServiceClient {
+       google::cloud::bigquery::v2::InsertJobRequest const& request,
+       Options opts = {});
+ 
++  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path, Options opts = {});
++
+   // clang-format off
+   ///
+   /// Requests the deletion of the metadata of a job. This call returns when the
+diff --git a/google/cloud/bigquerycontrol/v2/job_connection.cc b/google/cloud/bigquerycontrol/v2/job_connection.cc
+index e611d316..526b766e 100644
+--- a/google/cloud/bigquerycontrol/v2/job_connection.cc
++++ b/google/cloud/bigquerycontrol/v2/job_connection.cc
+@@ -52,6 +52,13 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceConnection::InsertJob(
+   return Status(StatusCode::kUnimplemented, "not implemented");
+ }
+ 
++StatusOr<google::cloud::bigquery::v2::Job>
++JobServiceConnection::InsertJobUpload(
++    google::cloud::bigquery::v2::InsertJobRequest const&,
++    std::string const&) {
++  return Status(StatusCode::kUnimplemented, "not implemented");
++}
++
+ Status JobServiceConnection::DeleteJob(
+     google::cloud::bigquery::v2::DeleteJobRequest const&) {
+   return Status(StatusCode::kUnimplemented, "not implemented");
+diff --git a/google/cloud/bigquerycontrol/v2/job_connection.h b/google/cloud/bigquerycontrol/v2/job_connection.h
+index df5c6f31..7420a37f 100644
+--- a/google/cloud/bigquerycontrol/v2/job_connection.h
++++ b/google/cloud/bigquerycontrol/v2/job_connection.h
+@@ -29,6 +29,7 @@
+ #include "google/cloud/version.h"
+ #include <google/cloud/bigquery/v2/job.pb.h>
+ #include <memory>
++#include <string>
+ 
+ namespace google {
+ namespace cloud {
+@@ -189,6 +190,9 @@ class JobServiceConnection {
+ 
+   virtual StatusOr<google::cloud::bigquery::v2::Job> InsertJob(
+       google::cloud::bigquery::v2::InsertJobRequest const& request);
++  virtual StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
++      google::cloud::bigquery::v2::InsertJobRequest const& request,
++      std::string const& upload_file_path);
+ 
+   virtual Status DeleteJob(
+       google::cloud::bigquery::v2::DeleteJobRequest const& request);
+diff --git a/google/cloud/internal/curl_impl.cc b/google/cloud/internal/curl_impl.cc
+index a5218bb5..027fcf22 100644
+--- a/google/cloud/internal/curl_impl.cc
++++ b/google/cloud/internal/curl_impl.cc
+@@ -349,6 +349,11 @@ std::string CurlImpl::LastClientIpAddress() const {
+ 
+ Status CurlImpl::MakeRequest(HttpMethod method, RestContext& context,
+                              std::vector<absl::Span<char const>> request) {
++  return MakeRequest(method, context, WriteVector{std::move(request)});
++}
++
++Status CurlImpl::MakeRequest(HttpMethod method, RestContext& context,
++                             WriteVector request) {
+   Status status;
+   status = handle_.SetOption(CURLOPT_CUSTOMREQUEST, HttpMethodToName(method));
+   if (!status.ok()) return OnTransferError(context, std::move(status));
+@@ -455,12 +460,12 @@ Status CurlImpl::MakeRequest(HttpMethod method, RestContext& context,
+     if (!status.ok()) return OnTransferError(context, std::move(status));
+   }
+ 
+-  if (method == HttpMethod::kDelete || request.empty()) {
++  if (method == HttpMethod::kDelete || request.size() == 0) {
+     return MakeRequestImpl(context);
+   }
+ 
+   if (method == HttpMethod::kPost) {
+-    writev_ = WriteVector{std::move(request)};
++    writev_ = std::move(request);
+     curl_off_t const size = writev_.size();
+     status = handle_.SetOption(CURLOPT_POSTFIELDS, nullptr);
+     if (!status.ok()) return OnTransferError(context, std::move(status));
+@@ -486,7 +491,7 @@ Status CurlImpl::MakeRequest(HttpMethod method, RestContext& context,
+   }
+ 
+   if (method == HttpMethod::kPut || method == HttpMethod::kPatch) {
+-    writev_ = WriteVector{std::move(request)};
++    writev_ = std::move(request);
+     curl_off_t const size = writev_.size();
+     status = handle_.SetOption(CURLOPT_READFUNCTION, &ReadFunction);
+     if (!status.ok()) return OnTransferError(context, std::move(status));
+diff --git a/google/cloud/internal/curl_impl.h b/google/cloud/internal/curl_impl.h
+index 266be569..c3b94994 100644
+--- a/google/cloud/internal/curl_impl.h
++++ b/google/cloud/internal/curl_impl.h
+@@ -101,6 +101,8 @@ class CurlImpl {
+ 
+   Status MakeRequest(HttpMethod method, RestContext& context,
+                      std::vector<absl::Span<char const>> request = {});
++  Status MakeRequest(HttpMethod method, RestContext& context,
++                     WriteVector request);
+ 
+   bool HasUnreadData() const;
+   StatusOr<std::size_t> Read(absl::Span<char> output);
+diff --git a/google/cloud/internal/curl_rest_client.cc b/google/cloud/internal/curl_rest_client.cc
+index d0abda63..70ee68e3 100644
+--- a/google/cloud/internal/curl_rest_client.cc
++++ b/google/cloud/internal/curl_rest_client.cc
+@@ -69,6 +69,19 @@ Status MakeRequestWithPayload(
+   return impl.MakeRequest(http_method, context, payload);
+ }
+ 
++Status MakeRequestWithMultipartPayload(
++    RestContext& context, CurlImpl& impl,
++    MultipartUploadRequest const& payload) {
++  auto writev = WriteVector::FromFileMultipart(payload.payload_prefix,
++                                               payload.upload_file_path,
++                                               payload.payload_suffix);
++  if (!writev.ok()) return std::move(writev).status();
++  impl.SetHeader(HttpHeader("Content-Length",
++                            std::to_string(writev->size())));
++  return impl.MakeRequest(CurlImpl::HttpMethod::kPost, context,
++                          std::move(*writev));
++}
++
+ std::string FormatHostHeaderValue(absl::string_view hostname) {
+   if (!absl::ConsumePrefix(&hostname, "https://")) {
+     absl::ConsumePrefix(&hostname, "http://");
+@@ -199,6 +212,18 @@ StatusOr<std::unique_ptr<RestResponse>> CurlRestClient::Post(
+       new CurlRestResponse(std::move(options), std::move(*impl)))};
+ }
+ 
++StatusOr<std::unique_ptr<RestResponse>> CurlRestClient::PostMultipart(
++    RestContext& context, RestRequest const& request,
++    MultipartUploadRequest const& payload) {
++  auto options = internal::MergeOptions(context.options(), options_);
++  auto impl = CreateCurlImpl(context, request, options);
++  if (!impl.ok()) return impl.status();
++  Status response = MakeRequestWithMultipartPayload(context, **impl, payload);
++  if (!response.ok()) return response;
++  return {std::unique_ptr<CurlRestResponse>(
++      new CurlRestResponse(std::move(options), std::move(*impl)))};
++}
++
+ StatusOr<std::unique_ptr<RestResponse>> CurlRestClient::Post(
+     RestContext& context, RestRequest const& request,
+     std::vector<std::pair<std::string, std::string>> const& form_data) {
+diff --git a/google/cloud/internal/curl_rest_client.h b/google/cloud/internal/curl_rest_client.h
+index d5a3cfdb..9f479dc5 100644
+--- a/google/cloud/internal/curl_rest_client.h
++++ b/google/cloud/internal/curl_rest_client.h
+@@ -62,6 +62,9 @@ class CurlRestClient : public RestClient {
+   StatusOr<std::unique_ptr<RestResponse>> Post(
+       RestContext& context, RestRequest const& request,
+       std::vector<absl::Span<char const>> const& payload) override;
++  StatusOr<std::unique_ptr<RestResponse>> PostMultipart(
++      RestContext& context, RestRequest const& request,
++      MultipartUploadRequest const& payload) override;
+   StatusOr<std::unique_ptr<RestResponse>> Post(
+       RestContext& context, RestRequest const& request,
+       std::vector<std::pair<std::string, std::string>> const& form_data)
+diff --git a/google/cloud/internal/curl_writev.cc b/google/cloud/internal/curl_writev.cc
+index 06ba2a68..682f7db0 100644
+--- a/google/cloud/internal/curl_writev.cc
++++ b/google/cloud/internal/curl_writev.cc
+@@ -13,6 +13,8 @@
+ // limitations under the License.
+ 
+ #include "google/cloud/internal/curl_writev.h"
++#include "google/cloud/internal/make_status.h"
++#include <algorithm>
+ #include <cstdio>
+ 
+ namespace google {
+@@ -20,7 +22,25 @@ namespace cloud {
+ namespace rest_internal {
+ GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_BEGIN
+ 
++StatusOr<WriteVector> WriteVector::FromFileMultipart(
++    std::string payload_prefix, std::string upload_file_path,
++    std::string payload_suffix) {
++  WriteVector result;
++  result.payload_prefix_ = std::move(payload_prefix);
++  result.upload_file_path_ = std::move(upload_file_path);
++  result.payload_suffix_ = std::move(payload_suffix);
++  if (!result.OpenUploadFile()) {
++    return internal::InvalidArgumentError("Unable to open upload file: " +
++                                          result.upload_file_path_);
++  }
++  return result;
++}
++
+ std::size_t WriteVector::size() const {
++  if (!upload_file_path_.empty()) {
++    return payload_prefix_.size() + upload_file_size_ + payload_suffix_.size() -
++           prefix_offset_ - file_offset_ - suffix_offset_;
++  }
+   std::size_t size = 0;
+   for (auto const& s : writev_) {
+     size += s.size();
+@@ -29,6 +49,9 @@ std::size_t WriteVector::size() const {
+ }
+ 
+ std::size_t WriteVector::MoveTo(absl::Span<char> dst) {
++  if (!upload_file_path_.empty()) {
++    return MoveMultipartTo(dst);
++  }
+   auto const avail = dst.size();
+   while (!writev_.empty()) {
+     auto& src = writev_.front();
+@@ -52,6 +75,9 @@ bool WriteVector::Seek(std::size_t offset, int origin) {
+   // These errors are treated as `StatusCode::kUnavailable` and thus retryable
+   // for most operations.
+   if (origin != SEEK_SET) return false;
++  if (!upload_file_path_.empty()) {
++    return SeekMultipart(offset);
++  }
+   writev_.assign(original_.begin(), original_.end());
+   while (!writev_.empty()) {
+     auto& src = writev_.front();
+@@ -66,6 +92,74 @@ bool WriteVector::Seek(std::size_t offset, int origin) {
+   return offset == 0;
+ }
+ 
++bool WriteVector::OpenUploadFile() {
++  upload_file_.close();
++  upload_file_.clear();
++  upload_file_.open(upload_file_path_, std::ios::binary);
++  if (!upload_file_.is_open()) return false;
++
++  upload_file_.seekg(0, std::ios::end);
++  auto end = upload_file_.tellg();
++  if (end < 0) return false;
++  upload_file_size_ = static_cast<std::size_t>(end);
++  upload_file_.seekg(0, std::ios::beg);
++  prefix_offset_ = 0;
++  file_offset_ = 0;
++  suffix_offset_ = 0;
++  return true;
++}
++
++std::size_t WriteVector::MoveMultipartTo(absl::Span<char> dst) {
++  auto const available = dst.size();
++
++  if (prefix_offset_ < payload_prefix_.size()) {
++    auto const remaining = payload_prefix_.size() - prefix_offset_;
++    auto const to_copy = (std::min)(dst.size(), remaining);
++    std::copy(payload_prefix_.data() + prefix_offset_,
++              payload_prefix_.data() + prefix_offset_ + to_copy, dst.begin());
++    prefix_offset_ += to_copy;
++    dst.remove_prefix(to_copy);
++  }
++
++  while (!dst.empty() && file_offset_ < upload_file_size_) {
++    auto const remaining = upload_file_size_ - file_offset_;
++    auto const to_read = (std::min)(dst.size(), remaining);
++    upload_file_.read(dst.data(), static_cast<std::streamsize>(to_read));
++    auto const read = static_cast<std::size_t>(upload_file_.gcount());
++    file_offset_ += read;
++    dst.remove_prefix(read);
++    if (read < to_read) break;
++  }
++
++  if (suffix_offset_ < payload_suffix_.size() && !dst.empty()) {
++    auto const remaining = payload_suffix_.size() - suffix_offset_;
++    auto const to_copy = (std::min)(dst.size(), remaining);
++    std::copy(payload_suffix_.data() + suffix_offset_,
++              payload_suffix_.data() + suffix_offset_ + to_copy, dst.begin());
++    suffix_offset_ += to_copy;
++    dst.remove_prefix(to_copy);
++  }
++
++  return available - dst.size();
++}
++
++bool WriteVector::SeekMultipart(std::size_t offset) {
++  auto const total_size = payload_prefix_.size() + upload_file_size_ + payload_suffix_.size();
++  if (offset > total_size) return false;
++
++  prefix_offset_ = (std::min)(offset, payload_prefix_.size());
++  offset -= prefix_offset_;
++
++  file_offset_ = (std::min)(offset, upload_file_size_);
++  offset -= file_offset_;
++  suffix_offset_ = offset;
++
++  if (!upload_file_.is_open() && !OpenUploadFile()) return false;
++  upload_file_.clear();
++  upload_file_.seekg(static_cast<std::streamoff>(file_offset_), std::ios::beg);
++  return static_cast<bool>(upload_file_);
++}
++
+ GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_END
+ }  // namespace rest_internal
+ }  // namespace cloud
+diff --git a/google/cloud/internal/curl_writev.h b/google/cloud/internal/curl_writev.h
+index 51c26114..b03acfef 100644
+--- a/google/cloud/internal/curl_writev.h
++++ b/google/cloud/internal/curl_writev.h
+@@ -16,8 +16,11 @@
+ #define GOOGLE_CLOUD_CPP_GOOGLE_CLOUD_INTERNAL_CURL_WRITEV_H
+ 
+ #include "google/cloud/version.h"
++#include "google/cloud/status_or.h"
+ #include "absl/types/span.h"
+ #include <deque>
++#include <fstream>
++#include <string>
+ #include <vector>
+ 
+ namespace google {
+@@ -31,6 +34,9 @@ class WriteVector {
+   WriteVector() = default;
+   explicit WriteVector(std::vector<absl::Span<char const>> v)
+       : original_(std::move(v)), writev_(original_.begin(), original_.end()) {}
++  static StatusOr<WriteVector> FromFileMultipart(std::string payload_prefix,
++                                                 std::string upload_file_path,
++                                                 std::string payload_suffix);
+ 
+   /// Returns the number of bytes available in the write vector.
+   std::size_t size() const;
+@@ -47,8 +53,21 @@ class WriteVector {
+   bool Seek(std::size_t offset, int origin);
+ 
+  private:
++  bool OpenUploadFile();
++  std::size_t MoveMultipartTo(absl::Span<char> dst);
++  bool SeekMultipart(std::size_t offset);
++
+   std::vector<absl::Span<char const>> original_;
+   std::deque<absl::Span<char const>> writev_;
++
++  std::string payload_prefix_;
++  std::string upload_file_path_;
++  std::string payload_suffix_;
++  std::ifstream upload_file_;
++  std::size_t upload_file_size_ = 0;
++  std::size_t prefix_offset_ = 0;
++  std::size_t file_offset_ = 0;
++  std::size_t suffix_offset_ = 0;
+ };
+ 
+ GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_END
+diff --git a/google/cloud/internal/rest_client.h b/google/cloud/internal/rest_client.h
+index d554d4c6..48c0f0ab 100644
+--- a/google/cloud/internal/rest_client.h
++++ b/google/cloud/internal/rest_client.h
+@@ -32,6 +32,12 @@ namespace cloud {
+ namespace rest_internal {
+ GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_BEGIN
+ 
++struct MultipartUploadRequest {
++  std::string payload_prefix;
++  std::string upload_file_path;
++  std::string payload_suffix;
++};
++
+ // Provides factory function to create a CurlRestClient that does not manage a
+ // pool of connections.
+ std::unique_ptr<RestClient> MakeDefaultRestClient(std::string endpoint_address,
+@@ -82,6 +88,9 @@ class RestClient {
+   virtual StatusOr<std::unique_ptr<RestResponse>> Post(
+       RestContext& context, RestRequest const& request,
+       std::vector<absl::Span<char const>> const& payload) = 0;
++  virtual StatusOr<std::unique_ptr<RestResponse>> PostMultipart(
++      RestContext& context, RestRequest const& request,
++      MultipartUploadRequest const& payload) = 0;
+   virtual StatusOr<std::unique_ptr<RestResponse>> Post(
+       RestContext& context, RestRequest const& request,
+       std::vector<std::pair<std::string, std::string>> const& form_data) = 0;
+diff --git a/google/cloud/internal/tracing_rest_client.cc b/google/cloud/internal/tracing_rest_client.cc
+index 0badc6ff..94b7d7fb 100644
+--- a/google/cloud/internal/tracing_rest_client.cc
++++ b/google/cloud/internal/tracing_rest_client.cc
+@@ -194,6 +194,16 @@ class TracingRestClient : public RestClient {
+                           });
+   }
+ 
++  StatusOr<std::unique_ptr<RestResponse>> PostMultipart(
++      RestContext& context, RestRequest const& request,
++      MultipartUploadRequest const& payload) override {
++    return WrappedRequest(context, *propagator_, request, "POST",
++                          [this, &payload](auto& context, auto const& request) {
++                            return impl_->PostMultipart(context, request,
++                                                        payload);
++                          });
++  }
++
+   StatusOr<std::unique_ptr<RestResponse>> Post(
+       RestContext& context, RestRequest const& request,
+       std::vector<std::pair<std::string, std::string>> const& form_data)
