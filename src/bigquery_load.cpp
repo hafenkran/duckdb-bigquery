@@ -56,6 +56,7 @@ struct BigQueryLoadParameters {
     string write_disposition = "WRITE_TRUNCATE";
     string create_disposition = "CREATE_IF_NEEDED";
     std::optional<string> location;
+    string billing_project;
     string api_endpoint;
 };
 
@@ -143,6 +144,8 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
         throw BinderException("Parameter 'source_uris' must contain at least one URI");
     }
     params.location = ParseOptionalStringParameter(named_parameters, "location");
+    auto billing_project = ParseOptionalStringParameter(named_parameters, "billing_project");
+    params.billing_project = billing_project ? *billing_project : string();
     auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
     params.api_endpoint = api_endpoint ? *api_endpoint : string();
     params.write_disposition = ParseEnumParameter(named_parameters,
@@ -318,6 +321,10 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
         if (catalog.GetCatalogType() != "bigquery") {
             throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
         }
+        if (!params.billing_project.empty()) {
+            throw BinderException("'billing_project' named parameter is not supported for attached databases; "
+                                  "set billing_project in ATTACH instead");
+        }
         if (!params.api_endpoint.empty()) {
             throw BinderException("'api_endpoint' named parameter is not supported for attached databases");
         }
@@ -331,7 +338,9 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
         bind_data->config = bigquery_catalog.config;
         bind_data->bq_client = transaction.GetBigqueryClient();
     } else {
-        bind_data->config = BigqueryConfig(dbname_or_project_id).SetApiEndpoint(params.api_endpoint);
+        bind_data->config = BigqueryConfig(dbname_or_project_id)
+                                .SetBillingProjectId(params.billing_project)
+                                .SetApiEndpoint(params.api_endpoint);
         bind_data->bq_client = make_shared_ptr<BigqueryClient>(context, bind_data->config);
     }
 
@@ -415,6 +424,7 @@ BigQueryLoadFunction::BigQueryLoadFunction()
     named_parameters["write_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["create_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["location"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["api_endpoint"] = LogicalType(LogicalTypeId::VARCHAR);
 }
 

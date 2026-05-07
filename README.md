@@ -417,6 +417,19 @@ D CALL bigquery_load(
 );
 ```
 
+To bill the load job to a separate project when calling `bigquery_load` with a project ID, pass `billing_project`:
+
+```sql
+D CALL bigquery_load(
+    'my_storage_project',
+    'my_dataset.target_table',
+    source_file := '/path/to/data.parquet',
+    billing_project := 'my_billing_project'
+);
+```
+
+For attached databases, configure cross-project billing in the `ATTACH` string instead of passing `billing_project` to `bigquery_load`.
+
 Compared to `CREATE TABLE ... AS` or `INSERT INTO ...`, `bigquery_load` uses a different write path:
 
 - `CREATE TABLE ... AS` and `INSERT INTO bq...` use the BigQuery Storage Write API and stream rows with `AppendRows`.
@@ -434,6 +447,7 @@ The `bigquery_load` function supports the following named parameters:
 | `write_disposition`  | `VARCHAR` | BigQuery write behavior: `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`. |
 | `create_disposition` | `VARCHAR` | BigQuery create behavior: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`.              |
 | `location`           | `VARCHAR` | BigQuery job location.                                                                 |
+| `billing_project`    | `VARCHAR` | Project ID to bill for the load job. Only supported for direct project-ID calls.       |
 
 Exactly one of `source_file`, `source_uris`, or `source_table` must be provided. For Cloud Storage loads, the BigQuery job identity needs permission to read the objects, and the bucket location must be compatible with the destination dataset location.
 
