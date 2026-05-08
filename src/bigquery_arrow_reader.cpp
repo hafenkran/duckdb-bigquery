@@ -49,8 +49,8 @@ struct BigqueryStreamState {
     shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> stream;
     BigqueryStreamFactory *factory;
 
-    google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> range;
-    google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator it;
+    google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> range;
+    google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator it;
 
     bool range_open = false;
     int64_t rows_delivered = 0;
@@ -296,7 +296,7 @@ std::shared_ptr<arrow::Schema> BigqueryArrowReader::GetSchema() {
     return arrow_schema;
 }
 
-google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> BigqueryArrowReader::ReadRows(
+google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> BigqueryArrowReader::ReadRows(
     const string &stream_name,
     int row_offset) {
     return read_client->ReadRows(stream_name, row_offset);

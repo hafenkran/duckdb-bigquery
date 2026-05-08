@@ -10,6 +10,7 @@
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
+#include "google/cloud/stream_range.h"
 
 #include "bigquery_utils.hpp"
 
@@ -49,7 +50,7 @@ public:
     BigqueryTableRef GetTableRef() const;
 
     shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> GetStream(idx_t stream_idx);
-    google::cloud::v2_38::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
+    google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
         const string &stream_name,
         int row_offset);
 
