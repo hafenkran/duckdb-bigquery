@@ -14,6 +14,10 @@ static constexpr const char *kServiceAccountJson = "service_account_json";
 static constexpr const char *kServiceAccountPath = "service_account_path";
 static constexpr const char *kExternalAccountJson = "external_account_json";
 static constexpr const char *kExternalAccountPath = "external_account_path";
+static constexpr const char *kRefreshToken = "refresh_token";
+static constexpr const char *kClientId = "client_id";
+static constexpr const char *kClientSecret = "client_secret";
+static constexpr const char *kTokenUri = "token_uri";
 
 class BigquerySecret : public KeyValueSecret {
 public:
@@ -38,6 +42,18 @@ public:
 
     //! Get the external account credentials file path from the secret
     string GetExternalAccountCredsPath() const;
+
+    //! Get the OAuth authorized user refresh token from the secret
+    string GetRefreshToken() const;
+
+    //! Get the OAuth authorized user client id from the secret
+    string GetClientId() const;
+
+    //! Get the OAuth authorized user client secret from the secret
+    string GetClientSecret() const;
+
+    //! Get the OAuth authorized user token URI from the secret
+    string GetTokenUri() const;
 
     //! Serialize method
     void Serialize(Serializer &serializer) const override;
