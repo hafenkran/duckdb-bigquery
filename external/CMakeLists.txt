@@ -57,7 +57,7 @@ ExternalProject_Add(
     gcp
     URL ${CMAKE_CURRENT_SOURCE_DIR}/vendor/google-cloud-cpp-2.47.1.zip
     URL_HASH SHA256=3e82f5594c54c795b4fc6117f78e1bd5de98f435229e0f0ed4a6be45153485ad
-    PATCH_COMMAND patch -p1 -i ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-bigquery-load.patch
+    PATCH_COMMAND patch -p1 -i ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-bigquery-load-and-auth.patch
     # CONFIGURE_HANDLED_BY_BUILD TRUE
     CMAKE_ARGS ${GCP_CMAKE_ARGS}
                -DBUILD_TESTING=OFF

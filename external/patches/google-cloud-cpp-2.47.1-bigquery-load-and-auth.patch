@@ -5,7 +5,7 @@ index c71b7316..168cc051 100644
 @@ -81,6 +81,23 @@ JobServiceRestConnectionImpl::InsertJob(
        *current, request, __func__);
  }
- 
+
 +StatusOr<google::cloud::bigquery::v2::Job>
 +JobServiceRestConnectionImpl::InsertJobUpload(
 +    google::cloud::bigquery::v2::InsertJobRequest const& request,
@@ -35,17 +35,17 @@ index a01de2f7..98ea62c5 100644
  #include "google/cloud/version.h"
  #include <memory>
 +#include <string>
- 
+
  namespace google {
  namespace cloud {
 @@ -57,6 +58,9 @@ class JobServiceRestConnectionImpl
- 
+
    StatusOr<google::cloud::bigquery::v2::Job> InsertJob(
        google::cloud::bigquery::v2::InsertJobRequest const& request) override;
 +  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path) override;
- 
+
    Status DeleteJob(
        google::cloud::bigquery::v2::DeleteJobRequest const& request) override;
 diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.cc b/google/cloud/bigquerycontrol/v2/internal/job_rest_logging_decorator.cc
@@ -55,7 +55,7 @@ index 05f2fbc3..2da4bc4e 100644
 @@ -68,6 +68,21 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceRestLogging::InsertJob(
        rest_context, options, request, __func__, tracing_options_);
  }
- 
+
 +StatusOr<google::cloud::bigquery::v2::Job>
 +JobServiceRestLogging::InsertJobUpload(
 +    rest_internal::RestContext& rest_context, Options const& options,
@@ -87,7 +87,7 @@ index 1eba27bd..87c4899d 100644
 +      Options const& options,
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path) override;
- 
+
    Status DeleteJob(
        google::cloud::rest_internal::RestContext& rest_context,
 diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.cc b/google/cloud/bigquerycontrol/v2/internal/job_rest_metadata_decorator.cc
@@ -97,7 +97,7 @@ index a8483fdb..e5a52920 100644
 @@ -60,6 +60,16 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceRestMetadata::InsertJob(
    return child_->InsertJob(rest_context, options, request);
  }
- 
+
 +StatusOr<google::cloud::bigquery::v2::Job>
 +JobServiceRestMetadata::InsertJobUpload(
 +    rest_internal::RestContext& rest_context, Options const& options,
@@ -124,7 +124,7 @@ index 0f4e6897..38f4bbd3 100644
 +      Options const& options,
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path) override;
- 
+
    Status DeleteJob(
        google::cloud::rest_internal::RestContext& rest_context,
 diff --git a/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc b/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc
@@ -134,7 +134,7 @@ index 2a468e83..c3e649a9 100644
 @@ -87,6 +87,42 @@ StatusOr<google::cloud::bigquery::v2::Job> DefaultJobServiceRestStub::InsertJob(
        std::move(query_params));
  }
- 
+
 +StatusOr<google::cloud::bigquery::v2::Job>
 +DefaultJobServiceRestStub::InsertJobUpload(
 +    google::cloud::rest_internal::RestContext& rest_context,
@@ -183,7 +183,7 @@ index a6b24b0a..b55104f3 100644
  #include <google/cloud/bigquery/v2/job.pb.h>
  #include <memory>
 +#include <string>
- 
+
  namespace google {
  namespace cloud {
 @@ -50,6 +51,11 @@ class JobServiceRestStub {
@@ -195,7 +195,7 @@ index a6b24b0a..b55104f3 100644
 +      Options const& options,
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path) = 0;
- 
+
    virtual Status DeleteJob(
        google::cloud::rest_internal::RestContext& rest_context,
 @@ -95,6 +101,11 @@ class DefaultJobServiceRestStub : public JobServiceRestStub {
@@ -207,7 +207,7 @@ index a6b24b0a..b55104f3 100644
 +      Options const& options,
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path) override;
- 
+
    Status DeleteJob(
        google::cloud::rest_internal::RestContext& rest_context,
 diff --git a/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.cc b/google/cloud/bigquerycontrol/v2/internal/job_tracing_connection.cc
@@ -217,7 +217,7 @@ index 8a9e1763..a63fd608 100644
 @@ -59,6 +59,17 @@ JobServiceTracingConnection::InsertJob(
    return internal::EndSpan(*span, child_->InsertJob(request));
  }
- 
+
 +StatusOr<google::cloud::bigquery::v2::Job>
 +JobServiceTracingConnection::InsertJobUpload(
 +    google::cloud::bigquery::v2::InsertJobRequest const& request,
@@ -241,17 +241,17 @@ index ef7c3a09..b681ef46 100644
  #include "google/cloud/version.h"
  #include <memory>
 +#include <string>
- 
+
  namespace google {
  namespace cloud {
 @@ -48,6 +49,9 @@ class JobServiceTracingConnection
- 
+
    StatusOr<google::cloud::bigquery::v2::Job> InsertJob(
        google::cloud::bigquery::v2::InsertJobRequest const& request) override;
 +  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path) override;
- 
+
    Status DeleteJob(
        google::cloud::bigquery::v2::DeleteJobRequest const& request) override;
 diff --git a/google/cloud/bigquerycontrol/v2/job_client.cc b/google/cloud/bigquerycontrol/v2/job_client.cc
@@ -261,7 +261,7 @@ index 1d1d96ef..b1a219ca 100644
 @@ -53,6 +53,13 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceClient::InsertJob(
    return connection_->InsertJob(request);
  }
- 
+
 +StatusOr<google::cloud::bigquery::v2::Job> JobServiceClient::InsertJobUpload(
 +    google::cloud::bigquery::v2::InsertJobRequest const& request,
 +    std::string const& upload_file_path, Options opts) {
@@ -273,13 +273,13 @@ index 1d1d96ef..b1a219ca 100644
      google::cloud::bigquery::v2::DeleteJobRequest const& request,
      Options opts) {
 diff --git a/google/cloud/bigquerycontrol/v2/job_client.h b/google/cloud/bigquerycontrol/v2/job_client.h
-index 705cf0d3..8f351199 100644
+index e92e2fcc..f38e4f49 100644
 --- a/google/cloud/bigquerycontrol/v2/job_client.h
 +++ b/google/cloud/bigquerycontrol/v2/job_client.h
 @@ -190,6 +190,10 @@ class JobServiceClient {
        google::cloud::bigquery::v2::InsertJobRequest const& request,
        Options opts = {});
- 
+
 +  StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path, Options opts = {});
@@ -294,7 +294,7 @@ index e611d316..526b766e 100644
 @@ -52,6 +52,13 @@ StatusOr<google::cloud::bigquery::v2::Job> JobServiceConnection::InsertJob(
    return Status(StatusCode::kUnimplemented, "not implemented");
  }
- 
+
 +StatusOr<google::cloud::bigquery::v2::Job>
 +JobServiceConnection::InsertJobUpload(
 +    google::cloud::bigquery::v2::InsertJobRequest const&,
@@ -314,25 +314,130 @@ index df5c6f31..7420a37f 100644
  #include <google/cloud/bigquery/v2/job.pb.h>
  #include <memory>
 +#include <string>
- 
+
  namespace google {
  namespace cloud {
 @@ -189,6 +190,9 @@ class JobServiceConnection {
- 
+
    virtual StatusOr<google::cloud::bigquery::v2::Job> InsertJob(
        google::cloud::bigquery::v2::InsertJobRequest const& request);
 +  virtual StatusOr<google::cloud::bigquery::v2::Job> InsertJobUpload(
 +      google::cloud::bigquery::v2::InsertJobRequest const& request,
 +      std::string const& upload_file_path);
- 
+
    virtual Status DeleteJob(
        google::cloud::bigquery::v2::DeleteJobRequest const& request);
+diff --git a/google/cloud/credentials.cc b/google/cloud/credentials.cc
+index bd7d2c2b..df417d4f 100644
+--- a/google/cloud/credentials.cc
++++ b/google/cloud/credentials.cc
+@@ -51,6 +51,12 @@ std::shared_ptr<Credentials> MakeServiceAccountCredentials(
+       std::move(json_object), std::move(opts));
+ }
+
++std::shared_ptr<Credentials> MakeAuthorizedUserCredentials(
++    std::string json_object, Options opts) {
++  return std::make_shared<internal::AuthorizedUserConfig>(
++      std::move(json_object), std::move(opts));
++}
++
+ std::shared_ptr<Credentials> MakeExternalAccountCredentials(
+     std::string json_object, Options opts) {
+   return std::make_shared<internal::ExternalAccountConfig>(
+diff --git a/google/cloud/credentials.h b/google/cloud/credentials.h
+index 93166067..7a2a7226 100644
+--- a/google/cloud/credentials.h
++++ b/google/cloud/credentials.h
+@@ -301,6 +301,26 @@ std::shared_ptr<Credentials> MakeImpersonateServiceAccountCredentials(
+ std::shared_ptr<Credentials> MakeServiceAccountCredentials(
+     std::string json_object, Options opts = {});
+
++/**
++ * Creates authorized user credentials from a user OAuth refresh token
++ * configuration.
++ *
++ * Authorized user credentials are typically created by user-consent OAuth
++ * flows. The JSON object should contain `refresh_token`, `client_id`, and
++ * `client_secret` fields, and may contain `token_uri`.
++ *
++ * Refresh tokens are long-lived credentials and should be treated as secrets.
++ *
++ * @ingroup guac
++ *
++ * @param json_object the authorized user credential configuration as a JSON
++ *     string.
++ * @param opts optional configuration values. Note that the effect of these
++ *     parameters depends on the underlying transport.
++ */
++std::shared_ptr<Credentials> MakeAuthorizedUserCredentials(
++    std::string json_object, Options opts = {});
++
+ /**
+  * Creates credentials based on external accounts.
+  *
+diff --git a/google/cloud/internal/credentials_impl.cc b/google/cloud/internal/credentials_impl.cc
+index e7c1fd2f..b0f67039 100644
+--- a/google/cloud/internal/credentials_impl.cc
++++ b/google/cloud/internal/credentials_impl.cc
+@@ -92,6 +92,11 @@ ServiceAccountConfig::ServiceAccountConfig(std::string json_object,
+     : json_object_(std::move(json_object)),
+       options_(PopulateAuthOptions(std::move(opts))) {}
+
++AuthorizedUserConfig::AuthorizedUserConfig(std::string json_object,
++                                           Options opts)
++    : json_object_(std::move(json_object)),
++      options_(PopulateAuthOptions(std::move(opts))) {}
++
+ ExternalAccountConfig::ExternalAccountConfig(std::string json_object,
+                                              Options options)
+     : json_object_(std::move(json_object)),
+diff --git a/google/cloud/internal/credentials_impl.h b/google/cloud/internal/credentials_impl.h
+index 94af7f2e..03ef1d73 100644
+--- a/google/cloud/internal/credentials_impl.h
++++ b/google/cloud/internal/credentials_impl.h
+@@ -38,6 +38,7 @@ class GoogleDefaultCredentialsConfig;
+ class AccessTokenConfig;
+ class ImpersonateServiceAccountConfig;
+ class ServiceAccountConfig;
++class AuthorizedUserConfig;
+ class ExternalAccountConfig;
+ class ApiKeyConfig;
+ class ComputeEngineCredentialsConfig;
+@@ -53,6 +54,7 @@ class CredentialsVisitor {
+   virtual void visit(AccessTokenConfig const&) = 0;
+   virtual void visit(ImpersonateServiceAccountConfig const&) = 0;
+   virtual void visit(ServiceAccountConfig const&) = 0;
++  virtual void visit(AuthorizedUserConfig const&) = 0;
+   virtual void visit(ExternalAccountConfig const&) = 0;
+   virtual void visit(ApiKeyConfig const&) = 0;
+   virtual void visit(ComputeEngineCredentialsConfig const&) = 0;
+@@ -156,6 +158,20 @@ class ServiceAccountConfig : public Credentials {
+   Options options_;
+ };
+
++class AuthorizedUserConfig : public Credentials {
++ public:
++  AuthorizedUserConfig(std::string json_object, Options opts);
++
++  std::string const& json_object() const { return json_object_; }
++  Options const& options() const { return options_; }
++
++ private:
++  void dispatch(CredentialsVisitor& v) const override { v.visit(*this); }
++
++  std::string json_object_;
++  Options options_;
++};
++
+ class ExternalAccountConfig : public Credentials {
+  public:
+   ExternalAccountConfig(std::string json_object, Options options);
 diff --git a/google/cloud/internal/curl_impl.cc b/google/cloud/internal/curl_impl.cc
 index a5218bb5..027fcf22 100644
 --- a/google/cloud/internal/curl_impl.cc
 +++ b/google/cloud/internal/curl_impl.cc
 @@ -349,6 +349,11 @@ std::string CurlImpl::LastClientIpAddress() const {
- 
+
  Status CurlImpl::MakeRequest(HttpMethod method, RestContext& context,
                               std::vector<absl::Span<char const>> request) {
 +  return MakeRequest(method, context, WriteVector{std::move(request)});
@@ -346,12 +451,12 @@ index a5218bb5..027fcf22 100644
 @@ -455,12 +460,12 @@ Status CurlImpl::MakeRequest(HttpMethod method, RestContext& context,
      if (!status.ok()) return OnTransferError(context, std::move(status));
    }
- 
+
 -  if (method == HttpMethod::kDelete || request.empty()) {
 +  if (method == HttpMethod::kDelete || request.size() == 0) {
      return MakeRequestImpl(context);
    }
- 
+
    if (method == HttpMethod::kPost) {
 -    writev_ = WriteVector{std::move(request)};
 +    writev_ = std::move(request);
@@ -360,7 +465,7 @@ index a5218bb5..027fcf22 100644
      if (!status.ok()) return OnTransferError(context, std::move(status));
 @@ -486,7 +491,7 @@ Status CurlImpl::MakeRequest(HttpMethod method, RestContext& context,
    }
- 
+
    if (method == HttpMethod::kPut || method == HttpMethod::kPatch) {
 -    writev_ = WriteVector{std::move(request)};
 +    writev_ = std::move(request);
@@ -372,12 +477,12 @@ index 266be569..c3b94994 100644
 --- a/google/cloud/internal/curl_impl.h
 +++ b/google/cloud/internal/curl_impl.h
 @@ -101,6 +101,8 @@ class CurlImpl {
- 
+
    Status MakeRequest(HttpMethod method, RestContext& context,
                       std::vector<absl::Span<char const>> request = {});
 +  Status MakeRequest(HttpMethod method, RestContext& context,
 +                     WriteVector request);
- 
+
    bool HasUnreadData() const;
    StatusOr<std::size_t> Read(absl::Span<char> output);
 diff --git a/google/cloud/internal/curl_rest_client.cc b/google/cloud/internal/curl_rest_client.cc
@@ -387,7 +492,7 @@ index d0abda63..70ee68e3 100644
 @@ -69,6 +69,19 @@ Status MakeRequestWithPayload(
    return impl.MakeRequest(http_method, context, payload);
  }
- 
+
 +Status MakeRequestWithMultipartPayload(
 +    RestContext& context, CurlImpl& impl,
 +    MultipartUploadRequest const& payload) {
@@ -407,7 +512,7 @@ index d0abda63..70ee68e3 100644
 @@ -199,6 +212,18 @@ StatusOr<std::unique_ptr<RestResponse>> CurlRestClient::Post(
        new CurlRestResponse(std::move(options), std::move(*impl)))};
  }
- 
+
 +StatusOr<std::unique_ptr<RestResponse>> CurlRestClient::PostMultipart(
 +    RestContext& context, RestRequest const& request,
 +    MultipartUploadRequest const& payload) {
@@ -443,17 +548,17 @@ index 06ba2a68..682f7db0 100644
 +++ b/google/cloud/internal/curl_writev.cc
 @@ -13,6 +13,8 @@
  // limitations under the License.
- 
+
  #include "google/cloud/internal/curl_writev.h"
 +#include "google/cloud/internal/make_status.h"
 +#include <algorithm>
  #include <cstdio>
- 
+
  namespace google {
 @@ -20,7 +22,25 @@ namespace cloud {
  namespace rest_internal {
  GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_BEGIN
- 
+
 +StatusOr<WriteVector> WriteVector::FromFileMultipart(
 +    std::string payload_prefix, std::string upload_file_path,
 +    std::string payload_suffix) {
@@ -478,7 +583,7 @@ index 06ba2a68..682f7db0 100644
      size += s.size();
 @@ -29,6 +49,9 @@ std::size_t WriteVector::size() const {
  }
- 
+
  std::size_t WriteVector::MoveTo(absl::Span<char> dst) {
 +  if (!upload_file_path_.empty()) {
 +    return MoveMultipartTo(dst);
@@ -499,7 +604,7 @@ index 06ba2a68..682f7db0 100644
 @@ -66,6 +92,74 @@ bool WriteVector::Seek(std::size_t offset, int origin) {
    return offset == 0;
  }
- 
+
 +bool WriteVector::OpenUploadFile() {
 +  upload_file_.close();
 +  upload_file_.clear();
@@ -577,7 +682,7 @@ index 51c26114..b03acfef 100644
 +++ b/google/cloud/internal/curl_writev.h
 @@ -16,8 +16,11 @@
  #define GOOGLE_CLOUD_CPP_GOOGLE_CLOUD_INTERNAL_CURL_WRITEV_H
- 
+
  #include "google/cloud/version.h"
 +#include "google/cloud/status_or.h"
  #include "absl/types/span.h"
@@ -585,7 +690,7 @@ index 51c26114..b03acfef 100644
 +#include <fstream>
 +#include <string>
  #include <vector>
- 
+
  namespace google {
 @@ -31,6 +34,9 @@ class WriteVector {
    WriteVector() = default;
@@ -594,12 +699,12 @@ index 51c26114..b03acfef 100644
 +  static StatusOr<WriteVector> FromFileMultipart(std::string payload_prefix,
 +                                                 std::string upload_file_path,
 +                                                 std::string payload_suffix);
- 
+
    /// Returns the number of bytes available in the write vector.
    std::size_t size() const;
 @@ -47,8 +53,21 @@ class WriteVector {
    bool Seek(std::size_t offset, int origin);
- 
+
   private:
 +  bool OpenUploadFile();
 +  std::size_t MoveMultipartTo(absl::Span<char> dst);
@@ -617,7 +722,7 @@ index 51c26114..b03acfef 100644
 +  std::size_t file_offset_ = 0;
 +  std::size_t suffix_offset_ = 0;
  };
- 
+
  GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_END
 diff --git a/google/cloud/internal/rest_client.h b/google/cloud/internal/rest_client.h
 index d554d4c6..48c0f0ab 100644
@@ -626,7 +731,7 @@ index d554d4c6..48c0f0ab 100644
 @@ -32,6 +32,12 @@ namespace cloud {
  namespace rest_internal {
  GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_BEGIN
- 
+
 +struct MultipartUploadRequest {
 +  std::string payload_prefix;
 +  std::string upload_file_path;
@@ -653,7 +758,7 @@ index 0badc6ff..94b7d7fb 100644
 @@ -194,6 +194,16 @@ class TracingRestClient : public RestClient {
                            });
    }
- 
+
 +  StatusOr<std::unique_ptr<RestResponse>> PostMultipart(
 +      RestContext& context, RestRequest const& request,
 +      MultipartUploadRequest const& payload) override {
@@ -667,3 +772,269 @@ index 0badc6ff..94b7d7fb 100644
    StatusOr<std::unique_ptr<RestResponse>> Post(
        RestContext& context, RestRequest const& request,
        std::vector<std::pair<std::string, std::string>> const& form_data)
+diff --git a/google/cloud/internal/unified_grpc_credentials.cc b/google/cloud/internal/unified_grpc_credentials.cc
+index 36b42821..6779d791 100644
+--- a/google/cloud/internal/unified_grpc_credentials.cc
++++ b/google/cloud/internal/unified_grpc_credentials.cc
+@@ -17,12 +17,19 @@
+ #include "google/cloud/grpc_options.h"
+ #include "google/cloud/internal/grpc_access_token_authentication.h"
+ #include "google/cloud/internal/grpc_api_key_authentication.h"
++#include "google/cloud/internal/grpc_async_access_token_cache.h"
+ #include "google/cloud/internal/grpc_channel_credentials_authentication.h"
+ #include "google/cloud/internal/grpc_compute_engine_authentication.h"
+ #include "google/cloud/internal/grpc_impersonate_service_account.h"
+ #include "google/cloud/internal/grpc_service_account_authentication.h"
++#include "google/cloud/internal/make_status.h"
++#include "google/cloud/internal/oauth2_authorized_user_credentials.h"
++#include "google/cloud/internal/oauth2_decorate_credentials.h"
++#include "google/cloud/internal/rest_client.h"
+ #include <grpcpp/security/credentials.h>
++#include <chrono>
+ #include <fstream>
++#include <mutex>
+
+ namespace {
+
+@@ -74,6 +81,128 @@ class GrpcErrorCredentialsAuthentication : public GrpcAuthenticationStrategy {
+   Status error_status_;
+ };
+
++std::shared_ptr<GrpcAsyncAccessTokenCache> MakeAuthorizedUserCache(
++    CompletionQueue cq,
++    std::shared_ptr<oauth2_internal::Credentials> credentials) {
++  auto source = [credentials](CompletionQueue& cq) {
++    promise<StatusOr<AccessToken>> p;
++    auto f = p.get_future();
++    cq.RunAsync([credentials, p = std::move(p)]() mutable {
++      p.set_value(credentials->GetToken(std::chrono::system_clock::now()));
++    });
++    return f;
++  };
++  return GrpcAsyncAccessTokenCache::Create(std::move(cq), std::move(source));
++}
++
++StatusOr<std::shared_ptr<oauth2_internal::Credentials>>
++MakeAuthorizedUserOauth2Credentials(AuthorizedUserConfig const& cfg,
++                                    Options const& options) {
++  auto info = oauth2_internal::ParseAuthorizedUserCredentials(
++      cfg.json_object(), "memory");
++  if (!info) return std::move(info).status();
++
++  auto auth_options = cfg.options();
++  if (options.has<CARootsFilePathOption>()) {
++    auth_options.set<CARootsFilePathOption>(
++        options.get<CARootsFilePathOption>());
++  }
++  auto client_factory = [](Options const& opts) {
++    return rest_internal::MakeDefaultRestClient("", opts);
++  };
++  auto credentials =
++      std::make_shared<oauth2_internal::AuthorizedUserCredentials>(
++          *std::move(info), auth_options, std::move(client_factory));
++  return oauth2_internal::Decorate(std::move(credentials), auth_options);
++}
++
++class GrpcAuthorizedUserAuthentication
++    : public GrpcAuthenticationStrategy,
++      public std::enable_shared_from_this<GrpcAuthorizedUserAuthentication> {
++ public:
++  static std::shared_ptr<GrpcAuthorizedUserAuthentication> Create(
++      CompletionQueue cq,
++      std::shared_ptr<oauth2_internal::Credentials> credentials,
++      Options const& opts) {
++    return std::shared_ptr<GrpcAuthorizedUserAuthentication>(
++        new GrpcAuthorizedUserAuthentication(std::move(cq),
++                                             std::move(credentials), opts));
++  }
++
++  std::shared_ptr<grpc::Channel> CreateChannel(
++      std::string const& endpoint,
++      grpc::ChannelArguments const& arguments) override {
++    return grpc::CreateCustomChannel(endpoint, grpc::SslCredentials(ssl_options_),
++                                     arguments);
++  }
++
++  bool RequiresConfigureContext() const override { return true; }
++
++  Status ConfigureContext(grpc::ClientContext& context) override {
++    auto token = cache_->GetAccessToken();
++    if (!token) return std::move(token).status();
++    context.set_credentials(UpdateCallCredentials(std::move(token->token)));
++    return Status{};
++  }
++
++  future<StatusOr<std::shared_ptr<grpc::ClientContext>>> AsyncConfigureContext(
++      std::shared_ptr<grpc::ClientContext> context) override {
++    struct Capture {
++      std::weak_ptr<GrpcAuthorizedUserAuthentication> w;
++      std::shared_ptr<grpc::ClientContext> context;
++
++      StatusOr<std::shared_ptr<grpc::ClientContext>> operator()(
++          future<StatusOr<AccessToken>> f) {
++        auto self = w.lock();
++        if (!self) {
++          return UnknownError("lost reference", GCP_ERROR_INFO());
++        }
++        return self->OnGetCallCredentials(std::move(context), f.get());
++      }
++    };
++    return cache_->AsyncGetAccessToken().then(
++        Capture{WeakFromThis(), std::move(context)});
++  }
++
++ private:
++  GrpcAuthorizedUserAuthentication(
++      CompletionQueue cq,
++      std::shared_ptr<oauth2_internal::Credentials> credentials,
++      Options const& opts)
++      : cache_(MakeAuthorizedUserCache(std::move(cq), std::move(credentials))) {
++    auto cainfo = LoadCAInfo(opts);
++    if (cainfo) ssl_options_.pem_root_certs = std::move(*cainfo);
++  }
++
++  std::weak_ptr<GrpcAuthorizedUserAuthentication> WeakFromThis() {
++    return std::weak_ptr<GrpcAuthorizedUserAuthentication>(shared_from_this());
++  }
++
++  std::shared_ptr<grpc::CallCredentials> UpdateCallCredentials(
++      std::string token) {
++    std::lock_guard<std::mutex> lk(mu_);
++    if (access_token_ != token) {
++      credentials_ = grpc::AccessTokenCredentials(token);
++      access_token_ = std::move(token);
++    }
++    return credentials_;
++  }
++
++  StatusOr<std::shared_ptr<grpc::ClientContext>> OnGetCallCredentials(
++      std::shared_ptr<grpc::ClientContext> context,
++      StatusOr<AccessToken> result) {
++    if (!result) return std::move(result).status();
++    context->set_credentials(UpdateCallCredentials(std::move(result->token)));
++    return make_status_or(std::move(context));
++  }
++
++  std::shared_ptr<GrpcAsyncAccessTokenCache> cache_;
++  grpc::SslCredentialsOptions ssl_options_;
++  std::mutex mu_;
++  std::string access_token_;
++  std::shared_ptr<grpc::CallCredentials> credentials_;
++};
++
+ std::shared_ptr<GrpcAuthenticationStrategy> CreateAuthenticationStrategy(
+     google::cloud::CompletionQueue cq, Options const& options) {
+   if (options.has<google::cloud::UnifiedCredentialsOption>()) {
+@@ -118,6 +247,16 @@ std::shared_ptr<GrpcAuthenticationStrategy> CreateAuthenticationStrategy(
+       result = std::make_unique<GrpcServiceAccountAuthentication>(
+           cfg.json_object(), std::move(options));
+     }
++    void visit(AuthorizedUserConfig const& cfg) override {
++      auto credentials = MakeAuthorizedUserOauth2Credentials(cfg, options);
++      if (!credentials) {
++        result = std::make_unique<GrpcErrorCredentialsAuthentication>(
++            ErrorCredentialsConfig(std::move(credentials).status()));
++        return;
++      }
++      result = GrpcAuthorizedUserAuthentication::Create(
++          std::move(cq), *std::move(credentials), std::move(options));
++    }
+     void visit(ExternalAccountConfig const& cfg) override {
+       grpc::SslCredentialsOptions ssl_options;
+       auto cainfo = LoadCAInfo(options);
+diff --git a/google/cloud/internal/unified_rest_credentials.cc b/google/cloud/internal/unified_rest_credentials.cc
+index 65f1d873..695ddff0 100644
+--- a/google/cloud/internal/unified_rest_credentials.cc
++++ b/google/cloud/internal/unified_rest_credentials.cc
+@@ -18,6 +18,7 @@
+ #include "google/cloud/internal/oauth2_access_token_credentials.h"
+ #include "google/cloud/internal/oauth2_anonymous_credentials.h"
+ #include "google/cloud/internal/oauth2_api_key_credentials.h"
++#include "google/cloud/internal/oauth2_authorized_user_credentials.h"
+ #include "google/cloud/internal/oauth2_compute_engine_credentials.h"
+ #include "google/cloud/internal/oauth2_decorate_credentials.h"
+ #include "google/cloud/internal/oauth2_error_credentials.h"
+@@ -34,6 +35,7 @@ namespace {
+
+ using ::google::cloud::internal::AccessTokenConfig;
+ using ::google::cloud::internal::ApiKeyConfig;
++using ::google::cloud::internal::AuthorizedUserConfig;
+ using ::google::cloud::internal::ComputeEngineCredentialsConfig;
+ using ::google::cloud::internal::CredentialsVisitor;
+ using ::google::cloud::internal::ErrorCredentialsConfig;
+@@ -126,6 +128,19 @@ std::shared_ptr<oauth2_internal::Credentials> MapCredentials(
+           cfg.options());
+     }
+
++    void visit(AuthorizedUserConfig const& cfg) override {
++      auto info = oauth2_internal::ParseAuthorizedUserCredentials(
++          cfg.json_object(), "memory");
++      if (!info) {
++        result = MakeErrorCredentials(std::move(info).status());
++        return;
++      }
++      result = Decorate(
++          std::make_shared<oauth2_internal::AuthorizedUserCredentials>(
++              *info, cfg.options(), std::move(client_factory_)),
++          cfg.options());
++    }
++
+     void visit(ExternalAccountConfig const& cfg) override {
+       auto const ec = internal::ErrorContext();
+       auto info = oauth2_internal::ParseExternalAccountConfiguration(
+diff --git a/google/cloud/storage/internal/unified_rest_credentials.cc b/google/cloud/storage/internal/unified_rest_credentials.cc
+index 88045788..f0aa2386 100644
+--- a/google/cloud/storage/internal/unified_rest_credentials.cc
++++ b/google/cloud/storage/internal/unified_rest_credentials.cc
+@@ -20,6 +20,7 @@
+ #include "google/cloud/storage/oauth2/service_account_credentials.h"
+ #include "google/cloud/internal/getenv.h"
+ #include "google/cloud/internal/oauth2_access_token_credentials.h"
++#include "google/cloud/internal/oauth2_authorized_user_credentials.h"
+ #include "google/cloud/internal/oauth2_compute_engine_credentials.h"
+ #include "google/cloud/internal/oauth2_credentials.h"
+ #include "google/cloud/internal/oauth2_decorate_credentials.h"
+@@ -40,6 +41,7 @@ namespace {
+
+ using ::google::cloud::internal::AccessTokenConfig;
+ using ::google::cloud::internal::ApiKeyConfig;
++using ::google::cloud::internal::AuthorizedUserConfig;
+ using ::google::cloud::internal::ComputeEngineCredentialsConfig;
+ using ::google::cloud::internal::CredentialsVisitor;
+ using ::google::cloud::internal::ErrorCredentialsConfig;
+@@ -125,6 +127,19 @@ std::shared_ptr<oauth2::Credentials> MapCredentials(
+           std::make_shared<WrapRestCredentials>(WithCaching(std::move(impl)));
+     }
+
++    void visit(AuthorizedUserConfig const& cfg) override {
++      auto info = oauth2_internal::ParseAuthorizedUserCredentials(
++          cfg.json_object(), "memory");
++      if (!info) {
++        result = MakeErrorCredentials(std::move(info).status());
++        return;
++      }
++      auto impl = std::make_shared<oauth2_internal::AuthorizedUserCredentials>(
++          *info, cfg.options(), std::move(client_factory_));
++      result = std::make_shared<WrapRestCredentials>(
++          Decorate(std::move(impl), cfg.options()));
++    }
++
+     void visit(ExternalAccountConfig const& cfg) override {
+       auto const ec = google::cloud::internal::ErrorContext();
+       auto info = oauth2_internal::ParseExternalAccountConfiguration(
+diff --git a/google/cloud/testing_util/credentials.h b/google/cloud/testing_util/credentials.h
+index 593d568d..c43fbedd 100644
+--- a/google/cloud/testing_util/credentials.h
++++ b/google/cloud/testing_util/credentials.h
+@@ -55,6 +55,11 @@ struct TestCredentialsVisitor : public internal::CredentialsVisitor {
+     name = "ServiceAccountConfig";
+     json_object = cfg.json_object();
+   }
++  void visit(internal::AuthorizedUserConfig const& cfg) override {
++    name = "AuthorizedUserConfig";
++    json_object = cfg.json_object();
++    options = cfg.options();
++  }
+   void visit(internal::ExternalAccountConfig const& cfg) override {
+     name = "ExternalAccountConfig";
+     json_object = cfg.json_object();

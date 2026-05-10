@@ -38,7 +38,7 @@ set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.js
 
 ### Authentication Option 3: Using DuckDB Secrets (experimental)
 
-As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.org/docs/configuration/secrets_manager.html), which provide a way to manage credentials within your DuckDB session. First, create a secret with one of the three supported authentication parameters. The `SCOPE` parameter specifies which BigQuery project the secret applies to using the format `bq://project_id`.
+As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.org/docs/configuration/secrets_manager.html), which provide a way to manage credentials within your DuckDB session. First, create a secret with one supported authentication method. The `SCOPE` parameter specifies which BigQuery project the secret applies to using the format `bq://project_id`.
 
 > **Note**: DuckDB Secrets are particularly useful for multi-tenant scenarios, where you need to authenticate with different credentials for different BigQuery projects within the same DuckDB session. Simply create multiple secrets with different `SCOPE` parameters, and each will be automatically applied to its respective project.
 
@@ -49,6 +49,7 @@ The following authentication parameters are currently supported:
 - **`SERVICE_ACCOUNT_JSON`** - Inline JSON content of a service account key
 - **`EXTERNAL_ACCOUNT_PATH`** - Path to an external account credentials file (for Workload Identity Federation)
 - **`EXTERNAL_ACCOUNT_JSON`** - Inline JSON content of external account credentials (for Workload Identity Federation)
+- **`REFRESH_TOKEN` + `CLIENT_ID` + `CLIENT_SECRET`** - OAuth authorized user credentials; `TOKEN_URI` is optional and defaults to Google's OAuth token endpoint
 
 For example:
 
@@ -60,6 +61,20 @@ CREATE PERSISTENT SECRET bigquery_secret (
     SERVICE_ACCOUNT_PATH '/path/to/service-account-key.json'
 );
 ```
+
+OAuth authorized user credentials are also supported:
+
+```sql
+CREATE PERSISTENT SECRET bigquery_oauth_secret (
+    TYPE BIGQUERY,
+    SCOPE 'bq://my_gcp_project',
+    REFRESH_TOKEN '1//...',
+    CLIENT_ID 'your-oauth-client-id.apps.googleusercontent.com',
+    CLIENT_SECRET 'your-oauth-client-secret'
+);
+```
+
+Refresh tokens are long-lived user credentials. Store them with the same care as service account keys, and avoid logging or sharing them. For production server workloads, service accounts, service account impersonation, or Workload Identity Federation are usually preferable.
 
 To update an existing secret when credentials change or expire, use `CREATE OR REPLACE SECRET`. Once created, the secret will be automatically used when you interact with the specified project.
 

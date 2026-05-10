@@ -3,11 +3,13 @@
 #include "duckdb/main/secret/secret_manager.hpp"
 
 #include "google/cloud/internal/oauth2_access_token_credentials.h"
+#include "google/cloud/internal/oauth2_authorized_user_credentials.h"
 #include "google/cloud/internal/oauth2_external_account_credentials.h"
 #include "google/cloud/internal/oauth2_service_account_credentials.h"
 
 #include <filesystem>
 #include <fstream>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <sys/stat.h>
 
@@ -16,6 +18,61 @@ namespace oauth2 = google::cloud::oauth2_internal;
 namespace duckdb {
 namespace bigquery {
 
+namespace {
+
+case_insensitive_set_t BigquerySecretRedactKeys() {
+    return {kAccessToken,
+            kServiceAccountJson,
+            kServiceAccountPath,
+            kExternalAccountJson,
+            kExternalAccountPath,
+            kRefreshToken,
+            kClientId,
+            kClientSecret,
+            kTokenUri};
+}
+
+string BuildAuthorizedUserCredentialsJson(const string &refresh_token,
+                                          const string &client_id,
+                                          const string &client_secret,
+                                          const string &token_uri) {
+    nlohmann::json credentials;
+    credentials["type"] = "authorized_user";
+    credentials["refresh_token"] = refresh_token;
+    credentials["client_id"] = client_id;
+    credentials["client_secret"] = client_secret;
+    if (!token_uri.empty()) {
+        credentials["token_uri"] = token_uri;
+    }
+    return credentials.dump();
+}
+
+string BuildAuthorizedUserCredentialsJson(const BigquerySecret &secret) {
+    return BuildAuthorizedUserCredentialsJson(secret.GetRefreshToken(),
+                                              secret.GetClientId(),
+                                              secret.GetClientSecret(),
+                                              secret.GetTokenUri());
+}
+
+void ValidateRequiredAuthorizedUserField(const string &param, bool is_set, const string &value) {
+    if (!is_set) {
+        throw InvalidInputException("BigQuery authorized_user secret is missing required parameter '" + param + "'");
+    }
+    if (value.empty()) {
+        throw InvalidInputException("BigQuery authorized_user secret parameter '" + param + "' must not be empty");
+    }
+}
+
+void ValidateAuthorizedUserCredentialsJson(const string &value) {
+    auto result = oauth2::ParseAuthorizedUserCredentials(value, "duckdb_secret");
+    if (result.ok()) {
+        return;
+    }
+    throw InvalidInputException("The authorized_user parameters must form valid OAuth authorized user credentials.");
+}
+
+} // namespace
+
 //===--------------------------------------------------------------------===//
 // BigquerySecret Implementation
 //===--------------------------------------------------------------------===//
@@ -23,13 +80,13 @@ namespace bigquery {
 BigquerySecret::BigquerySecret(const vector<string> &prefix_paths, const string &provider, const string &name)
     : KeyValueSecret(prefix_paths, "bigquery", provider, name) {
     serializable = true;
-    redact_keys = {kAccessToken, kServiceAccountJson, kServiceAccountPath, kExternalAccountJson, kExternalAccountPath};
+    redact_keys = BigquerySecretRedactKeys();
 }
 
 BigquerySecret::BigquerySecret(const BaseSecret &base_secret)
     : KeyValueSecret(base_secret.GetScope(), base_secret.GetType(), base_secret.GetProvider(), base_secret.GetName()) {
     serializable = true;
-    redact_keys = {kAccessToken, kServiceAccountJson, kServiceAccountPath, kExternalAccountJson, kExternalAccountPath};
+    redact_keys = BigquerySecretRedactKeys();
     if (auto kv_secret = dynamic_cast<const KeyValueSecret *>(&base_secret)) {
         secret_map = kv_secret->secret_map;
     }
@@ -69,6 +126,38 @@ string BigquerySecret::GetExternalAccountCredsJson() const {
 
 string BigquerySecret::GetExternalAccountCredsPath() const {
     auto it = secret_map.find(kExternalAccountPath);
+    if (it != secret_map.end()) {
+        return it->second.GetValue<string>();
+    }
+    return "";
+}
+
+string BigquerySecret::GetRefreshToken() const {
+    auto it = secret_map.find(kRefreshToken);
+    if (it != secret_map.end()) {
+        return it->second.GetValue<string>();
+    }
+    return "";
+}
+
+string BigquerySecret::GetClientId() const {
+    auto it = secret_map.find(kClientId);
+    if (it != secret_map.end()) {
+        return it->second.GetValue<string>();
+    }
+    return "";
+}
+
+string BigquerySecret::GetClientSecret() const {
+    auto it = secret_map.find(kClientSecret);
+    if (it != secret_map.end()) {
+        return it->second.GetValue<string>();
+    }
+    return "";
+}
+
+string BigquerySecret::GetTokenUri() const {
+    auto it = secret_map.find(kTokenUri);
     if (it != secret_map.end()) {
         return it->second.GetValue<string>();
     }
@@ -204,6 +293,14 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
         return google::cloud::MakeExternalAccountCredentials(external_account_json);
     }
 
+    auto refresh_token = secret.GetRefreshToken();
+    auto client_id = secret.GetClientId();
+    auto client_secret = secret.GetClientSecret();
+    auto token_uri = secret.GetTokenUri();
+    if (!refresh_token.empty() || !client_id.empty() || !client_secret.empty() || !token_uri.empty()) {
+        return google::cloud::MakeAuthorizedUserCredentials(BuildAuthorizedUserCredentialsJson(secret));
+    }
+
     return nullptr;
 }
 
@@ -247,15 +344,42 @@ unique_ptr<BaseSecret> CreateBigquerySecretFunction(ClientContext &context, Crea
         }
     }
 
+    bool has_refresh_token = bigquery_secret->TrySetValue(kRefreshToken, input);
+    bool has_client_id = bigquery_secret->TrySetValue(kClientId, input);
+    bool has_client_secret = bigquery_secret->TrySetValue(kClientSecret, input);
+    bool has_token_uri = bigquery_secret->TrySetValue(kTokenUri, input);
+    bool has_authorized_user = has_refresh_token || has_client_id || has_client_secret || has_token_uri;
+    if (has_authorized_user) {
+        auth_methods_count++;
+    }
+
     if (auth_methods_count == 0) {
         throw InvalidInputException( //
             "BigQuery secret must contain one of: 'access_token', 'service_account_path', "
-            "'service_account_json', 'external_account_path', or 'external_account_json'");
+            "'service_account_json', 'external_account_path', 'external_account_json', or "
+            "'refresh_token' + 'client_id' + 'client_secret'");
     } else if (auth_methods_count > 1) {
         throw InvalidInputException( //
             "BigQuery secret must contain exactly one authentication method. Please provide "
             "only one of: 'access_token', 'service_account_path', 'service_account_json', 'external_account_path', "
-            "or 'external_account_json'");
+            "'external_account_json', or 'refresh_token' + 'client_id' + 'client_secret'");
+    }
+
+    if (has_authorized_user) {
+        auto refresh_token = bigquery_secret->GetRefreshToken();
+        auto client_id = bigquery_secret->GetClientId();
+        auto client_secret = bigquery_secret->GetClientSecret();
+        auto token_uri = bigquery_secret->GetTokenUri();
+
+        ValidateRequiredAuthorizedUserField(kRefreshToken, has_refresh_token, refresh_token);
+        ValidateRequiredAuthorizedUserField(kClientId, has_client_id, client_id);
+        ValidateRequiredAuthorizedUserField(kClientSecret, has_client_secret, client_secret);
+        if (has_token_uri && token_uri.empty()) {
+            throw InvalidInputException("BigQuery authorized_user secret parameter 'token_uri' must not be empty");
+        }
+
+        ValidateAuthorizedUserCredentialsJson(
+            BuildAuthorizedUserCredentialsJson(refresh_token, client_id, client_secret, token_uri));
     }
 
     // Validate all credential parameters (only if not empty)
@@ -301,6 +425,10 @@ void RegisterBigquerySecretType(DatabaseInstance &db) {
     create_func.named_parameters[kServiceAccountPath] = LogicalType::VARCHAR;
     create_func.named_parameters[kExternalAccountJson] = LogicalType::VARCHAR;
     create_func.named_parameters[kExternalAccountPath] = LogicalType::VARCHAR;
+    create_func.named_parameters[kRefreshToken] = LogicalType::VARCHAR;
+    create_func.named_parameters[kClientId] = LogicalType::VARCHAR;
+    create_func.named_parameters[kClientSecret] = LogicalType::VARCHAR;
+    create_func.named_parameters[kTokenUri] = LogicalType::VARCHAR;
 
     secret_mgr.RegisterSecretFunction(create_func, OnCreateConflict::ERROR_ON_CONFLICT);
 }
