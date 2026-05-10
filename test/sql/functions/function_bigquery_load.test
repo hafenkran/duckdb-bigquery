@@ -28,19 +28,20 @@ CALL bigquery_load(
 	'bq',
 	'${BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
-	labels := MAP {'duckdb_load_label': NULL}
+	labels := MAP {'duckdb_load_label': NULL},
+	location := 'europe-west3'
 );
 ----
-<REGEX>:Binder Error: Null label values are not allowed in parameter 'labels'
+Binder Error: Null label values are not allowed in parameter 'labels'
 
 statement ok
 CREATE OR REPLACE TEMP TABLE load_file_job AS
 SELECT *
 FROM bigquery_load(
-	'${BQ_TEST_PROJECT}',
+	'bq',
 	'${BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
-	location='europe-west3',
+	location := 'europe-west3',
 	labels := MAP {'duckdb_label_env': 'test', 'duckdb_load_label': 'load_job'}
 );
 
@@ -63,8 +64,8 @@ query I
 SELECT count(*) = 1
 FROM bigquery_jobs('bq', maxResults=50)
 WHERE job_id = (SELECT job_id FROM load_file_job)
-	AND contains(configuration, '"duckdb_label_env":"test"')
-	AND contains(configuration, '"duckdb_load_label":"load_job"');
+	AND contains(configuration::VARCHAR, '"duckdb_label_env":"test"')
+	AND contains(configuration::VARCHAR, '"duckdb_load_label":"load_job"');
 ----
 true
 
