@@ -424,26 +424,17 @@ D CALL bigquery_load(
 └─────────┴──────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┘
 
 D CALL bigquery_load(
-    'bq',
+    'my_storage_project',
     'my_dataset.target_table',
     source_uris := ['gs://my_bucket/path/part-1.parquet', 'gs://my_bucket/path/part-2.parquet'],
     write_disposition := 'WRITE_APPEND',
-    location := 'EU'
-);
-```
-
-To bill the load job to a separate project when calling `bigquery_load` with a project ID, pass `billing_project`:
-
-```sql
-D CALL bigquery_load(
-    'my_storage_project',
-    'my_dataset.target_table',
-    source_file := '/path/to/data.parquet',
+    location := 'EU',
+    labels := MAP {'pipeline': 'daily_load', 'env': 'prod'},
     billing_project := 'my_billing_project'
 );
 ```
 
-For attached databases, configure cross-project billing in the `ATTACH` string instead of passing `billing_project` to `bigquery_load`.
+Use `source_uris` to load one or more Cloud Storage objects directly. To attach labels to the BigQuery load job for billing or audit workflows, pass `labels` as a `MAP(VARCHAR, VARCHAR)`. When calling `bigquery_load` with a project ID, pass `billing_project` to bill the load job to a separate project. For attached databases, configure cross-project billing in the `ATTACH` string instead of passing `billing_project` to `bigquery_load`.
 
 Compared to `CREATE TABLE ... AS` or `INSERT INTO ...`, `bigquery_load` uses a different write path:
 
@@ -463,6 +454,7 @@ The `bigquery_load` function supports the following named parameters:
 | `create_disposition` | `VARCHAR` | BigQuery create behavior: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`.              |
 | `location`           | `VARCHAR` | BigQuery job location.                                                                 |
 | `billing_project`    | `VARCHAR` | Project ID to bill for the load job. Only supported for direct project-ID calls.       |
+| `labels`             | `MAP(VARCHAR, VARCHAR)` | BigQuery job labels to attach to the load job.                                         |
 
 Exactly one of `source_file`, `source_uris`, or `source_table` must be provided. For Cloud Storage loads, the BigQuery job identity needs permission to read the objects, and the bucket location must be compatible with the destination dataset location.
 
