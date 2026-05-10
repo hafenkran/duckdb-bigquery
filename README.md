@@ -6,13 +6,18 @@ This community extension allows [DuckDB](https://duckdb.org) to query data from 
 
 ## Preliminaries
 
-You must configure authentication before using the BigQuery extension. The extension supports three methods. If more than one is available, it uses the first method that works, in this order:
+You must configure authentication before using the BigQuery extension. DuckDB BigQuery secrets take priority when their
+scope matches the target project. Otherwise, the extension uses Google Application Default Credentials (ADC), including
+`GOOGLE_APPLICATION_CREDENTIALS`, gcloud ADC files, and attached service accounts on Google-hosted runtimes such as
+Dataproc or Compute Engine. Common setup paths are:
 
 1. **DuckDB Secrets** ([Option 3](#authentication-option-3-using-duckdb-secrets)) - Best for multi-tenant or server use; per-connection isolation and easy rotation.
-2. **Environment Variable** ([Option 2](#authentication-option-2-configure-adc-with-service-account-keys)) - `GOOGLE_APPLICATION_CREDENTIALS` pointing to a service-account JSON key.
+2. **Service Account ADC** ([Option 2](#authentication-option-2-configure-adc-with-service-account-keys)) - `GOOGLE_APPLICATION_CREDENTIALS` or an attached Google Cloud service account.
 3. **User Account** ([Option 1](#authentication-option-1-configure-adc-with-your-google-account)) - Application Default Credentials created by gcloud auth application-default login.
 
-This priority order prefers explicit, connection-scoped credentials (DuckDB Secrets) over machine-wide settings (environment variables) and developer-local user credentials (gcloud). See [Required Permissions](#required-permissions) for the BigQuery roles and permissions commonly needed by the extension.
+Secrets are explicit and connection-scoped; ADC is resolved by the Google client library after no matching secret is
+found. See [Required Permissions](#required-permissions) for the BigQuery roles and permissions commonly needed by the
+extension.
 
 ### Authentication Option 1: Configure ADC with your Google Account
 
@@ -35,6 +40,9 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/my/service-account-credentials.j
 # On Windows
 set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.json"
 ```
+
+On Dataproc, Compute Engine, GKE, and Cloud Run, no service-account key file is required when the runtime has an
+attached service account. ADC can fetch tokens from the metadata server; make sure that service account has the required IAM permissions and access scopes.
 
 ### Authentication Option 3: Using DuckDB Secrets (experimental)
 
@@ -580,6 +588,7 @@ D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | `bq_bignumeric_as_varchar`                | Compatibility setting kept for older workflows. `BIGNUMERIC` columns are exposed as `VARCHAR` by default in current versions.                                                                        | `true`  |
 | `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
+| `bq_auth_timeout_ms`                      | Timeout for authentication token fetches in milliseconds. This bounds ADC metadata and OAuth token requests without changing normal BigQuery query timeouts.                                        | `10000` |
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
 | `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |
 | `bq_experimental_use_info_schema`         | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                         | `true`  |
