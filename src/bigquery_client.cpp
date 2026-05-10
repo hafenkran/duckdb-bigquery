@@ -436,6 +436,8 @@ vector<BigqueryTableRef> BigqueryClient::GetTables(const string &dataset_id) {
 }
 
 BigqueryDatasetRef BigqueryClient::GetDataset(const string &dataset_id) {
+    CheckAuthentication();
+
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::DatasetServiceClient>(
         google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(OptionsAPI()));
 
@@ -555,6 +557,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJobByReference(
         throw BinderException("Job ID cannot be empty");
     }
 
+    CheckAuthentication();
+
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
@@ -582,6 +586,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, co
     if (job_id.empty()) {
         throw BinderException("Job ID cannot be empty");
     }
+
+    CheckAuthentication();
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
@@ -718,6 +724,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
 }
 
 BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string &table_id) {
+    CheckAuthentication();
+
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
         google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
 
@@ -746,6 +754,8 @@ BigqueryTableRef BigqueryClient::GetTable(const string &dataset_id, const string
 }
 
 bool BigqueryClient::DatasetExists(const string &dataset_id) {
+    CheckAuthentication();
+
     auto client = google::cloud::bigquerycontrol_v2::DatasetServiceClient(
         google::cloud::bigquerycontrol_v2::MakeDatasetServiceConnectionRest(OptionsAPI()));
 
@@ -767,6 +777,8 @@ bool BigqueryClient::DatasetExists(const string &dataset_id) {
 }
 
 bool BigqueryClient::TableExists(const string &dataset_id, const string &table_id) {
+    CheckAuthentication();
+
     auto client = google::cloud::bigquerycontrol_v2::TableServiceClient(
         google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
 
@@ -853,9 +865,6 @@ void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> 
         }
         datasets_by_location[dataset_ref.location].push_back(dataset_ref.dataset_id);
     }
-
-    auto job_client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
     for (const auto &datasets_in_loc : datasets_by_location) {
         const auto &location = datasets_in_loc.first;
@@ -1070,6 +1079,8 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
 google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryResults(
     const google::cloud::bigquery::v2::JobReference &job_ref,
     const string &page_token) {
+    CheckAuthentication();
+
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
@@ -1094,8 +1105,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
         throw BinderException("job_id config parameter is empty.");
     }
 
-    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+    CheckAuthentication();
 
     auto request = google::cloud::bigquery::v2::GetJobRequest();
     request.set_project_id(config.BillingProject());
@@ -1104,7 +1114,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJob
         request.set_location(location);
     }
 
-    auto response = client.GetJob(request);
+    auto response = job_client.GetJob(request);
     if (!response.ok()) {
         ThrowOnErrorStatus(response.status());
         throw BinderException(response.status().message());
