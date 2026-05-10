@@ -71,7 +71,8 @@ void ValidateCredentialInput(const string &param, const string &value);
 
 //! Helper function to create Google Cloud credentials from a BigQuery secret
 //! Returns nullptr if no credentials could be created
-std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const BigquerySecret &secret);
+std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const BigquerySecret &secret,
+                                                                           google::cloud::Options auth_options = {});
 
 //! Helper function to lookup a secret for a specific project_id using scope bq://project_id or bigquery://project_id
 //! Returns a SecretMatch that owns the secret to prevent use-after-free

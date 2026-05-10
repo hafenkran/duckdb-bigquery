@@ -40,7 +40,8 @@
 #include "google/cloud/grpc_options.h"
 #include "google/cloud/idempotency.h"
 #include "google/cloud/internal/curl_options.h"
-#include "google/cloud/internal/oauth2_google_application_default_credentials_file.h"
+#include "google/cloud/internal/rest_options.h"
+#include "google/cloud/internal/unified_rest_credentials.h"
 
 #include "arrow/api.h"
 #include "arrow/io/api.h"
@@ -48,14 +49,54 @@
 #include "arrow/ipc/writer.h"
 #include "grpcpp/grpcpp.h"
 
+#include <chrono>
 #include <cstring>
-#include <fstream>
 #include <iostream>
 
 
 namespace duckdb {
 namespace bigquery {
 namespace {
+
+static google::cloud::Options BigqueryAuthOptions() {
+    auto options = google::cloud::Options{};
+    auto auth_timeout = BigquerySettings::GetAuthTimeoutSeconds();
+    if (auth_timeout.count() > 0) {
+        options.set<google::cloud::rest_internal::TransferStallTimeoutOption>(auth_timeout);
+        options.set<google::cloud::rest_internal::TransferStallMinimumRateOption>(1);
+        options.set<google::cloud::rest_internal::DownloadStallTimeoutOption>(auth_timeout);
+        options.set<google::cloud::rest_internal::DownloadStallMinimumRateOption>(1);
+    }
+
+    auto ca_path = BigquerySettings::CurlCaBundlePath();
+    if (!ca_path.empty()) {
+        options.set<google::cloud::CARootsFilePathOption>(ca_path);
+    }
+    return options;
+}
+
+static string BigqueryAuthenticationFailureMessage(const string &details) {
+    string message =
+        "BigQuery Authentication Failed\n"
+        "\n"
+        "No usable authentication credentials were found. Please configure one of the following:\n"
+        "\n"
+        "Authentication options:\n"
+        "  1. DuckDB secret for this project:\n"
+        "     - CREATE SECRET (TYPE bigquery, SCOPE 'bq://your-project', ACCESS_TOKEN 'your-token')\n"
+        "  2. Application Default Credentials (ADC):\n"
+        "     - Run: gcloud auth application-default login\n"
+        "     - Or set GOOGLE_APPLICATION_CREDENTIALS to a service account, authorized user, or external account JSON "
+        "file\n"
+        "  3. Attached Google Cloud service account:\n"
+        "     - On Dataproc, Compute Engine, GKE, or Cloud Run, make sure the runtime service account has BigQuery "
+        "permissions\n";
+
+    if (!details.empty()) {
+        message += "\nUnderlying authentication error:\n  " + details;
+    }
+    return message;
+}
 
 static Value CastQueryParameterValue(const Value &value, const LogicalType &target_type, idx_t parameter_index) {
     auto casted = value;
@@ -263,6 +304,7 @@ BigqueryClient::BigqueryClient(ClientContext &context, const BigqueryConfig &con
 
 google::cloud::Options BigqueryClient::OptionsAPI() {
     auto options = google::cloud::Options{};
+    auto auth_options = BigqueryAuthOptions();
     if (!config.api_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.api_endpoint);
     }
@@ -271,7 +313,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     auto secret_match = LookupBigQuerySecret(*context, config.project_id);
     if (secret_match.HasMatch()) {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
-        auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+        auto credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
         if (credentials) {
             options.set<google::cloud::UnifiedCredentialsOption>(credentials);
             credentials_set = true;
@@ -286,7 +328,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
-        options.set<google::cloud::UnifiedCredentialsOption>(google::cloud::MakeGoogleDefaultCredentials(options));
+        options.set<google::cloud::UnifiedCredentialsOption>(google::cloud::MakeGoogleDefaultCredentials(auth_options));
     }
 
     return options;
@@ -294,6 +336,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
 
 google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto options = google::cloud::Options{};
+    auto auth_options = BigqueryAuthOptions();
     if (!config.grpc_endpoint.empty()) {
         options.set<google::cloud::EndpointOption>(config.grpc_endpoint);
         if (config.IsDevEnv()) {
@@ -305,7 +348,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     auto secret_match = LookupBigQuerySecret(*context, config.project_id);
     if (secret_match.HasMatch()) {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
-        auto credentials = CreateGCPCredentialsFromSecret(bq_secret);
+        auto credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
         if (credentials) {
             options.set<google::cloud::UnifiedCredentialsOption>(credentials);
             credentials_set = true;
@@ -314,7 +357,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
-        options.set<google::cloud::UnifiedCredentialsOption>(google::cloud::MakeGoogleDefaultCredentials(options));
+        options.set<google::cloud::UnifiedCredentialsOption>(google::cloud::MakeGoogleDefaultCredentials(auth_options));
     }
 
     return options;
@@ -1325,54 +1368,28 @@ void BigqueryClient::CheckAuthentication() {
         return;
     }
 
-    // Check if we have a DuckDB secret for this project
+    auto auth_options = BigqueryAuthOptions();
+    std::shared_ptr<google::cloud::Credentials> credentials;
+
     auto secret_match = LookupBigQuerySecret(*context, config.project_id);
     if (secret_match.HasMatch()) {
-        authentication_checked = true;
-        return; // If we have a secret, we assume being able to authenticate
-    }
-
-    // Check if ADC environment variables are set
-    auto adc_credential = google::cloud::oauth2_internal::GoogleAdcFilePathFromEnvVarOrEmpty();
-    if (!adc_credential.empty()) {
-        std::ifstream creds_file(adc_credential);
-        if (creds_file.good()) {
-            authentication_checked = true;
-            return; // ADC file exists
+        auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+        credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
+        if (!credentials) {
+            throw InvalidInputException(BigqueryAuthenticationFailureMessage(
+                "A matching DuckDB BigQuery secret was found, but credentials could not be created from it."));
         }
+    } else {
+        credentials = google::cloud::MakeGoogleDefaultCredentials(auth_options);
     }
 
-    // Check if gcloud CLI credentials exist
-    auto gcloud_creds_path = google::cloud::oauth2_internal::GoogleAdcFilePathFromWellKnownPathOrEmpty();
-    if (!gcloud_creds_path.empty()) {
-        std::ifstream creds_file(gcloud_creds_path);
-        if (creds_file.good()) {
-            authentication_checked = true;
-            return; // gcloud ADC file exists
-        }
+    auto oauth2_credentials = google::cloud::rest_internal::MapCredentials(*credentials);
+    auto access_token = oauth2_credentials->GetToken(std::chrono::system_clock::now());
+    if (!access_token) {
+        throw InvalidInputException(BigqueryAuthenticationFailureMessage(access_token.status().message()));
     }
 
-    // Check if we're in a GCP environment (i.e., metadata server set)
-    const char *gcp_project = std::getenv("GOOGLE_CLOUD_PROJECT");
-    const char *gce_metadata = std::getenv("GCE_METADATA_ROOT");
-    if (gcp_project || gce_metadata) {
-        authentication_checked = true;
-        return; // Likely running on GCP, should have automatic credentials
-    }
-
-    // No authentication method found
-    throw InvalidInputException(
-        "BigQuery Authentication Failed\n"
-        "\n"
-        "No authentication credentials found. Please configure one of the following:\n"
-        "\n"
-        "Authentication options:\n"
-        "  1. User credentials via Application Default Credentials (ADC):\n"
-        "     • Run: gcloud auth application-default login\n"
-        "  2. Service account key file via environment variable:\n"
-        "     • Set GOOGLE_APPLICATION_CREDENTIALS to your service account key file path\n"
-        "  3. DuckDB secret for this project:\n"
-        "     • Run: CREATE SECRET (TYPE bigquery, SCOPE 'bq://your-project', ACCESS_TOKEN 'your-token')");
+    authentication_checked = true;
 }
 
 void BigqueryClient::ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status,
