@@ -23,6 +23,27 @@ statement ok
 CREATE OR REPLACE TEMP TABLE local_load_source AS
 SELECT * FROM read_parquet('test/data/multiple_row_groups.parquet');
 
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/multiple_row_groups.parquet',
+	labels := MAP {'duckdb_load_label': NULL}
+);
+----
+<REGEX>:Binder Error: Null label values are not allowed in parameter 'labels'
+
+statement ok
+CREATE OR REPLACE TEMP TABLE load_file_job AS
+SELECT *
+FROM bigquery_load(
+	'${BQ_TEST_PROJECT}',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/multiple_row_groups.parquet',
+	location='europe-west3',
+	labels := MAP {'duckdb_label_env': 'test', 'duckdb_load_label': 'load_job'}
+);
+
 query IIIIIII
 SELECT
 	success,
@@ -32,14 +53,20 @@ SELECT
 	destination_table = '${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table',
 	output_rows > 0,
 	status = '{"state":"DONE"}'
-FROM bigquery_load(
-	'${BQ_TEST_PROJECT}',
-    '${BQ_TEST_DATASET}.load_file_table',
-    source_file := 'test/data/multiple_row_groups.parquet',
-	location='europe-west3'
-);
+FROM load_file_job;
 ----
 true	true	true	true	true	true	true
+
+sleep 5 seconds
+
+query I
+SELECT count(*) = 1
+FROM bigquery_jobs('bq', maxResults=50)
+WHERE job_id = (SELECT job_id FROM load_file_job)
+	AND contains(configuration, '"duckdb_label_env":"test"')
+	AND contains(configuration, '"duckdb_load_label":"load_job"');
+----
+true
 
 statement ok
 CALL bigquery_load(
@@ -49,7 +76,7 @@ CALL bigquery_load(
 	location='europe-west3'
 );
 
-sleep 2 seconds
+sleep 5 seconds
 
 query I
 SELECT (

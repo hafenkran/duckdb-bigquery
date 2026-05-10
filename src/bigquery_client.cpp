@@ -567,19 +567,30 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
                                                                  const string &file_path,
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
-                                                                 const string &location) {
+                                                                 const string &location,
+                                                                 const std::map<string, string> &labels) {
     CheckAuthentication();
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response =
-        InsertLoadJobInternal(client, destination_table, file_path, write_disposition, create_disposition, location);
+    auto response = InsertLoadJobInternal(client,
+                                          destination_table,
+                                          file_path,
+                                          write_disposition,
+                                          create_disposition,
+                                          location,
+                                          labels);
     if (!response.ok()) {
         ThrowOnErrorStatus(response.status());
 
         if (CheckSSLError(response.status())) {
-            return LoadParquetFile(destination_table, file_path, write_disposition, create_disposition, location);
+            return LoadParquetFile(destination_table,
+                                   file_path,
+                                   write_disposition,
+                                   create_disposition,
+                                   location,
+                                   labels);
         }
 
         throw BinderException("Load job submission failed: " + response.status().message());
@@ -595,7 +606,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
                                                                  const vector<string> &source_uris,
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
-                                                                 const string &location) {
+                                                                 const string &location,
+                                                                 const std::map<string, string> &labels) {
     if (source_uris.empty()) {
         throw BinderException("At least one source URI must be provided for a BigQuery load job");
     }
@@ -618,12 +630,18 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
                                                   source_uris,
                                                   write_disposition,
                                                   create_disposition,
-                                                  location);
+                                                  location,
+                                                  labels);
     if (!response.ok()) {
         ThrowOnErrorStatus(response.status());
 
         if (CheckSSLError(response.status())) {
-            return LoadParquetUris(destination_table, source_uris, write_disposition, create_disposition, location);
+            return LoadParquetUris(destination_table,
+                                   source_uris,
+                                   write_disposition,
+                                   create_disposition,
+                                   location,
+                                   labels);
         }
 
         throw BinderException("Load job submission failed: " + response.status().message());
@@ -639,7 +657,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
                                                                  const BigqueryTableRef &destination_table,
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
-                                                                 const string &location) {
+                                                                 const string &location,
+                                                                 const std::map<string, string> &labels) {
     if (!context) {
         throw InternalException("LoadDuckDBTable requires an active DuckDB client context");
     }
@@ -665,7 +684,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
             result->ThrowError("Failed to materialize DuckDB source table for bigquery_load: ");
         }
 
-        auto job = LoadParquetFile(destination_table, temp_file_path, write_disposition, create_disposition, location);
+        auto job =
+            LoadParquetFile(destination_table, temp_file_path, write_disposition, create_disposition, location, labels);
         fs.TryRemoveFile(temp_file_path);
         return job;
     } catch (...) {
@@ -1128,7 +1148,8 @@ google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildLoadJobReques
     const BigqueryTableRef &destination_table,
     const string &write_disposition,
     const string &create_disposition,
-    const string &location) {
+    const string &location,
+    const std::map<string, string> &labels) {
     google::cloud::bigquery::v2::Job job;
     auto *job_reference = job.mutable_job_reference();
     job_reference->set_project_id(config.BillingProject());
@@ -1137,7 +1158,15 @@ google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildLoadJobReques
         job_reference->mutable_location()->set_value(location);
     }
 
-    auto *load_config = job.mutable_configuration()->mutable_load();
+    auto *job_config = job.mutable_configuration();
+    if (!labels.empty()) {
+        auto *job_labels = job_config->mutable_labels();
+        for (const auto &label : labels) {
+            (*job_labels)[label.first] = label.second;
+        }
+    }
+
+    auto *load_config = job_config->mutable_load();
     load_config->set_source_format("PARQUET");
     load_config->set_create_disposition(create_disposition);
     load_config->set_write_disposition(write_disposition);
@@ -1158,7 +1187,8 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
     const string &file_path,
     const string &write_disposition,
     const string &create_disposition,
-    const string &location) {
+    const string &location,
+    const std::map<string, string> &labels) {
     if (!context) {
         throw InternalException("InsertLoadJobInternal requires an active DuckDB client context");
     }
@@ -1169,7 +1199,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
         throw IOException("Parquet file not found: %s", absolute_file_path);
     }
 
-    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location);
+    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location, labels);
 
     return job_client.InsertJobUpload(request, absolute_file_path);
 }
@@ -1180,8 +1210,9 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
     const vector<string> &source_uris,
     const string &write_disposition,
     const string &create_disposition,
-    const string &location) {
-    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location);
+    const string &location,
+    const std::map<string, string> &labels) {
+    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location, labels);
     auto *load_config = request.mutable_job()->mutable_configuration()->mutable_load();
     for (const auto &source_uri : source_uris) {
         load_config->add_source_uris(source_uri);
