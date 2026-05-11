@@ -24,6 +24,7 @@
 #include "storage/bigquery_transaction.hpp"
 
 #include <cstdio>
+#include <map>
 #include <optional>
 
 namespace duckdb {
@@ -39,6 +40,7 @@ struct BigQueryLoadBindData : public TableFunctionData {
     string write_disposition;
     string create_disposition;
     string location;
+    std::map<string, string> labels;
     bool remove_staged_source_file = false;
     bool finished = false;
 
@@ -58,6 +60,7 @@ struct BigQueryLoadParameters {
     std::optional<string> location;
     string billing_project;
     string api_endpoint;
+    std::map<string, string> labels;
 };
 
 static string NormalizeEnumValue(const string &value) {
@@ -132,6 +135,39 @@ static std::optional<string> ParseOptionalAliasedStringParameter(const named_par
     return value ? value : legacy_value;
 }
 
+static std::map<string, string> ParseOptionalLabelsParameter(const named_parameter_map_t &named_parameters) {
+    auto entry = named_parameters.find("labels");
+    if (entry == named_parameters.end() || entry->second.IsNull()) {
+        return {};
+    }
+
+    const auto &labels_value = entry->second;
+    if (labels_value.type().id() != LogicalTypeId::MAP ||
+        MapType::KeyType(labels_value.type()).id() != LogicalTypeId::VARCHAR ||
+        MapType::ValueType(labels_value.type()).id() != LogicalTypeId::VARCHAR) {
+        throw BinderException("Parameter 'labels' must be MAP(VARCHAR, VARCHAR)");
+    }
+
+    std::map<string, string> labels;
+    for (const auto &entry_value : MapValue::GetChildren(labels_value)) {
+        if (entry_value.IsNull()) {
+            throw BinderException("Null entries are not allowed in parameter 'labels'");
+        }
+        const auto &children = StructValue::GetChildren(entry_value);
+        D_ASSERT(children.size() == 2);
+        const auto &key = children[0];
+        const auto &value = children[1];
+        if (key.IsNull()) {
+            throw BinderException("Null label keys are not allowed in parameter 'labels'");
+        }
+        if (value.IsNull()) {
+            throw BinderException("Null label values are not allowed in parameter 'labels'");
+        }
+        labels[key.GetValue<string>()] = value.GetValue<string>();
+    }
+    return labels;
+}
+
 static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &named_parameters) {
     BigQueryLoadParameters params;
     params.source_file = ParseOptionalAliasedStringParameter(named_parameters, "source_file", "file");
@@ -148,6 +184,7 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
     params.billing_project = billing_project ? *billing_project : string();
     auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
     params.api_endpoint = api_endpoint ? *api_endpoint : string();
+    params.labels = ParseOptionalLabelsParameter(named_parameters);
     params.write_disposition = ParseEnumParameter(named_parameters,
                                                   "write_disposition",
                                                   "WRITE_TRUNCATE",
@@ -311,6 +348,7 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     bind_data->source_uris = params.source_uris;
     bind_data->source_table = params.source_table;
     bind_data->location = params.location ? *params.location : BigquerySettings::DefaultLocation();
+    bind_data->labels = params.labels;
 
     auto destination_table = BigqueryUtils::ParseDatasetTableString(destination_table_string);
 
@@ -377,13 +415,15 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
                                               *data.source_file,
                                               data.write_disposition,
                                               data.create_disposition,
-                                              data.location);
+                                              data.location,
+                                              data.labels);
     } else if (!data.source_uris.empty()) {
         job = data.bq_client->LoadParquetUris(data.destination_table,
                                               data.source_uris,
                                               data.write_disposition,
                                               data.create_disposition,
-                                              data.location);
+                                              data.location,
+                                              data.labels);
     } else {
         throw InternalException("bigquery_load has no source to load");
     }
@@ -426,6 +466,7 @@ BigQueryLoadFunction::BigQueryLoadFunction()
     named_parameters["location"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["api_endpoint"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["labels"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
 }
 
 } // namespace bigquery
