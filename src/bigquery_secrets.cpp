@@ -253,10 +253,11 @@ void ValidateCredentialInput(const string &param, const string &value) {
     }
 }
 
-std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const BigquerySecret &secret) {
+std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const BigquerySecret &secret,
+                                                                           google::cloud::Options auth_options) {
     auto access_token = secret.GetAccessToken();
     if (!access_token.empty()) {
-        return google::cloud::MakeAccessTokenCredentials(access_token, {});
+        return google::cloud::MakeAccessTokenCredentials(access_token, {}, auth_options);
     }
 
     auto service_account_path = secret.GetServiceAccountKeyPath();
@@ -268,12 +269,12 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
         }
         std::string json_content((std::istreambuf_iterator<char>(json_file)), std::istreambuf_iterator<char>());
         json_file.close();
-        return google::cloud::MakeServiceAccountCredentials(json_content);
+        return google::cloud::MakeServiceAccountCredentials(json_content, auth_options);
     }
 
     auto service_account_json = secret.GetServiceAccountKeyJson();
     if (!service_account_json.empty()) {
-        return google::cloud::MakeServiceAccountCredentials(service_account_json);
+        return google::cloud::MakeServiceAccountCredentials(service_account_json, auth_options);
     }
 
     auto external_account_path = secret.GetExternalAccountCredsPath();
@@ -285,12 +286,12 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
         }
         std::string json_content((std::istreambuf_iterator<char>(json_file)), std::istreambuf_iterator<char>());
         json_file.close();
-        return google::cloud::MakeExternalAccountCredentials(json_content);
+        return google::cloud::MakeExternalAccountCredentials(json_content, auth_options);
     }
 
     auto external_account_json = secret.GetExternalAccountCredsJson();
     if (!external_account_json.empty()) {
-        return google::cloud::MakeExternalAccountCredentials(external_account_json);
+        return google::cloud::MakeExternalAccountCredentials(external_account_json, auth_options);
     }
 
     auto refresh_token = secret.GetRefreshToken();
@@ -298,7 +299,7 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
     auto client_secret = secret.GetClientSecret();
     auto token_uri = secret.GetTokenUri();
     if (!refresh_token.empty() || !client_id.empty() || !client_secret.empty() || !token_uri.empty()) {
-        return google::cloud::MakeAuthorizedUserCredentials(BuildAuthorizedUserCredentialsJson(secret));
+        return google::cloud::MakeAuthorizedUserCredentials(BuildAuthorizedUserCredentialsJson(secret), auth_options);
     }
 
     return nullptr;

@@ -88,6 +88,11 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::QueryTimeoutMs()),
                               bigquery::BigquerySettings::SetQueryTimeoutMs);
+    config.AddExtensionOption("bq_auth_timeout_ms",
+                              "Timeout for BigQuery authentication token fetches in milliseconds",
+                              LogicalType::BIGINT,
+                              Value(bigquery::BigquerySettings::AuthTimeoutMs()),
+                              bigquery::BigquerySettings::SetAuthTimeoutMs);
     config.AddExtensionOption("bq_experimental_filter_pushdown",
                               "Whether to use filter pushdown (currently experimental)",
                               LogicalType::BOOLEAN,

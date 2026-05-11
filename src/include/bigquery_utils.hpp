@@ -85,7 +85,9 @@ public:
     // Hilfsmethoden
     bool IsDevEnv() const {
         return api_endpoint.find("localhost") != std::string::npos ||
-               api_endpoint.find("127.0.0.1") != std::string::npos;
+               api_endpoint.find("127.0.0.1") != std::string::npos ||
+               grpc_endpoint.find("localhost") != std::string::npos ||
+               grpc_endpoint.find("127.0.0.1") != std::string::npos;
     }
 
     std::string BillingProject() const {

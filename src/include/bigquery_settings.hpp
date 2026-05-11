@@ -6,9 +6,11 @@
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <limits>
 
 namespace duckdb {
 namespace bigquery {
@@ -140,8 +142,16 @@ public:
         return BIGQUERY_QUERY_TIMEOUT_MS;
     }
 
+    static int GetIntSettingValue(const string &setting, Value &parameter) {
+        auto value = parameter.GetValue<int64_t>();
+        if (value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) {
+            throw InvalidInputException(setting + " must fit in a 32-bit integer");
+        }
+        return static_cast<int>(value);
+    }
+
     static void SetQueryTimeoutMs(ClientContext &context, SetScope scope, Value &parameter) {
-        int timeout = IntegerValue::Get(parameter);
+        int timeout = GetIntSettingValue("Query timeout", parameter);
         if (timeout < 0) {
             throw InvalidInputException("Query timeout must be non-negative");
         } else if (timeout > 200000) {
@@ -152,6 +162,31 @@ public:
                       << std::endl;
         }
         QueryTimeoutMs() = timeout;
+    }
+
+    static int &AuthTimeoutMs() {
+        static int BIGQUERY_AUTH_TIMEOUT_MS = 10000;
+        return BIGQUERY_AUTH_TIMEOUT_MS;
+    }
+
+    static void SetAuthTimeoutMs(ClientContext &context, SetScope scope, Value &parameter) {
+        int timeout = GetIntSettingValue("Auth timeout", parameter);
+        if (timeout < 0) {
+            throw InvalidInputException("Auth timeout must be non-negative");
+        }
+        AuthTimeoutMs() = timeout;
+    }
+
+    static std::chrono::seconds GetAuthTimeoutSeconds() {
+        auto timeout_ms = std::chrono::milliseconds(AuthTimeoutMs());
+        if (timeout_ms.count() <= 0) {
+            return std::chrono::seconds(0);
+        }
+        auto timeout_seconds = std::chrono::duration_cast<std::chrono::seconds>(timeout_ms);
+        if (timeout_seconds < timeout_ms) {
+            timeout_seconds += std::chrono::seconds(1);
+        }
+        return timeout_seconds;
     }
 
     static bool &BignumericAsVarchar() {
@@ -169,7 +204,7 @@ public:
     }
 
     static void SetMaxReadStreams(ClientContext &context, SetScope scope, Value &parameter) {
-        int max_streams = IntegerValue::Get(parameter);
+        int max_streams = GetIntSettingValue("Max read streams", parameter);
         if (max_streams < 0) {
             throw InvalidInputException("Max read streams must be non-negative (0 or greater). Use 0 to automatically "
                                         "match the number of DuckDB threads.");
