@@ -70,20 +70,6 @@ CREATE PERSISTENT SECRET bigquery_secret (
 );
 ```
 
-OAuth authorized user credentials are also supported:
-
-```sql
-CREATE PERSISTENT SECRET bigquery_oauth_secret (
-    TYPE BIGQUERY,
-    SCOPE 'bq://my_gcp_project',
-    REFRESH_TOKEN '1//...',
-    CLIENT_ID 'your-oauth-client-id.apps.googleusercontent.com',
-    CLIENT_SECRET 'your-oauth-client-secret'
-);
-```
-
-Refresh tokens are long-lived user credentials. Store them with the same care as service account keys, and avoid logging or sharing them. For production server workloads, service accounts, service account impersonation, or Workload Identity Federation are usually preferable.
-
 To update an existing secret when credentials change or expire, use `CREATE OR REPLACE SECRET`. Once created, the secret will be automatically used when you interact with the specified project.
 
 ### Windows gRPC Configuration
