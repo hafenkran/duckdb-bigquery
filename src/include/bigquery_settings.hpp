@@ -182,6 +182,8 @@ public:
         if (timeout_ms.count() <= 0) {
             return std::chrono::seconds(0);
         }
+        // Google Cloud REST timeout options use seconds, so preserve the configured
+        // millisecond lower bound by rounding up.
         auto timeout_seconds = std::chrono::duration_cast<std::chrono::seconds>(timeout_ms);
         if (timeout_seconds < timeout_ms) {
             timeout_seconds += std::chrono::seconds(1);

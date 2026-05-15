@@ -89,7 +89,8 @@ static void LoadInternal(ExtensionLoader &loader) {
                               Value(bigquery::BigquerySettings::QueryTimeoutMs()),
                               bigquery::BigquerySettings::SetQueryTimeoutMs);
     config.AddExtensionOption("bq_auth_timeout_ms",
-                              "Timeout for BigQuery authentication token fetches in milliseconds",
+                              "Timeout for BigQuery authentication token fetches in milliseconds. Effective "
+                              "granularity is seconds, rounded up.",
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::AuthTimeoutMs()),
                               bigquery::BigquerySettings::SetAuthTimeoutMs);
