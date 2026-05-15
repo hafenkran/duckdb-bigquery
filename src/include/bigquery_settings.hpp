@@ -164,31 +164,21 @@ public:
         QueryTimeoutMs() = timeout;
     }
 
-    static int &AuthTimeoutMs() {
-        static int BIGQUERY_AUTH_TIMEOUT_MS = 10000;
-        return BIGQUERY_AUTH_TIMEOUT_MS;
+    static int &AuthTimeoutSeconds() {
+        static int BIGQUERY_AUTH_TIMEOUT_SECONDS = 10;
+        return BIGQUERY_AUTH_TIMEOUT_SECONDS;
     }
 
-    static void SetAuthTimeoutMs(ClientContext &context, SetScope scope, Value &parameter) {
+    static void SetAuthTimeoutSeconds(ClientContext &context, SetScope scope, Value &parameter) {
         int timeout = GetIntSettingValue("Auth timeout", parameter);
         if (timeout < 0) {
             throw InvalidInputException("Auth timeout must be non-negative");
         }
-        AuthTimeoutMs() = timeout;
+        AuthTimeoutSeconds() = timeout;
     }
 
     static std::chrono::seconds GetAuthTimeoutSeconds() {
-        auto timeout_ms = std::chrono::milliseconds(AuthTimeoutMs());
-        if (timeout_ms.count() <= 0) {
-            return std::chrono::seconds(0);
-        }
-        // Google Cloud REST timeout options use seconds, so preserve the configured
-        // millisecond lower bound by rounding up.
-        auto timeout_seconds = std::chrono::duration_cast<std::chrono::seconds>(timeout_ms);
-        if (timeout_seconds < timeout_ms) {
-            timeout_seconds += std::chrono::seconds(1);
-        }
-        return timeout_seconds;
+        return std::chrono::seconds(AuthTimeoutSeconds());
     }
 
     static bool &BignumericAsVarchar() {
