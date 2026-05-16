@@ -62,6 +62,7 @@ PhysicalOperator &BigqueryCatalog::PlanDelete(ClientContext &context,
                                               PhysicalPlanGenerator &planner,
                                               LogicalDelete &op,
                                               PhysicalOperator &plan) {
+    BigqueryTransaction::CheckReadWrite(context, *this, "delete from tables");
     if (op.return_chunk) {
         throw BinderException("RETURNING clause is not supported.");
     }

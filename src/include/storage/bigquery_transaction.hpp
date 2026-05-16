@@ -26,9 +26,11 @@ public:
     shared_ptr<duckdb::bigquery::BigqueryClient> GetBigqueryClient();
     static BigqueryTransaction &Get(ClientContext &context, Catalog &catalog);
 
-    AccessMode GetAccessMode() {
+    AccessMode GetAccessMode() const {
         return access_mode;
     }
+
+    static void CheckReadWrite(ClientContext &context, Catalog &catalog, const string &operation);
 
 private:
     BigqueryCatalog &bigquery_catalog;

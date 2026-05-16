@@ -2,6 +2,7 @@
 
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/main/settings.hpp"
 #include "duckdb/parser/parsed_data/attach_info.hpp"
 #include "duckdb/transaction/transaction_manager.hpp"
 
@@ -22,6 +23,10 @@ static unique_ptr<Catalog> BigqueryAttach(optional_ptr<StorageExtensionInfo> sto
                                           const string &name,
                                           AttachInfo &info,
                                           AttachOptions &attach_options) {
+    if (!Settings::Get<EnableExternalAccessSetting>(context)) {
+        throw PermissionException("Attaching BigQuery databases is disabled through configuration");
+    }
+
     BigqueryOptions options;
     options.access_mode = attach_options.access_mode;
     return duckdb::make_uniq<BigqueryCatalog>(db, info.path, options);

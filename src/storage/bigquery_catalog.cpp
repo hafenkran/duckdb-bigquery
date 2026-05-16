@@ -70,6 +70,7 @@ void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
 }
 
 optional_ptr<CatalogEntry> BigqueryCatalog::CreateSchema(CatalogTransaction transaction, CreateSchemaInfo &info) {
+    BigqueryTransaction::CheckReadWrite(transaction.GetContext(), *this, "create schemas");
     if (info.on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
         throw BinderException("BigQuery does not support REPLACE ON CONFLICT");
     }
@@ -104,6 +105,7 @@ optional_ptr<SchemaCatalogEntry> BigqueryCatalog::LookupSchema(CatalogTransactio
 }
 
 void BigqueryCatalog::DropSchema(ClientContext &context, DropInfo &info) {
+    BigqueryTransaction::CheckReadWrite(context, *this, "drop schemas");
     return schemas.DropEntry(context, info);
 }
 

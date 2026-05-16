@@ -66,6 +66,7 @@ PhysicalOperator &BigqueryCatalog::PlanUpdate(ClientContext &context,
                                               PhysicalPlanGenerator &planner,
                                               LogicalUpdate &op,
                                               PhysicalOperator &plan) {
+    BigqueryTransaction::CheckReadWrite(context, *this, "update tables");
     if (op.return_chunk) {
         throw NotImplementedException("RETURNING clause not supported.");
     }
