@@ -1,0 +1,66 @@
+# name: test/sql/storage/attach_catalog_cache_reload.test
+# description: Validate attached BigQuery catalog reloads missing table and view entries
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_new`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_seed`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_seed` AS
+    SELECT 1 AS i
+');
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq_cache_reload (TYPE bigquery);
+
+query I
+SELECT i FROM bq_cache_reload.${BQ_TEST_DATASET}.catalog_cache_reload_seed;
+----
+1
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_new` AS
+    SELECT 2 AS i
+');
+
+query I
+SELECT i FROM bq_cache_reload.${BQ_TEST_DATASET}.catalog_cache_reload_new;
+----
+2
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE VIEW `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_view` AS
+    SELECT 3 AS i
+');
+
+query I
+SELECT i FROM bq_cache_reload.${BQ_TEST_DATASET}.catalog_cache_reload_view;
+----
+3
+
+statement ok
+DETACH bq_cache_reload;
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_new`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.catalog_cache_reload_seed`');

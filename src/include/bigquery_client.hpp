@@ -68,6 +68,10 @@ public:
                       const string &table_id,
                       ColumnList &res_columns,
                       vector<unique_ptr<Constraint>> &res_constraints);
+    bool TryGetTableInfo(const string &dataset_id,
+                         const string &table_id,
+                         ColumnList &res_columns,
+                         vector<unique_ptr<Constraint>> &res_constraints);
     void GetTableInfoForQuery(const string &query,
                               const vector<Value> &query_parameters,
                               ColumnList &res_columns,

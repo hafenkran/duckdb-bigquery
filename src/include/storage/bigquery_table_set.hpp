@@ -25,8 +25,14 @@ public:
     void AlterTable(ClientContext &context, AlterTableInfo &info);
 
 protected:
-    void LoadEntries(ClientContext &context) override;
+    void LoadEntries(ClientContext &context, BigqueryTransaction &transaction) override;
     void ClearEntries() override;
+    bool SupportReload() const override {
+        return true;
+    }
+    optional_ptr<CatalogEntry> ReloadEntry(ClientContext &context,
+                                           BigqueryTransaction &transaction,
+                                           const string &table_name) override;
 };
 
 } // namespace bigquery

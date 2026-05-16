@@ -2,6 +2,7 @@
 
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/common/mutex.hpp"
+#include "duckdb/common/shared_ptr.hpp"
 #include "duckdb/transaction/transaction.hpp"
 
 namespace duckdb {
@@ -17,7 +18,7 @@ public:
     explicit BigqueryCatalogSet(Catalog &catalog);
     virtual ~BigqueryCatalogSet() = default;
 
-    virtual optional_ptr<CatalogEntry> CreateEntry(unique_ptr<CatalogEntry> entry);
+    virtual optional_ptr<CatalogEntry> CreateEntry(BigqueryTransaction &transaction, shared_ptr<CatalogEntry> entry);
     virtual void DropEntry(ClientContext &context, DropInfo &info);
     virtual void ClearEntries();
 
@@ -26,18 +27,24 @@ public:
     optional_ptr<CatalogEntry> GetFirstEntry(ClientContext &context);
 
 protected:
-    virtual void LoadEntries(ClientContext &context) = 0;
+    virtual void LoadEntries(ClientContext &context, BigqueryTransaction &transaction) = 0;
+    virtual bool SupportReload() const {
+        return false;
+    }
+    virtual optional_ptr<CatalogEntry> ReloadEntry(ClientContext &context,
+                                                   BigqueryTransaction &transaction,
+                                                   const string &name);
     void EraseEntryInternal(const string &name);
 
     Catalog &catalog;
 
 private:
-    void TryLoadEntries(ClientContext &context);
+    void TryLoadEntries(ClientContext &context, BigqueryTransaction &transaction);
 
     atomic<bool> is_loaded = false;
     mutex entry_lock;
     mutex load_lock;
-    case_insensitive_map_t<unique_ptr<CatalogEntry>> entries;
+    case_insensitive_map_t<shared_ptr<CatalogEntry>> entries;
 };
 
 
@@ -46,7 +53,7 @@ public:
     explicit BigqueryInSchemaSet(BigquerySchemaEntry &schema);
     ~BigqueryInSchemaSet() override = default;
 
-    optional_ptr<CatalogEntry> CreateEntry(unique_ptr<CatalogEntry> entry) override;
+    optional_ptr<CatalogEntry> CreateEntry(BigqueryTransaction &transaction, shared_ptr<CatalogEntry> entry) override;
 
 protected:
     BigquerySchemaEntry &schema;

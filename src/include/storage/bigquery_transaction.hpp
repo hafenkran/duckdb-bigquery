@@ -1,6 +1,7 @@
 #pragma once
 
-#include "duckdb/common/case_insensitive_map.hpp"
+#include "duckdb/common/reference_map.hpp"
+#include "duckdb/common/shared_ptr.hpp"
 #include "duckdb/storage/storage_extension.hpp"
 #include "duckdb/transaction/transaction.hpp"
 #include "duckdb/transaction/transaction_manager.hpp"
@@ -25,6 +26,7 @@ public:
 
     shared_ptr<duckdb::bigquery::BigqueryClient> GetBigqueryClient();
     static BigqueryTransaction &Get(ClientContext &context, Catalog &catalog);
+    optional_ptr<CatalogEntry> ReferenceEntry(shared_ptr<CatalogEntry> &entry);
 
     AccessMode GetAccessMode() {
         return access_mode;
@@ -33,7 +35,7 @@ public:
 private:
     BigqueryCatalog &bigquery_catalog;
     shared_ptr<duckdb::bigquery::BigqueryClient> client;
-    case_insensitive_map_t<unique_ptr<CatalogEntry>> catalog_entries;
+    reference_map_t<CatalogEntry, shared_ptr<CatalogEntry>> catalog_entries;
     AccessMode access_mode;
 };
 

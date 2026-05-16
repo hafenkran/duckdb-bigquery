@@ -4,21 +4,20 @@
 #include "storage/bigquery_schema_entry.hpp"
 #include "storage/bigquery_transaction.hpp"
 
-#include <iostream>
-
 namespace duckdb {
 namespace bigquery {
 
 BigqueryCatalogSet::BigqueryCatalogSet(Catalog &catalog) : catalog(catalog), is_loaded(false) {
 }
 
-optional_ptr<CatalogEntry> BigqueryCatalogSet::CreateEntry(unique_ptr<CatalogEntry> entry) {
+optional_ptr<CatalogEntry> BigqueryCatalogSet::CreateEntry(BigqueryTransaction &transaction,
+                                                           shared_ptr<CatalogEntry> entry) {
     lock_guard<mutex> lock(entry_lock);
-    auto result = entry.get();
-    if (result->name.empty()) {
+    if (!entry || entry->name.empty()) {
         throw InternalException("Cannot create entry with empty name");
     }
-    entries.insert(std::make_pair(result->name, std::move(entry)));
+    auto result = transaction.ReferenceEntry(entry);
+    entries[result->name] = std::move(entry);
     return result;
 }
 
@@ -40,33 +39,58 @@ void BigqueryCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 }
 
 void BigqueryCatalogSet::Scan(ClientContext &context, const std::function<void(CatalogEntry &)> &callback) {
-    TryLoadEntries(context);
+    auto &transaction = BigqueryTransaction::Get(context, catalog);
+    TryLoadEntries(context, transaction);
 
-    lock_guard<mutex> lock(entry_lock);
-    for (auto &entry : entries) {
-        callback(*entry.second);
+    vector<shared_ptr<CatalogEntry>> entry_refs;
+    {
+        lock_guard<mutex> lock(entry_lock);
+        for (auto &entry : entries) {
+            entry_refs.push_back(entry.second);
+        }
+    }
+
+    for (auto &entry : entry_refs) {
+        auto pinned_entry = transaction.ReferenceEntry(entry);
+        callback(*pinned_entry);
     }
 }
 
 optional_ptr<CatalogEntry> BigqueryCatalogSet::GetEntry(ClientContext &context, const string &name) {
-    TryLoadEntries(context);
+    auto &transaction = BigqueryTransaction::Get(context, catalog);
+    TryLoadEntries(context, transaction);
 
-    lock_guard<mutex> lock(entry_lock);
-    auto entry = entries.find(name);
-    if (entry == entries.end()) {
-        return nullptr;
+    {
+        lock_guard<mutex> lock(entry_lock);
+        auto entry = entries.find(name);
+        if (entry != entries.end()) {
+            return transaction.ReferenceEntry(entry->second);
+        }
     }
-    return entry->second.get();
+
+    if (SupportReload()) {
+        lock_guard<mutex> lock(load_lock);
+        {
+            lock_guard<mutex> entry_guard(entry_lock);
+            auto entry = entries.find(name);
+            if (entry != entries.end()) {
+                return transaction.ReferenceEntry(entry->second);
+            }
+        }
+        return ReloadEntry(context, transaction, name);
+    }
+    return nullptr;
 }
 
 optional_ptr<CatalogEntry> BigqueryCatalogSet::GetFirstEntry(ClientContext &context) {
-    TryLoadEntries(context);
+    auto &transaction = BigqueryTransaction::Get(context, catalog);
+    TryLoadEntries(context, transaction);
 
     lock_guard<mutex> lock(entry_lock);
     if (entries.empty()) {
         return nullptr;
     }
-    return entries.begin()->second.get();
+    return transaction.ReferenceEntry(entries.begin()->second);
 }
 
 void BigqueryCatalogSet::ClearEntries() {
@@ -80,14 +104,20 @@ void BigqueryCatalogSet::EraseEntryInternal(const string &name) {
     entries.erase(name);
 }
 
-void BigqueryCatalogSet::TryLoadEntries(ClientContext &context) {
+optional_ptr<CatalogEntry> BigqueryCatalogSet::ReloadEntry(ClientContext &,
+                                                           BigqueryTransaction &,
+                                                           const string &) {
+    return nullptr;
+}
+
+void BigqueryCatalogSet::TryLoadEntries(ClientContext &context, BigqueryTransaction &transaction) {
     lock_guard<mutex> lock(load_lock);
     if (is_loaded) {
         return;
     }
 
     try {
-        LoadEntries(context);
+        LoadEntries(context, transaction);
         is_loaded = true;
     } catch (...) {
         is_loaded = false;
@@ -99,8 +129,9 @@ BigqueryInSchemaSet::BigqueryInSchemaSet(BigquerySchemaEntry &schema)
     : BigqueryCatalogSet(schema.ParentCatalog()), schema(schema) {
 }
 
-optional_ptr<CatalogEntry> BigqueryInSchemaSet::CreateEntry(unique_ptr<CatalogEntry> entry) {
-    return BigqueryCatalogSet::CreateEntry(std::move(entry));
+optional_ptr<CatalogEntry> BigqueryInSchemaSet::CreateEntry(BigqueryTransaction &transaction,
+                                                            shared_ptr<CatalogEntry> entry) {
+    return BigqueryCatalogSet::CreateEntry(transaction, std::move(entry));
 }
 
 } // namespace bigquery

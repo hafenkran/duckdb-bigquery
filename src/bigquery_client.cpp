@@ -957,6 +957,16 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
                                   const string &table_id,
                                   ColumnList &res_columns,
                                   vector<unique_ptr<Constraint>> &res_constraints) {
+    if (!TryGetTableInfo(dataset_id, table_id, res_columns, res_constraints)) {
+        auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
+        throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
+    }
+}
+
+bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
+                                     const string &table_id,
+                                     ColumnList &res_columns,
+                                     vector<unique_ptr<Constraint>> &res_constraints) {
     CheckAuthentication();
 
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
@@ -970,17 +980,17 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
     auto response = client->GetTable(request);
     if (!response.ok()) {
         if (CheckSSLError(response.status())) {
-            return GetTableInfo(dataset_id, table_id, res_columns, res_constraints);
+            return TryGetTableInfo(dataset_id, table_id, res_columns, res_constraints);
         }
         if (response.status().code() == google::cloud::StatusCode::kNotFound) {
-            auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
-            throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
+            return false;
         }
         throw InternalException(response.status().message());
     }
 
     auto table = response.value();
     MapTableSchema(table.schema(), res_columns, res_constraints);
+    return true;
 }
 
 void BigqueryClient::GetTableInfoForQuery(const string &query,

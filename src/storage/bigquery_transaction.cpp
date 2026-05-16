@@ -27,6 +27,12 @@ shared_ptr<BigqueryClient> BigqueryTransaction::GetBigqueryClient() {
     return client;
 }
 
+optional_ptr<CatalogEntry> BigqueryTransaction::ReferenceEntry(shared_ptr<CatalogEntry> &entry) {
+    auto &ref = *entry;
+    catalog_entries.emplace(ref, entry);
+    return ref;
+}
+
 BigqueryTransaction &BigqueryTransaction::Get(ClientContext &context, Catalog &catalog) {
     return Transaction::Get(context, catalog).Cast<BigqueryTransaction>();
 }
