@@ -305,7 +305,7 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
     return nullptr;
 }
 
-SecretMatch LookupBigQuerySecret(ClientContext &context, const string &project_id) {
+SecretMatch LookupBigquerySecret(ClientContext &context, const string &project_id) {
     auto &secret_manager = SecretManager::Get(context);
     auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
 

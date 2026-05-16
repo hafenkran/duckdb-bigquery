@@ -76,7 +76,7 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
 
 //! Helper function to lookup a secret for a specific project_id using scope bq://project_id or bigquery://project_id
 //! Returns a SecretMatch that owns the secret to prevent use-after-free
-SecretMatch LookupBigQuerySecret(ClientContext &context, const string &project_id);
+SecretMatch LookupBigquerySecret(ClientContext &context, const string &project_id);
 
 //! Register the BigQuery secret type and creation functions with the SecretManager
 void RegisterBigquerySecretType(DatabaseInstance &db);

@@ -310,7 +310,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     }
 
     bool credentials_set = false;
-    auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+    auto secret_match = LookupBigquerySecret(*context, config.project_id);
     if (secret_match.HasMatch()) {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
         auto credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
@@ -345,7 +345,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     }
 
     bool credentials_set = false;
-    auto secret_match = LookupBigQuerySecret(*context, config.project_id);
+    auto secret_match = LookupBigquerySecret(*context, config.project_id);
     if (secret_match.HasMatch()) {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
         auto credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
@@ -1409,28 +1409,33 @@ void BigqueryClient::CheckAuthentication() {
         return;
     }
 
-    auto auth_options = BigqueryAuthOptions();
-    std::shared_ptr<google::cloud::Credentials> credentials;
+    for (idx_t attempt = 0; attempt < 2; attempt++) {
+        auto auth_options = BigqueryAuthOptions();
+        std::shared_ptr<google::cloud::Credentials> credentials;
 
-    auto secret_match = LookupBigQuerySecret(*context, config.project_id);
-    if (secret_match.HasMatch()) {
-        auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
-        credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
-        if (!credentials) {
-            throw InvalidInputException(BigqueryAuthenticationFailureMessage(
-                "A matching DuckDB BigQuery secret was found, but credentials could not be created from it."));
+        auto secret_match = LookupBigquerySecret(*context, config.project_id);
+        if (secret_match.HasMatch()) {
+            auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
+            credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
+            if (!credentials) {
+                throw InvalidInputException(BigqueryAuthenticationFailureMessage(
+                    "A matching DuckDB BigQuery secret was found, but credentials could not be created from it."));
+            }
+        } else {
+            credentials = google::cloud::MakeGoogleDefaultCredentials(auth_options);
         }
-    } else {
-        credentials = google::cloud::MakeGoogleDefaultCredentials(auth_options);
-    }
 
-    auto oauth2_credentials = google::cloud::rest_internal::MapCredentials(*credentials);
-    auto access_token = oauth2_credentials->GetToken(std::chrono::system_clock::now());
-    if (!access_token) {
+        auto oauth2_credentials = google::cloud::rest_internal::MapCredentials(*credentials);
+        auto access_token = oauth2_credentials->GetToken(std::chrono::system_clock::now());
+        if (access_token) {
+            authentication_checked = true;
+            return;
+        }
+        if (attempt == 0 && CheckSSLError(access_token.status())) {
+            continue;
+        }
         throw InvalidInputException(BigqueryAuthenticationFailureMessage(access_token.status().message()));
     }
-
-    authentication_checked = true;
 }
 
 void BigqueryClient::ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status,
