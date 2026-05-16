@@ -104,9 +104,7 @@ void BigqueryCatalogSet::EraseEntryInternal(const string &name) {
     entries.erase(name);
 }
 
-optional_ptr<CatalogEntry> BigqueryCatalogSet::ReloadEntry(ClientContext &,
-                                                           BigqueryTransaction &,
-                                                           const string &) {
+optional_ptr<CatalogEntry> BigqueryCatalogSet::ReloadEntry(ClientContext &, BigqueryTransaction &, const string &) {
     return nullptr;
 }
 
