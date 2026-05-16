@@ -48,10 +48,10 @@ FROM bigquery_execute('${BQ_TEST_PROJECT}', '
     SELECT 3 AS i
 ');
 
-query I
-SELECT i FROM bq_cache_reload.${BQ_TEST_DATASET}.catalog_cache_reload_view;
+query IIIIII
+DESCRIBE bq_cache_reload.${BQ_TEST_DATASET}.catalog_cache_reload_view;
 ----
-3
+i	BIGINT	YES	NULL	NULL	NULL
 
 statement ok
 DETACH bq_cache_reload;
