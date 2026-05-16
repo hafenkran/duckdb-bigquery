@@ -189,6 +189,7 @@ PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
                                               PhysicalPlanGenerator &planner,
                                               LogicalInsert &op,
                                               optional_ptr<PhysicalOperator> plan) {
+    BigqueryTransaction::CheckReadWrite(context, *this, "insert into tables");
     if (op.return_chunk) {
         throw BinderException("RETURNING clause not supported.");
     }
@@ -207,6 +208,7 @@ PhysicalOperator &BigqueryCatalog::PlanCreateTableAs(ClientContext &context,
                                                      PhysicalPlanGenerator &planner,
                                                      LogicalCreateTable &op,
                                                      PhysicalOperator &plan) {
+    BigqueryTransaction::CheckReadWrite(context, *this, "create tables");
     auto &child_plan = AddCastToBigqueryTypes(context, planner, plan); // retain existing cast behavior
     auto &insert = planner.Make<BigqueryInsert>(op, op.schema, std::move(op.info));
     insert.children.push_back(child_plan);

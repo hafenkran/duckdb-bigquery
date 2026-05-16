@@ -23,6 +23,7 @@ optional_ptr<CatalogEntry> BigqueryCatalogSet::CreateEntry(unique_ptr<CatalogEnt
 }
 
 void BigqueryCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
+    BigqueryTransaction::CheckReadWrite(context, catalog, "drop entries");
     auto &transaction = BigqueryTransaction::Get(context, catalog);
     auto bqclient = transaction.GetBigqueryClient();
 

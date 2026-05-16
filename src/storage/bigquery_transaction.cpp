@@ -31,6 +31,13 @@ BigqueryTransaction &BigqueryTransaction::Get(ClientContext &context, Catalog &c
     return Transaction::Get(context, catalog).Cast<BigqueryTransaction>();
 }
 
+void BigqueryTransaction::CheckReadWrite(ClientContext &context, Catalog &catalog, const string &operation) {
+    auto &transaction = BigqueryTransaction::Get(context, catalog);
+    if (transaction.GetAccessMode() == AccessMode::READ_ONLY) {
+        throw BinderException("Cannot %s in a read-only BigQuery catalog", operation);
+    }
+}
+
 // ########################################################################
 // # TransactionManager
 // ########################################################################

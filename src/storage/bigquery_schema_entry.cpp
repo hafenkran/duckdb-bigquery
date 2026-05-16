@@ -28,6 +28,7 @@ void BigquerySchemaEntry::TryDropEntry(ClientContext &context, CatalogType type,
 
 optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateTable(CatalogTransaction transaction,
                                                             BoundCreateTableInfo &info) {
+    BigqueryTransaction::CheckReadWrite(transaction.GetContext(), catalog, "create tables");
     auto &create_table_info = info.Base();
     auto table_name = create_table_info.table;
     if (create_table_info.on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
@@ -54,6 +55,7 @@ optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateIndex(CatalogTransaction t
 }
 
 optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateView(CatalogTransaction transaction, CreateViewInfo &info) {
+    BigqueryTransaction::CheckReadWrite(transaction.GetContext(), catalog, "create views");
     if (info.sql.empty()) {
         throw BinderException("Cannot create view in BigQuery from an empty SQL statement.");
     }
@@ -110,6 +112,7 @@ optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateType(CatalogTransaction tr
 }
 
 void BigquerySchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) {
+    BigqueryTransaction::CheckReadWrite(transaction.GetContext(), catalog, "alter tables");
     if (info.type != AlterType::ALTER_TABLE) {
         throw BinderException("Only altering tables is supported.");
     }
@@ -136,6 +139,7 @@ void BigquerySchemaEntry::Scan(CatalogType type, const std::function<void(Catalo
 }
 
 void BigquerySchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
+    BigqueryTransaction::CheckReadWrite(context, catalog, "drop entries");
     info.schema = name;
     GetCatalogSet(info.type).DropEntry(context, info);
 }

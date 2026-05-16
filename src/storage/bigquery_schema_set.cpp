@@ -12,6 +12,7 @@ BigquerySchemaSet::BigquerySchemaSet(Catalog &catalog) : BigqueryCatalogSet(cata
 }
 
 optional_ptr<CatalogEntry> BigquerySchemaSet::CreateSchema(ClientContext &context, CreateSchemaInfo &info) {
+    BigqueryTransaction::CheckReadWrite(context, catalog, "create schemas");
     auto &transaction = BigqueryTransaction::Get(context, catalog);
     auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(catalog);
     auto bqclient = transaction.GetBigqueryClient();

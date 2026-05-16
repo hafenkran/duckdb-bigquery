@@ -1,0 +1,82 @@
+# name: test/sql/storage/attach_read_only.test
+# description: Validate READ_ONLY BigQuery attachments reject storage mutations
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.read_only_guard` AS
+    SELECT 1 AS i
+');
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq_ro (TYPE bigquery, READ_ONLY);
+
+statement error
+CREATE SCHEMA bq_ro.read_only_guard_schema;
+----
+read-only
+
+statement error
+DROP SCHEMA bq_ro.${BQ_TEST_DATASET};
+----
+read-only
+
+statement error
+CREATE TABLE bq_ro.${BQ_TEST_DATASET}.read_only_new_table(i INTEGER);
+----
+read-only
+
+statement error
+CREATE TABLE bq_ro.${BQ_TEST_DATASET}.read_only_ctas AS SELECT 1 AS i;
+----
+read-only
+
+statement error
+CREATE VIEW bq_ro.${BQ_TEST_DATASET}.read_only_guard_view AS SELECT 1 AS i;
+----
+read-only
+
+statement error
+INSERT INTO bq_ro.${BQ_TEST_DATASET}.read_only_guard VALUES (2);
+----
+read-only
+
+statement error
+UPDATE bq_ro.${BQ_TEST_DATASET}.read_only_guard SET i=2 WHERE i=1;
+----
+read-only
+
+statement error
+DELETE FROM bq_ro.${BQ_TEST_DATASET}.read_only_guard WHERE i=1;
+----
+read-only
+
+statement error
+ALTER TABLE bq_ro.${BQ_TEST_DATASET}.read_only_guard ADD COLUMN j INTEGER;
+----
+read-only
+
+statement error
+DROP TABLE bq_ro.${BQ_TEST_DATASET}.read_only_guard;
+----
+read-only
+
+statement ok
+DETACH bq_ro;
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_DATASET}.read_only_guard`');
+
+statement ok
+SET enable_external_access=false
+
+statement error
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq_disabled (TYPE bigquery)
+----
+Permission Error
