@@ -71,15 +71,6 @@ statement ok
 DETACH bq_ro;
 
 statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP VIEW IF EXISTS `${BQ_TEST_DATASET}.read_only_guard_view`');
-
-statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_DATASET}.read_only_new_table`');
-
-statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_DATASET}.read_only_ctas`');
-
-statement ok
 FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_DATASET}.read_only_guard`');
 
 statement ok
