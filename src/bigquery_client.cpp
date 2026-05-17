@@ -259,9 +259,8 @@ static std::optional<int64_t> ExtractDmlStatsAffectedRows(const google::cloud::b
     throw InternalException("Unknown BigQuery DML statement type");
 }
 
-static std::optional<int64_t> ExtractDmlAffectedRows(
-    const google::cloud::bigquery::v2::QueryResponse &response,
-    BigqueryDmlStatementType statement_type) {
+static std::optional<int64_t> ExtractDmlAffectedRows(const google::cloud::bigquery::v2::QueryResponse &response,
+                                                     BigqueryDmlStatementType statement_type) {
     if (response.has_dml_stats()) {
         auto affected_rows = ExtractDmlStatsAffectedRows(response.dml_stats(), statement_type);
         if (affected_rows.has_value()) {
