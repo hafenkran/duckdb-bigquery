@@ -367,8 +367,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
             auto is_storage_table_not_found = status.code() == google::cloud::StatusCode::kNotFound;
             auto should_log_retry = !is_storage_table_not_found || attempt == max_retries - 1;
             if (should_log_retry) {
-                std::cout << "Failed to create write stream: " << status << std::endl << status.message()
-                          << std::endl;
+                std::cout << "Failed to create write stream: " << status << std::endl << status.message() << std::endl;
             }
             if (attempt < max_retries - 1) {
                 if (should_log_retry) {
