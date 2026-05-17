@@ -20,8 +20,10 @@ CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.dml_statements (i INTEGER);
 statement ok
 INSERT INTO bq.${BQ_TEST_DATASET}.dml_statements FROM range(5);
 
-statement ok
+query I
 UPDATE bq.${BQ_TEST_DATASET}.dml_statements SET i=10 WHERE 1=1;
+----
+5
 
 query I
 SELECT * FROM bq.${BQ_TEST_DATASET}.dml_statements;
@@ -32,8 +34,10 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.dml_statements;
 10
 10
 
-statement ok
+query I
 DELETE FROM bq.${BQ_TEST_DATASET}.dml_statements WHERE 1=1;
+----
+5
 
 query I
 SELECT * FROM bq.${BQ_TEST_DATASET}.dml_statements;

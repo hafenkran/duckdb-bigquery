@@ -52,6 +52,7 @@
 #include <chrono>
 #include <cstring>
 #include <iostream>
+#include <optional>
 
 
 namespace duckdb {
@@ -229,6 +230,71 @@ static google::cloud::bigquery::v2::QueryParameter BuildPositionalQueryParameter
     }
 
     return parameter;
+}
+
+static const char *DmlStatementName(BigqueryDmlStatementType statement_type) {
+    switch (statement_type) {
+    case BigqueryDmlStatementType::UPDATE:
+        return "UPDATE";
+    case BigqueryDmlStatementType::DELETE:
+        return "DELETE";
+    }
+    throw InternalException("Unknown BigQuery DML statement type");
+}
+
+static std::optional<int64_t> ExtractDmlStatsAffectedRows(const google::cloud::bigquery::v2::DmlStats &dml_stats,
+                                                          BigqueryDmlStatementType statement_type) {
+    switch (statement_type) {
+    case BigqueryDmlStatementType::UPDATE:
+        if (dml_stats.has_updated_row_count()) {
+            return dml_stats.updated_row_count().value();
+        }
+        return std::nullopt;
+    case BigqueryDmlStatementType::DELETE:
+        if (dml_stats.has_deleted_row_count()) {
+            return dml_stats.deleted_row_count().value();
+        }
+        return std::nullopt;
+    }
+    throw InternalException("Unknown BigQuery DML statement type");
+}
+
+static std::optional<int64_t> ExtractDmlAffectedRows(
+    const google::cloud::bigquery::v2::QueryResponse &response,
+    BigqueryDmlStatementType statement_type) {
+    if (response.has_dml_stats()) {
+        auto affected_rows = ExtractDmlStatsAffectedRows(response.dml_stats(), statement_type);
+        if (affected_rows.has_value()) {
+            return affected_rows;
+        }
+    }
+    if (response.has_num_dml_affected_rows()) {
+        return response.num_dml_affected_rows().value();
+    }
+    return std::nullopt;
+}
+
+static std::optional<int64_t> ExtractDmlAffectedRows(
+    const google::cloud::bigquery::v2::JobStatistics2 &query_statistics,
+    BigqueryDmlStatementType statement_type) {
+    if (query_statistics.has_dml_stats()) {
+        auto affected_rows = ExtractDmlStatsAffectedRows(query_statistics.dml_stats(), statement_type);
+        if (affected_rows.has_value()) {
+            return affected_rows;
+        }
+    }
+    if (query_statistics.has_num_dml_affected_rows()) {
+        return query_statistics.num_dml_affected_rows().value();
+    }
+    return std::nullopt;
+}
+
+static idx_t CastDmlAffectedRows(int64_t affected_rows, BigqueryDmlStatementType statement_type) {
+    if (affected_rows < 0) {
+        throw InternalException("BigQuery %s statement returned a negative DML affected-row count",
+                                DmlStatementName(statement_type));
+    }
+    return static_cast<idx_t>(affected_rows);
 }
 
 static string GetLoadStagingDirectory(FileSystem &fs) {
@@ -1104,6 +1170,26 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
     }
 
     return *response;
+}
+
+idx_t BigqueryClient::ExecuteDmlQuery(const string &query,
+                                      BigqueryDmlStatementType statement_type,
+                                      const string &location) {
+    auto result = ExecuteQuery(query, location);
+    auto affected_rows = ExtractDmlAffectedRows(result, statement_type);
+
+    if (!affected_rows.has_value() && result.has_job_reference()) {
+        auto job = GetJobByReference(result.job_reference());
+        if (job.has_statistics() && job.statistics().has_query()) {
+            affected_rows = ExtractDmlAffectedRows(job.statistics().query(), statement_type);
+        }
+    }
+
+    if (!affected_rows.has_value()) {
+        throw InternalException("BigQuery %s statement did not return a DML affected-row count",
+                                DmlStatementName(statement_type));
+    }
+    return CastDmlAffectedRows(affected_rows.value(), statement_type);
 }
 
 google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryResults(
