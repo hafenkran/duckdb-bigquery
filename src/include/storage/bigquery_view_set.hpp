@@ -19,7 +19,7 @@ public:
     optional_ptr<CatalogEntry> RefreshView(ClientContext &context, const string &view_name);
 
 protected:
-    void LoadEntries(ClientContext &context) override;
+    void LoadEntries(ClientContext &context, BigqueryTransaction &transaction) override;
     void ClearEntries() override;
 };
 

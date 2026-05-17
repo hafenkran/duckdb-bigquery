@@ -16,7 +16,7 @@ public:
     optional_ptr<CatalogEntry> CreateSchema(ClientContext &context, CreateSchemaInfo &info);
 
 protected:
-    void LoadEntries(ClientContext &context) override;
+    void LoadEntries(ClientContext &context, BigqueryTransaction &transaction) override;
 };
 
 

@@ -28,16 +28,15 @@ optional_ptr<CatalogEntry> BigqueryTableSet::CreateTable(ClientContext &context,
     table_ref.table_id = create_table_info.table;
 
     bqclient->CreateTable(create_table_info, table_ref);
-    auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, info.Base());
-    return CreateEntry(std::move(table_entry));
+    auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, info.Base());
+    return CreateEntry(transaction, std::move(table_entry));
 }
 
 optional_ptr<CatalogEntry> BigqueryTableSet::RefreshTable(ClientContext &context, const string &table_name) {
+    auto &transaction = BigqueryTransaction::Get(context, catalog);
     auto table_info = GetTableInfo(context, schema, table_name);
-    auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, *table_info);
-    auto table_ptr = table_entry.get();
-    CreateEntry(std::move(table_entry));
-    return table_ptr;
+    auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, *table_info);
+    return CreateEntry(transaction, std::move(table_entry));
 }
 
 unique_ptr<BigqueryTableInfo> BigqueryTableSet::GetTableInfo(ClientContext &context,
@@ -66,24 +65,23 @@ void BigqueryTableSet::AlterTable(ClientContext &context, AlterTableInfo &info) 
     ClearEntries();
 }
 
-void BigqueryTableSet::LoadEntries(ClientContext &context) {
-    auto &transaction = BigqueryTransaction::Get(context, catalog);
+void BigqueryTableSet::LoadEntries(ClientContext &, BigqueryTransaction &transaction) {
     auto bqclient = transaction.GetBigqueryClient();
 
     if (BigquerySettings::ExperimentalFetchCatalogFromInformationSchema()) {
         auto &prefetched_table_infos = schema.GetTableInfos();
         if (prefetched_table_infos.has_value()) {
             for (auto &table_info : prefetched_table_infos.value()) {
-                auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info);
-                CreateEntry(std::move(table_entry));
+                auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, table_info);
+                CreateEntry(transaction, std::move(table_entry));
             }
         } else {
             std::map<string, CreateTableInfo> table_infos;
             bqclient->GetTableInfosFromDataset(schema.GetBigqueryDatasetRef(), table_infos);
 
             for (auto &table_info : table_infos) {
-                auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, table_info.second);
-                CreateEntry(std::move(table_entry));
+                auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, table_info.second);
+                CreateEntry(transaction, std::move(table_entry));
             }
         }
     } else {
@@ -97,10 +95,26 @@ void BigqueryTableSet::LoadEntries(ClientContext &context) {
                                    table_ref.table_id,
                                    info->create_info->columns,
                                    info->create_info->constraints);
-            auto table_entry = make_uniq<BigqueryTableEntry>(catalog, schema, *info);
-            CreateEntry(std::move(table_entry));
+            auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, *info);
+            CreateEntry(transaction, std::move(table_entry));
         }
     }
+}
+
+optional_ptr<CatalogEntry> BigqueryTableSet::ReloadEntry(ClientContext &,
+                                                         BigqueryTransaction &transaction,
+                                                         const string &table_name) {
+    auto bqclient = transaction.GetBigqueryClient();
+    auto project_id = dynamic_cast<BigqueryCatalog &>(catalog).GetProjectID();
+    auto table_info = make_uniq<BigqueryTableInfo>(project_id, schema.name, table_name);
+    if (!bqclient->TryGetTableInfo(schema.name,
+                                   table_name,
+                                   table_info->create_info->columns,
+                                   table_info->create_info->constraints)) {
+        return nullptr;
+    }
+    auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, *table_info);
+    return CreateEntry(transaction, std::move(table_entry));
 }
 
 void BigqueryTableSet::ClearEntries() {
