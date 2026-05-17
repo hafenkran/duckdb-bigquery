@@ -12,6 +12,10 @@
 namespace duckdb {
 namespace bigquery {
 
+struct BigqueryDynamicMessageFactoryDeleter {
+    void operator()(google::protobuf::DynamicMessageFactory *factory) const;
+};
+
 class BigqueryProtoWriter {
 public:
     explicit BigqueryProtoWriter(BigqueryTableEntry *entry, const google::cloud::Options &options);
@@ -86,7 +90,7 @@ private:
     size_t inflight_request_bytes = 0;
     int64_t next_request_offset = 0;
 
-    unique_ptr<google::protobuf::DynamicMessageFactory> msg_factory;
+    unique_ptr<google::protobuf::DynamicMessageFactory, BigqueryDynamicMessageFactoryDeleter> msg_factory;
     const google::protobuf::Message *msg_prototype = nullptr;
     unique_ptr<google::protobuf::Message> row_message;
     const google::protobuf::Reflection *row_reflection = nullptr;

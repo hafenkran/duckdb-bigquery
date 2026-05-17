@@ -26,6 +26,21 @@
 #include <iostream>
 #include <thread>
 
+#if defined(__SANITIZE_ADDRESS__)
+#define BIGQUERY_ADDRESS_SANITIZER 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define BIGQUERY_ADDRESS_SANITIZER 1
+#endif
+#endif
+
+#ifndef BIGQUERY_ADDRESS_SANITIZER
+#define BIGQUERY_ADDRESS_SANITIZER 0
+#endif
+
+#if BIGQUERY_ADDRESS_SANITIZER
+#include <sanitizer/lsan_interface.h>
+#endif
 
 namespace duckdb {
 namespace bigquery {
@@ -243,6 +258,19 @@ void ThrowIfStorageWritePermissionDenied(const string &table_string,
 
 } // namespace
 
+void BigqueryDynamicMessageFactoryDeleter::operator()(google::protobuf::DynamicMessageFactory *factory) const {
+    if (factory == nullptr) {
+        return;
+    }
+#if BIGQUERY_ADDRESS_SANITIZER
+    // Protobuf DynamicMessageFactory destroys variable-sized dynamic prototypes via DynamicMessage*.
+    // ASAN's new-delete-type-mismatch check flags that pattern even though protobuf owns it intentionally.
+    __lsan_ignore_object(factory);
+#else
+    delete factory;
+#endif
+}
+
 void ValidateDateRange(const duckdb::date_t &value) {
     // Range: 0001-01-01 to 9999-12-31
     auto constexpr kDateRangeMin = -719162;
@@ -294,6 +322,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
 
     int max_retries = 100;
     bool created_successfully = false;
+    string last_create_stream_error;
     for (int attempt = 0; attempt < max_retries; attempt++) {
         // Initialize the BigQuery write client
         write_client = make_uniq<google::cloud::bigquery_storage_v1::BigQueryWriteClient>(
@@ -310,6 +339,7 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
             break;
         } else {
             auto status = write_stream_status.status();
+            last_create_stream_error = status.message();
 
             // Fail immediately on non-retryable errors instead of retrying
             ThrowIfStorageWritePermissionDenied(table_string, "creating a write stream", status);
@@ -324,13 +354,6 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
                                   table_string,
                                   status.message());
             }
-            if (status.code() == google::cloud::StatusCode::kNotFound) {
-                throw BinderException("BigQuery table not found: %s.\n"
-                                      "\n"
-                                      "Error details: %s",
-                                      table_string,
-                                      status.message());
-            }
             if (status.code() == google::cloud::StatusCode::kInvalidArgument) {
                 throw BinderException("BigQuery Storage Write API invalid argument for %s.\n"
                                       "\n"
@@ -339,15 +362,31 @@ BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google
                                       status.message());
             }
 
-            std::cout << "Failed to create write stream: " << status << std::endl << status.message() << std::endl;
+            // BigQuery REST table metadata can become visible before Storage Write accepts the table.
+            // In that window CreateProtoWriter's TableExists check succeeds, but CreateWriteStream returns NotFound.
+            auto is_storage_table_not_found = status.code() == google::cloud::StatusCode::kNotFound;
+            auto should_log_retry = !is_storage_table_not_found || attempt == max_retries - 1;
+            if (should_log_retry) {
+                std::cout << "Failed to create write stream: " << status << std::endl << status.message()
+                          << std::endl;
+            }
             if (attempt < max_retries - 1) {
-                std::cout << "Retrying..." << std::endl;
+                if (should_log_retry) {
+                    std::cout << "Retrying..." << std::endl;
+                }
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         }
     }
 
     if (!created_successfully) {
+        if (!last_create_stream_error.empty()) {
+            throw BinderException("Cannot create BigQuery write stream to %s.\n"
+                                  "\n"
+                                  "Last error: %s",
+                                  table_string,
+                                  last_create_stream_error);
+        }
         throw BinderException("Cannot create BigQuery write stream to " + table_string);
     }
 }
@@ -461,7 +500,7 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
         throw BinderException("Cannot get message descriptor from file descriptor");
     }
 
-    msg_factory = make_uniq<google::protobuf::DynamicMessageFactory>();
+    msg_factory.reset(new google::protobuf::DynamicMessageFactory());
     msg_prototype = msg_factory->GetPrototype(msg_descriptor);
     if (msg_prototype == nullptr) {
         throw BinderException("Cannot get message prototype from message descriptor");
