@@ -35,7 +35,7 @@ SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
     auto &gstate = input.global_state.Cast<BigqueryUpdateGlobalState>();
     auto &transaction = BigqueryTransaction::Get(context, table.catalog);
     auto bq_client = transaction.GetBigqueryClient();
-    gstate.updated_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::UPDATE);
+    gstate.updated_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_UPDATE);
     return SinkFinalizeType::READY;
 }
 

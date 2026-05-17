@@ -234,9 +234,9 @@ static google::cloud::bigquery::v2::QueryParameter BuildPositionalQueryParameter
 
 static const char *DmlStatementName(BigqueryDmlStatementType statement_type) {
     switch (statement_type) {
-    case BigqueryDmlStatementType::UPDATE:
+    case BigqueryDmlStatementType::DML_UPDATE:
         return "UPDATE";
-    case BigqueryDmlStatementType::DELETE:
+    case BigqueryDmlStatementType::DML_DELETE:
         return "DELETE";
     }
     throw InternalException("Unknown BigQuery DML statement type");
@@ -245,12 +245,12 @@ static const char *DmlStatementName(BigqueryDmlStatementType statement_type) {
 static std::optional<int64_t> ExtractDmlStatsAffectedRows(const google::cloud::bigquery::v2::DmlStats &dml_stats,
                                                           BigqueryDmlStatementType statement_type) {
     switch (statement_type) {
-    case BigqueryDmlStatementType::UPDATE:
+    case BigqueryDmlStatementType::DML_UPDATE:
         if (dml_stats.has_updated_row_count()) {
             return dml_stats.updated_row_count().value();
         }
         return std::nullopt;
-    case BigqueryDmlStatementType::DELETE:
+    case BigqueryDmlStatementType::DML_DELETE:
         if (dml_stats.has_deleted_row_count()) {
             return dml_stats.deleted_row_count().value();
         }

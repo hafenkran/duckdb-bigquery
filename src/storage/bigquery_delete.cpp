@@ -34,7 +34,7 @@ SinkFinalizeType BigqueryDelete::Finalize(Pipeline &pipeline,
     auto &gstate = input.global_state.Cast<BigqueryDeleteGlobalState>();
     auto &transaction = BigqueryTransaction::Get(context, table.catalog);
     auto bq_client = transaction.GetBigqueryClient();
-    gstate.deleted_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DELETE);
+    gstate.deleted_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_DELETE);
     return SinkFinalizeType::READY;
 }
 

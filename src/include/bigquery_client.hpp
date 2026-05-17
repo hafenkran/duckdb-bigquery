@@ -37,7 +37,7 @@ struct ListJobsParams {
     std::optional<std::string> parent_job_id;
 };
 
-enum class BigqueryDmlStatementType { UPDATE, DELETE };
+enum class BigqueryDmlStatementType { DML_UPDATE, DML_DELETE };
 
 class BigqueryClient {
 public:
