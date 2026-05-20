@@ -9,9 +9,10 @@
 namespace duckdb {
 namespace bigquery {
 
-struct BigqueryUpdateGlobalState : public GlobalSinkState {
-    explicit BigqueryUpdateGlobalState() : updated_count(0) {
+struct BigqueryUpdateGlobalSourceState : public GlobalSourceState {
+    explicit BigqueryUpdateGlobalSourceState() : finished(false), updated_count(0) {
     }
+    bool finished;
     idx_t updated_count;
 };
 
@@ -20,29 +21,23 @@ BigqueryUpdate::BigqueryUpdate(PhysicalPlan &physical_plan, LogicalOperator &op,
       query(std::move(query)) {
 }
 
-unique_ptr<GlobalSinkState> BigqueryUpdate::GetGlobalSinkState(ClientContext &context) const {
-    return make_uniq<BigqueryUpdateGlobalState>();
-}
-
-SinkResultType BigqueryUpdate::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
-    return SinkResultType::FINISHED;
-}
-
-SinkFinalizeType BigqueryUpdate::Finalize(Pipeline &pipeline,
-                                          Event &event,
-                                          ClientContext &context,
-                                          OperatorSinkFinalizeInput &input) const {
-    auto &gstate = input.global_state.Cast<BigqueryUpdateGlobalState>();
-    auto &transaction = BigqueryTransaction::Get(context, table.catalog);
-    auto bq_client = transaction.GetBigqueryClient();
-    gstate.updated_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_UPDATE);
-    return SinkFinalizeType::READY;
+unique_ptr<GlobalSourceState> BigqueryUpdate::GetGlobalSourceState(ClientContext &context) const {
+    return make_uniq<BigqueryUpdateGlobalSourceState>();
 }
 
 SourceResultType BigqueryUpdate::GetDataInternal(ExecutionContext &context,
                                                  DataChunk &chunk,
                                                  OperatorSourceInput &input) const {
-    auto &gstate = sink_state->Cast<BigqueryUpdateGlobalState>();
+    auto &gstate = input.global_state.Cast<BigqueryUpdateGlobalSourceState>();
+    if (gstate.finished) {
+        return SourceResultType::FINISHED;
+    }
+
+    auto &transaction = BigqueryTransaction::Get(context.client, table.catalog);
+    auto bq_client = transaction.GetBigqueryClient();
+    gstate.updated_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_UPDATE);
+    gstate.finished = true;
+
     chunk.SetCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.updated_count));
     return SourceResultType::FINISHED;
@@ -62,13 +57,19 @@ PhysicalOperator &BigqueryCatalog::PlanUpdate(ClientContext &context,
                                               PhysicalPlanGenerator &planner,
                                               LogicalUpdate &op,
                                               PhysicalOperator &plan) {
+    (void)plan;
+    return PlanUpdate(context, planner, op);
+}
+
+PhysicalOperator &BigqueryCatalog::PlanUpdate(ClientContext &context,
+                                              PhysicalPlanGenerator &planner,
+                                              LogicalUpdate &op) {
     BigqueryTransaction::CheckReadWrite(context, *this, "update tables");
     if (op.return_chunk) {
         throw NotImplementedException("RETURNING clause not supported.");
     }
-    auto query = BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op, plan);
+    auto query = BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op);
     auto &update = planner.Make<BigqueryUpdate>(op, op.table, query);
-    update.children.push_back(plan);
     return update;
 }
 

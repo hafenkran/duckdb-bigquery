@@ -1,0 +1,41 @@
+# name: test/sql/storage/attach_dml_no_scan_plan.test
+# description: Verify BigQuery UPDATE/DELETE planning does not attach a scan child
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+PRAGMA explain_output='physical_only';
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.dml_no_scan_plan (i INTEGER);
+
+query II
+EXPLAIN UPDATE bq.${BQ_TEST_DATASET}.dml_no_scan_plan SET i=10 WHERE i=1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_UPDATE.*
+
+query II
+EXPLAIN UPDATE bq.${BQ_TEST_DATASET}.dml_no_scan_plan SET i=10 WHERE i=1;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN DELETE FROM bq.${BQ_TEST_DATASET}.dml_no_scan_plan WHERE i=1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_DELETE.*
+
+query II
+EXPLAIN DELETE FROM bq.${BQ_TEST_DATASET}.dml_no_scan_plan WHERE i=1;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.dml_no_scan_plan;

@@ -6,6 +6,7 @@
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
+#include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/planner/operator/logical_delete.hpp"
 #include "duckdb/planner/operator/logical_update.hpp"
 
@@ -16,7 +17,7 @@ namespace bigquery {
 
 struct BigquerySQL {
 public:
-    static string ExtractFilters(PhysicalOperator &child);
+    static string ExtractFilters(LogicalOperator &child);
     static string TransformFilter(const string &column_name, TableFilter &filter);
     static string CreateExpression(const string &column_name,
                                    vector<unique_ptr<TableFilter>> &filters,
@@ -28,8 +29,8 @@ public:
     static string CreateViewInfoToSQL(const string &project_id, const CreateViewInfo &info);
     static string DropInfoToSQL(const string &project_id, const DropInfo &info);
 
-    static string LogicalUpdateToSQL(const string &project_id, LogicalUpdate &lu, PhysicalOperator &child);
-    static string LogicalDeleteToSQL(const string &project_id, LogicalDelete &ld, PhysicalOperator &child);
+    static string LogicalUpdateToSQL(const string &project_id, LogicalUpdate &lu);
+    static string LogicalDeleteToSQL(const string &project_id, LogicalDelete &ld);
 
     static string BigqueryColumnToSQL(const ColumnDefinition &column);
     static string BigqueryColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints);

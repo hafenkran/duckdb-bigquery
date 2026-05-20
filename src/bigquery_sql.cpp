@@ -1,12 +1,12 @@
 #include "duckdb.hpp"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
-#include "duckdb/execution/operator/filter/physical_filter.hpp"
-#include "duckdb/execution/operator/projection/physical_projection.hpp"
-#include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_delete.hpp"
+#include "duckdb/planner/operator/logical_filter.hpp"
+#include "duckdb/planner/operator/logical_get.hpp"
+#include "duckdb/planner/operator/logical_projection.hpp"
 
 #include "duckdb/planner/filter/conjunction_filter.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
@@ -22,39 +22,48 @@
 namespace duckdb {
 namespace bigquery {
 
-
-std::string BigquerySQL::ExtractFilters(PhysicalOperator &child) {
+std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
     switch (child.type) {
-    case PhysicalOperatorType::FILTER: {
-        auto &filter = child.Cast<PhysicalFilter>();
-        std::string filter_exp = filter.expression->ToString();
+    case LogicalOperatorType::LOGICAL_FILTER: {
+        auto &filter = child.Cast<LogicalFilter>();
+        vector<string> filter_entries;
+        for (auto &expression : filter.expressions) {
+            filter_entries.push_back(expression->ToString());
+        }
         if (!child.children.empty()) {
-            std::string result = ExtractFilters(child.children[0]);
-            if (!result.empty()) {
-                filter_exp += " AND " + result;
+            auto child_filters = ExtractFilters(*child.children[0]);
+            if (!child_filters.empty()) {
+                filter_entries.push_back(child_filters);
             }
         }
-        return filter_exp;
+        return StringUtil::Join(filter_entries, " AND ");
     }
-    case PhysicalOperatorType::TABLE_SCAN: {
-        auto &table_scan = child.Cast<PhysicalTableScan>();
-        if (!table_scan.table_filters) {
-            return std::string();
+    case LogicalOperatorType::LOGICAL_PROJECTION:
+        if (child.children.empty()) {
+            return string();
         }
-        std::string table_filters_exp = "";
-        for (auto &filter : table_scan.table_filters->filters) {
+        return ExtractFilters(*child.children[0]);
+    case LogicalOperatorType::LOGICAL_GET: {
+        auto &get = child.Cast<LogicalGet>();
+        if (get.table_filters.filters.empty()) {
+            return string();
+        }
+        auto &column_ids = get.GetColumnIds();
+        string table_filters_exp;
+        for (auto &filter : get.table_filters.filters) {
             if (!table_filters_exp.empty()) {
                 table_filters_exp += " AND ";
             }
-            auto column_id = table_scan.column_ids[filter.first];
-            auto &column_name = table_scan.names[column_id.GetPrimaryIndex()];
-            auto filter_exp = TransformFilter(column_name, *filter.second);
-            table_filters_exp += filter_exp;
+            auto column_id = column_ids[filter.first];
+            auto &column_name = get.names[column_id.GetPrimaryIndex()];
+            table_filters_exp += TransformFilter(column_name, *filter.second);
         }
         return table_filters_exp;
     }
+    case LogicalOperatorType::LOGICAL_EMPTY_RESULT:
+        return "false";
     default:
-        throw NotImplementedException("Unsupported operator type " + PhysicalOperatorToString(child.type));
+        throw NotImplementedException("Unsupported logical operator type " + LogicalOperatorToString(child.type));
     }
 }
 
@@ -346,11 +355,11 @@ string BigquerySQL::DropInfoToSQL(const string &project_id, const DropInfo &info
     return query;
 }
 
-string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &lu, PhysicalOperator &child) {
-    if (child.type != PhysicalOperatorType::PROJECTION) {
+string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &lu) {
+    if (lu.children.empty() || lu.children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
         throw NotImplementedException("BigQuery: This type of UPDATE not supported.");
     }
-    auto &proj = child.Cast<PhysicalProjection>();
+    auto &proj = lu.children[0]->Cast<LogicalProjection>();
     auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, //
                                                                lu.table.schema.name,
                                                                lu.table.name);
@@ -373,10 +382,13 @@ string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &
             throw NotImplementedException("BigQuery UPDATE - Expected a bound reference expression");
         }
         auto &ref = lu.expressions[c]->Cast<BoundReferenceExpression>();
-        sql += proj.select_list[ref.index]->ToString();
+        if (ref.index >= proj.expressions.size()) {
+            throw InternalException("BigQuery UPDATE - Projection reference index out of range");
+        }
+        sql += proj.expressions[ref.index]->ToString();
     }
 
-    auto filters = ExtractFilters(child.children[0]);
+    auto filters = proj.children.empty() ? string() : ExtractFilters(*proj.children[0]);
     if (!filters.empty()) {
         sql += " WHERE " + filters;
     } else {
@@ -386,7 +398,7 @@ string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &
     return sql;
 }
 
-string BigquerySQL::LogicalDeleteToSQL(const string &project_id, LogicalDelete &ld, PhysicalOperator &child) {
+string BigquerySQL::LogicalDeleteToSQL(const string &project_id, LogicalDelete &ld) {
     auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, //
                                                                ld.table.schema.name,
                                                                ld.table.name);
@@ -394,17 +406,17 @@ string BigquerySQL::LogicalDeleteToSQL(const string &project_id, LogicalDelete &
     sql << "DELETE FROM ";
     sql << BigqueryUtils::WriteQuotedIdentifier(table_string);
     try {
-        auto filters = ExtractFilters(child);
+        auto filters = ld.children.empty() ? string() : ExtractFilters(*ld.children[0]);
         if (!filters.empty()) {
             sql << " WHERE " + filters;
         } else {
-            // Each UPDATE statement must have a WHERE clause
+            // Each DELETE statement must have a WHERE clause
             sql << " WHERE true";
         }
     } catch (const NotImplementedException &e) {
         throw NotImplementedException(std::string(e.what()) +
                                       " in DELETE statement - only simple deletes (e.g. DELETE FROM tbl WHERE x=y) are "
-                                      "supported in the MySQL connector");
+                                      "supported in the BigQuery connector");
     }
     return sql.str();
 }

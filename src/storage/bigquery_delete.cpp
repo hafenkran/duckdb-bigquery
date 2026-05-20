@@ -14,34 +14,35 @@
 namespace duckdb {
 namespace bigquery {
 
+struct BigqueryDeleteGlobalSourceState : public GlobalSourceState {
+    explicit BigqueryDeleteGlobalSourceState() : finished(false), deleted_count(0) {
+    }
+    bool finished;
+    idx_t deleted_count;
+};
+
 BigqueryDelete::BigqueryDelete(PhysicalPlan &physical_plan, LogicalOperator &op, TableCatalogEntry &table, string query)
     : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table),
       query(std::move(query)) {
 }
 
-unique_ptr<GlobalSinkState> BigqueryDelete::GetGlobalSinkState(ClientContext &context) const {
-    return make_uniq<BigqueryDeleteGlobalState>();
-}
-
-SinkResultType BigqueryDelete::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
-    return SinkResultType::FINISHED;
-}
-
-SinkFinalizeType BigqueryDelete::Finalize(Pipeline &pipeline,
-                                          Event &event,
-                                          ClientContext &context,
-                                          OperatorSinkFinalizeInput &input) const {
-    auto &gstate = input.global_state.Cast<BigqueryDeleteGlobalState>();
-    auto &transaction = BigqueryTransaction::Get(context, table.catalog);
-    auto bq_client = transaction.GetBigqueryClient();
-    gstate.deleted_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_DELETE);
-    return SinkFinalizeType::READY;
+unique_ptr<GlobalSourceState> BigqueryDelete::GetGlobalSourceState(ClientContext &context) const {
+    return make_uniq<BigqueryDeleteGlobalSourceState>();
 }
 
 SourceResultType BigqueryDelete::GetDataInternal(ExecutionContext &context,
                                                  DataChunk &chunk,
                                                  OperatorSourceInput &input) const {
-    auto &gstate = sink_state->Cast<BigqueryDeleteGlobalState>();
+    auto &gstate = input.global_state.Cast<BigqueryDeleteGlobalSourceState>();
+    if (gstate.finished) {
+        return SourceResultType::FINISHED;
+    }
+
+    auto &transaction = BigqueryTransaction::Get(context.client, table.catalog);
+    auto bq_client = transaction.GetBigqueryClient();
+    gstate.deleted_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_DELETE);
+    gstate.finished = true;
+
     chunk.SetCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.deleted_count));
     return SourceResultType::FINISHED;
@@ -61,13 +62,19 @@ PhysicalOperator &BigqueryCatalog::PlanDelete(ClientContext &context,
                                               PhysicalPlanGenerator &planner,
                                               LogicalDelete &op,
                                               PhysicalOperator &plan) {
+    (void)plan;
+    return PlanDelete(context, planner, op);
+}
+
+PhysicalOperator &BigqueryCatalog::PlanDelete(ClientContext &context,
+                                              PhysicalPlanGenerator &planner,
+                                              LogicalDelete &op) {
     BigqueryTransaction::CheckReadWrite(context, *this, "delete from tables");
     if (op.return_chunk) {
         throw BinderException("RETURNING clause is not supported.");
     }
-    auto query = BigquerySQL::LogicalDeleteToSQL(GetProjectID(), op, plan);
+    auto query = BigquerySQL::LogicalDeleteToSQL(GetProjectID(), op);
     auto &delete_op = planner.Make<BigqueryDelete>(op, op.table, query);
-    delete_op.children.push_back(plan);
     return delete_op;
 }
 
