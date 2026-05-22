@@ -9,16 +9,32 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-SET bq_debug_show_queries=true
-
-statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
 CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.dml_statements (i INTEGER);
 
 statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.dml_struct_filters (
+    id INTEGER,
+    marker INTEGER,
+    customer_info STRUCT(
+        name VARCHAR,
+        address STRUCT(
+            city VARCHAR,
+            zip_code VARCHAR
+        )
+    )
+);
+
+statement ok
 INSERT INTO bq.${BQ_TEST_DATASET}.dml_statements FROM range(5);
+
+statement ok
+INSERT INTO bq.${BQ_TEST_DATASET}.dml_struct_filters VALUES
+    (1, 0, {'name': 'Alice Smith', 'address': {'city': 'New York', 'zip_code': '10001'}}),
+    (2, 0, {'name': 'Bob Johnson', 'address': {'city': 'Los Angeles', 'zip_code': '90001'}}),
+    (3, 0, {'name': 'Alice Smith', 'address': {'city': 'New York', 'zip_code': '10001'}});
 
 query I
 UPDATE bq.${BQ_TEST_DATASET}.dml_statements SET i=10 WHERE 1=1;
@@ -42,6 +58,32 @@ DELETE FROM bq.${BQ_TEST_DATASET}.dml_statements WHERE 1=1;
 query I
 SELECT * FROM bq.${BQ_TEST_DATASET}.dml_statements;
 ----
+
+query I
+UPDATE bq.${BQ_TEST_DATASET}.dml_struct_filters SET marker=9 WHERE customer_info.address.city='New York';
+----
+2
+
+query II
+SELECT id, marker FROM bq.${BQ_TEST_DATASET}.dml_struct_filters ORDER BY id;
+----
+1	9
+2	0
+3	9
+
+query I
+DELETE FROM bq.${BQ_TEST_DATASET}.dml_struct_filters WHERE customer_info.name='Bob Johnson';
+----
+1
+
+query I
+SELECT id FROM bq.${BQ_TEST_DATASET}.dml_struct_filters ORDER BY id;
+----
+1
+3
+
+statement ok
+DROP TABLE bq.${BQ_TEST_DATASET}.dml_struct_filters;
 
 statement ok
 DROP TABLE bq.${BQ_TEST_DATASET}.dml_statements;
