@@ -21,6 +21,97 @@
 
 namespace duckdb {
 namespace bigquery {
+namespace {
+
+static string QuoteFilterColumnPath(const vector<string> &column_path) {
+    vector<string> quoted_path;
+    quoted_path.reserve(column_path.size());
+    for (auto &entry : column_path) {
+        quoted_path.push_back(BigqueryUtils::WriteQuotedIdentifier(entry));
+    }
+    return StringUtil::Join(quoted_path, ".");
+}
+
+static string TransformFilterPath(const vector<string> &column_path, const TableFilter &filter);
+
+static string CreateFilterExpression(const vector<string> &column_path,
+                                     const vector<unique_ptr<TableFilter>> &filters,
+                                     const string &op) {
+    vector<string> filter_entries;
+    for (auto &filter : filters) {
+        filter_entries.push_back(TransformFilterPath(column_path, *filter));
+    }
+    return "(" + StringUtil::Join(filter_entries, " " + op + " ") + ")";
+}
+
+static string TransformFilterPath(const vector<string> &column_path, const TableFilter &filter) {
+    switch (filter.filter_type) {
+    case TableFilterType::CONSTANT_COMPARISON: {
+        auto &constant_filter = filter.Cast<ConstantFilter>();
+
+        string constant_string;
+        if (BigqueryUtils::IsValueQuotable(constant_filter.constant)) {
+            constant_string = KeywordHelper::WriteQuoted(constant_filter.constant.ToString());
+        } else {
+            constant_string = constant_filter.constant.ToString();
+        }
+
+        auto column_ref = QuoteFilterColumnPath(column_path);
+        switch (constant_filter.comparison_type) {
+        case ExpressionType::COMPARE_EQUAL:
+            return column_ref + " = " + constant_string;
+        case ExpressionType::COMPARE_GREATERTHAN:
+            return column_ref + " > " + constant_string;
+        case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+            return column_ref + " >= " + constant_string;
+        case ExpressionType::COMPARE_LESSTHAN:
+            return column_ref + " < " + constant_string;
+        case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+            return column_ref + " <= " + constant_string;
+        case ExpressionType::COMPARE_NOTEQUAL:
+            return column_ref + " != " + constant_string;
+        default:
+            throw NotImplementedException("Unsupported comparison type");
+        }
+    }
+    case TableFilterType::IS_NULL:
+        return QuoteFilterColumnPath(column_path) + " IS NULL";
+    case TableFilterType::IS_NOT_NULL:
+        return QuoteFilterColumnPath(column_path) + " IS NOT NULL";
+    case TableFilterType::CONJUNCTION_AND:
+    case TableFilterType::CONJUNCTION_OR: {
+        auto &conjunction_filter = dynamic_cast<const ConjunctionFilter &>(filter);
+        string op = filter.filter_type == TableFilterType::CONJUNCTION_AND ? "AND" : "OR";
+        return CreateFilterExpression(column_path, conjunction_filter.child_filters, op);
+    }
+    case TableFilterType::STRUCT_EXTRACT: {
+        auto &struct_filter = filter.Cast<StructFilter>();
+        auto child_path = column_path;
+        child_path.push_back(struct_filter.child_name);
+        return TransformFilterPath(child_path, *struct_filter.child_filter);
+    }
+    case TableFilterType::OPTIONAL_FILTER: {
+        auto &optional_filter = filter.Cast<OptionalFilter>();
+        return TransformFilterPath(column_path, *optional_filter.child_filter);
+    }
+    case TableFilterType::IN_FILTER: {
+        auto &in_filter = filter.Cast<InFilter>();
+        vector<string> in_values;
+        for (auto &value : in_filter.values) {
+            if (BigqueryUtils::IsValueQuotable(value)) {
+                in_values.push_back(KeywordHelper::WriteQuoted(value.ToString()));
+            } else {
+                in_values.push_back(value.ToString());
+            }
+        }
+        return QuoteFilterColumnPath(column_path) + " IN (" + StringUtil::Join(in_values, ", ") + ")";
+    }
+    default:
+        throw InternalException("Unsupported filter type");
+    }
+}
+
+} // namespace
 
 std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
     switch (child.type) {
@@ -48,17 +139,8 @@ std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
         if (get.table_filters.filters.empty()) {
             return string();
         }
-        auto &column_ids = get.GetColumnIds();
-        string table_filters_exp;
-        for (auto &filter : get.table_filters.filters) {
-            if (!table_filters_exp.empty()) {
-                table_filters_exp += " AND ";
-            }
-            auto column_id = column_ids[filter.first];
-            auto &column_name = get.names[column_id.GetPrimaryIndex()];
-            table_filters_exp += TransformFilter(column_name, *filter.second);
-        }
-        return table_filters_exp;
+        return TransformFilters(get.table_filters,
+                                [&](idx_t filter_idx) -> string { return get.GetColumnName(ColumnIndex(filter_idx)); });
     }
     case LogicalOperatorType::LOGICAL_EMPTY_RESULT:
         return "false";
@@ -68,79 +150,23 @@ std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
 }
 
 string BigquerySQL::CreateExpression(const string &column_name,
-                                     vector<unique_ptr<TableFilter>> &filters,
+                                     const vector<unique_ptr<TableFilter>> &filters,
                                      const string &op) {
-    vector<string> filter_entries;
-    for (auto &filter : filters) {
-        filter_entries.push_back(TransformFilter(column_name, *filter));
-    }
-    return "(" + StringUtil::Join(filter_entries, " " + op + " ") + ")";
+    return CreateFilterExpression(vector<string>{column_name}, filters, op);
 }
 
-string BigquerySQL::TransformFilter(const string &column_name, TableFilter &filter) {
-    switch (filter.filter_type) {
-    case TableFilterType::CONSTANT_COMPARISON: {
-        auto &constant_filter = dynamic_cast<ConstantFilter &>(filter);
+string BigquerySQL::TransformFilters(const TableFilterSet &filters,
+                                     const std::function<string(idx_t)> &column_name_resolver) {
+    vector<string> filter_entries;
+    filter_entries.reserve(filters.filters.size());
+    for (auto &filter : filters.filters) {
+        filter_entries.push_back(TransformFilter(column_name_resolver(filter.first), *filter.second));
+    }
+    return StringUtil::Join(filter_entries, " AND ");
+}
 
-        string constant_string;
-        if (BigqueryUtils::IsValueQuotable(constant_filter.constant)) {
-            constant_string = KeywordHelper::WriteQuoted(constant_filter.constant.ToString());
-        } else {
-            constant_string = constant_filter.constant.ToString();
-        }
-
-        switch (constant_filter.comparison_type) {
-        case ExpressionType::COMPARE_EQUAL:
-            return "`" + column_name + "` = " + constant_string;
-        case ExpressionType::COMPARE_GREATERTHAN:
-            return "`" + column_name + "` > " + constant_string;
-        case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-            return "`" + column_name + "` >= " + constant_string;
-        case ExpressionType::COMPARE_LESSTHAN:
-            return "`" + column_name + "` < " + constant_string;
-        case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-            return "`" + column_name + "` <= " + constant_string;
-        case ExpressionType::COMPARE_NOTEQUAL:
-            return "`" + column_name + "` != " + constant_string;
-        default:
-            throw NotImplementedException("Unsupported comparison type");
-        }
-    }
-    case TableFilterType::IS_NULL:
-        return "`" + column_name + "` IS NULL";
-    case TableFilterType::IS_NOT_NULL:
-        return "`" + column_name + "` IS NOT NULL";
-    case TableFilterType::CONJUNCTION_AND:
-    case TableFilterType::CONJUNCTION_OR: {
-        auto &conjunction_filter = dynamic_cast<ConjunctionAndFilter &>(filter);
-        string op = filter.filter_type == TableFilterType::CONJUNCTION_AND ? "AND" : "OR";
-        return CreateExpression(column_name, conjunction_filter.child_filters, op);
-    }
-    case TableFilterType::STRUCT_EXTRACT: {
-        auto &struct_filter = dynamic_cast<StructFilter &>(filter);
-        auto child_name = KeywordHelper::WriteQuoted(struct_filter.child_name, '`');
-        auto new_column_name = "`" + column_name + "`." + child_name;
-        return TransformFilter(new_column_name, *struct_filter.child_filter);
-    }
-    case TableFilterType::OPTIONAL_FILTER: {
-        auto &optional_filter = filter.Cast<OptionalFilter>();
-        return TransformFilter(column_name, *optional_filter.child_filter);
-    }
-    case TableFilterType::IN_FILTER: {
-        auto &in_filter = dynamic_cast<InFilter &>(filter);
-        vector<string> in_values;
-        for (auto &value : in_filter.values) {
-            if (BigqueryUtils::IsValueQuotable(value)) {
-                in_values.push_back(KeywordHelper::WriteQuoted(value.ToString()));
-            } else {
-                in_values.push_back(value.ToString());
-            }
-        }
-        return "`" + column_name + "` IN (" + StringUtil::Join(in_values, ", ") + ")";
-    }
-    default:
-        throw InternalException("Unsupported filter type");
-    }
+string BigquerySQL::TransformFilter(const string &column_name, const TableFilter &filter) {
+    return TransformFilterPath(vector<string>{column_name}, filter);
 }
 
 string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info) {

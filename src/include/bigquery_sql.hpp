@@ -9,8 +9,11 @@
 #include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/planner/operator/logical_delete.hpp"
 #include "duckdb/planner/operator/logical_update.hpp"
+#include "duckdb/planner/table_filter.hpp"
 
 #include "bigquery_utils.hpp"
+
+#include <functional>
 
 namespace duckdb {
 namespace bigquery {
@@ -18,9 +21,11 @@ namespace bigquery {
 struct BigquerySQL {
 public:
     static string ExtractFilters(LogicalOperator &child);
-    static string TransformFilter(const string &column_name, TableFilter &filter);
+    static string TransformFilters(const TableFilterSet &filters,
+                                   const std::function<string(idx_t)> &column_name_resolver);
+    static string TransformFilter(const string &column_name, const TableFilter &filter);
     static string CreateExpression(const string &column_name,
-                                   vector<unique_ptr<TableFilter>> &filters,
+                                   const vector<unique_ptr<TableFilter>> &filters,
                                    const string &op);
 
     static string AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info);
