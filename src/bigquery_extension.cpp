@@ -2,11 +2,16 @@
 
 #include "duckdb.hpp"
 #include "duckdb/catalog/catalog.hpp"
+#include "duckdb/common/error_data.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/main/client_context.hpp"
+#include "duckdb/main/client_context_state.hpp"
+#include "duckdb/main/connection_manager.hpp"
 #include "duckdb/main/secret/secret.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
+#include "duckdb/planner/extension_callback.hpp"
 
 // OpenSSL linked through vcpkg
 #include <openssl/opensslv.h>
@@ -26,9 +31,39 @@
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
 
-#include <iostream>
-
 namespace duckdb {
+
+static constexpr const char *BIGQUERY_EXTENSION_STATE = "bigquery_extension";
+
+class BigqueryExtensionState : public ClientContextState {
+public:
+    bool CanRequestRebind() override {
+        return true;
+    }
+
+    RebindQueryInfo OnPlanningError(ClientContext &context, SQLStatement &statement, ErrorData &error) override {
+        (void)statement;
+        if (error.Type() != ExceptionType::BINDER) {
+            return RebindQueryInfo::DO_NOT_REBIND;
+        }
+
+        auto &extra_info = error.ExtraInfo();
+        auto entry = extra_info.find("error_subtype");
+        if (entry == extra_info.end() || entry->second != "COLUMN_NOT_FOUND") {
+            return RebindQueryInfo::DO_NOT_REBIND;
+        }
+
+        bigquery::BigqueryClearCacheFunction::ClearBigqueryCaches(context);
+        return RebindQueryInfo::ATTEMPT_TO_REBIND;
+    }
+};
+
+class BigqueryExtensionCallback : public ExtensionCallback {
+public:
+    void OnConnectionOpened(ClientContext &context) override {
+        context.registered_state->Insert(BIGQUERY_EXTENSION_STATE, make_shared_ptr<BigqueryExtensionState>());
+    }
+};
 
 static void LoadInternal(ExtensionLoader &loader) {
 
@@ -61,6 +96,10 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     StorageExtension::Register(config, "bigquery", make_shared_ptr<bigquery::BigqueryStorageExtension>());
+    ExtensionCallback::Register(config, make_shared_ptr<BigqueryExtensionCallback>());
+    for (auto &connection : ConnectionManager::Get(loader.GetDatabaseInstance()).GetConnectionList()) {
+        connection->registered_state->Insert(BIGQUERY_EXTENSION_STATE, make_shared_ptr<BigqueryExtensionState>());
+    }
 
     bigquery::RegisterBigquerySecretType(loader.GetDatabaseInstance());
 

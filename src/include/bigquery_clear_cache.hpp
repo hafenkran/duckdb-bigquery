@@ -9,6 +9,7 @@ class BigqueryClearCacheFunction : public TableFunction {
 public:
     BigqueryClearCacheFunction();
 
+    static void ClearBigqueryCaches(ClientContext &context);
     static void ClearCache(ClientContext &context, SetScope scope, Value &parameter);
 };
 
