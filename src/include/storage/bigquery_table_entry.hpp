@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/common/optional_idx.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 
 #include "bigquery_utils.hpp"
@@ -31,6 +32,11 @@ struct BigqueryTableInfo {
     unique_ptr<CreateTableInfo> create_info;
     vector<BigqueryType> bigquery_types;
     vector<string> bigquery_names;
+    optional_idx num_rows;
+    optional_idx num_bytes;
+    bool has_unsupported_columns = false;
+    vector<string> unsupported_columns;
+    vector<string> unsupported_column_errors;
 };
 
 
@@ -51,6 +57,12 @@ public:
                                LogicalProjection &proj,
                                LogicalUpdate &update,
                                ClientContext &context) override;
+
+public:
+    optional_idx num_rows;
+    optional_idx num_bytes;
+    vector<BigqueryType> bigquery_types;
+    vector<string> bigquery_names;
 };
 
 } // namespace bigquery

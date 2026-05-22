@@ -41,12 +41,12 @@ void BigquerySchemaSet::LoadEntries(ClientContext &, BigqueryTransaction &transa
             datasets = bqclient->GetDatasets();
         }
 
-        std::map<std::string, CreateTableInfo> table_infos;
+        std::map<std::string, BigqueryTableInfo> table_infos;
         bqclient->GetTableInfosFromDatasets(datasets, table_infos);
 
-        std::map<std::string, vector<CreateTableInfo>> tables_by_schema;
+        std::map<std::string, vector<BigqueryTableInfo>> tables_by_schema;
         for (auto &table_info : table_infos) {
-            tables_by_schema[table_info.second.schema].push_back(std::move(table_info.second));
+            tables_by_schema[table_info.second.create_info->schema].push_back(std::move(table_info.second));
         }
 
         for (auto &dataset : datasets) {
@@ -54,7 +54,7 @@ void BigquerySchemaSet::LoadEntries(ClientContext &, BigqueryTransaction &transa
             info.catalog = dataset.project_id;
             info.schema = dataset.dataset_id;
 
-            vector<CreateTableInfo> &table_infos = tables_by_schema[dataset.dataset_id];
+            vector<BigqueryTableInfo> &table_infos = tables_by_schema[dataset.dataset_id];
             auto schema = make_shared_ptr<BigquerySchemaEntry>(catalog, info, dataset, table_infos);
             CreateEntry(transaction, std::move(schema));
         }

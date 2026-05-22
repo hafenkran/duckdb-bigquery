@@ -30,6 +30,7 @@
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
 #include "google/cloud/bigquery/v2/job_config.pb.h"
+#include "google/cloud/bigquery/v2/table.pb.h"
 
 #include "google/cloud/bigquerycontrol/v2/dataset_client.h"
 #include "google/cloud/bigquerycontrol/v2/job_client.h"
@@ -50,8 +51,10 @@
 #include "grpcpp/grpcpp.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <optional>
 
 
@@ -97,6 +100,84 @@ static string BigqueryAuthenticationFailureMessage(const string &details) {
         message += "\nUnderlying authentication error:\n  " + details;
     }
     return message;
+}
+
+static string QueryCellToString(const ::google::protobuf::Value &cell) {
+    switch (cell.kind_case()) {
+    case ::google::protobuf::Value::kStringValue:
+        return cell.string_value();
+    case ::google::protobuf::Value::kNumberValue: {
+        auto value = cell.number_value();
+        if (!std::isfinite(value)) {
+            return "";
+        }
+        if (std::floor(value) == value &&
+            static_cast<long double>(value) >= static_cast<long double>(std::numeric_limits<int64_t>::min()) &&
+            static_cast<long double>(value) <= static_cast<long double>(std::numeric_limits<int64_t>::max())) {
+            return std::to_string(static_cast<int64_t>(value));
+        }
+        return std::to_string(value);
+    }
+    case ::google::protobuf::Value::kBoolValue:
+        return cell.bool_value() ? "TRUE" : "FALSE";
+    case ::google::protobuf::Value::kNullValue:
+    case ::google::protobuf::Value::KIND_NOT_SET:
+        return "";
+    default:
+        return "";
+    }
+}
+
+static optional_idx QueryCellToOptionalIdx(const ::google::protobuf::Value &cell) {
+    if (cell.kind_case() == ::google::protobuf::Value::kNullValue ||
+        cell.kind_case() == ::google::protobuf::Value::KIND_NOT_SET) {
+        return optional_idx();
+    }
+    if (cell.kind_case() == ::google::protobuf::Value::kNumberValue) {
+        auto value = cell.number_value();
+        if (!std::isfinite(value) || std::floor(value) != value || value < 0 ||
+            static_cast<long double>(value) > static_cast<long double>(std::numeric_limits<idx_t>::max())) {
+            return optional_idx();
+        }
+        return optional_idx(static_cast<idx_t>(value));
+    }
+
+    auto value = QueryCellToString(cell);
+    if (value.empty()) {
+        return optional_idx();
+    }
+    try {
+        return optional_idx(NumericCast<idx_t>(std::stoull(value)));
+    } catch (...) {
+        return optional_idx();
+    }
+}
+
+static const ::google::protobuf::Value &QueryRowCell(
+    const ::google::protobuf::RepeatedPtrField<::google::protobuf::Value> &row,
+    const idx_t index) {
+    if (index >= static_cast<idx_t>(row.size())) {
+        throw BinderException("Unexpected number of fields in the row.");
+    }
+    const auto &field = row[static_cast<int>(index)].struct_value().fields();
+    auto entry = field.find("v");
+    if (entry == field.end()) {
+        throw BinderException("Unexpected row field format.");
+    }
+    return entry->second;
+}
+
+static void MarkUnsupportedColumn(BigqueryTableInfo &table_info, const string &column_name, const string &message) {
+    table_info.has_unsupported_columns = true;
+    table_info.unsupported_columns.push_back(column_name);
+    table_info.unsupported_column_errors.push_back(message);
+}
+
+static string UnsupportedColumnsMessage(const BigqueryTableInfo &table_info) {
+    if (table_info.unsupported_columns.empty()) {
+        return "unknown unsupported column";
+    }
+    return StringUtil::Join(table_info.unsupported_columns, ", ");
 }
 
 static Value CastQueryParameterValue(const Value &value, const LogicalType &target_type, idx_t parameter_index) {
@@ -931,13 +1012,13 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
 
 
 void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
-                                              std::map<string, CreateTableInfo> &table_infos) {
+                                              std::map<string, BigqueryTableInfo> &table_infos) {
     auto dataset_refs = vector<BigqueryDatasetRef>{dataset_ref};
     GetTableInfosFromDatasets(dataset_refs, table_infos);
 }
 
 void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_refs,
-                                               std::map<string, CreateTableInfo> &table_infos) {
+                                               std::map<string, BigqueryTableInfo> &table_infos) {
     if (dataset_refs.empty()) {
         throw BinderException("No datasets provided.");
     }
@@ -955,7 +1036,7 @@ void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> 
         const auto &location = datasets_in_loc.first;
         const auto &datasets = datasets_in_loc.second;
 
-        const auto info_schema_query = BigquerySQL::ColumnsFromInformationSchemaQuery(project_id, datasets);
+        const auto info_schema_query = BigquerySQL::ColumnsFromInformationSchemaQuery(project_id, datasets, location);
 
         auto query_response = ExecuteQuery(info_schema_query, location);
         google::protobuf::RepeatedPtrField<::google::protobuf::Struct> all_rows = query_response.rows();
@@ -976,9 +1057,27 @@ void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> 
 void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
                                     ColumnList &res_columns,
                                     vector<unique_ptr<Constraint>> &res_constraints) {
+    BigqueryTableInfo table_info;
+    MapTableSchema(schema, table_info);
+    if (table_info.has_unsupported_columns) {
+        throw BinderException("BigQuery table contains unsupported columns: %s", UnsupportedColumnsMessage(table_info));
+    }
+    res_columns = std::move(table_info.create_info->columns);
+    res_constraints = std::move(table_info.create_info->constraints);
+}
+
+void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
+                                    BigqueryTableInfo &table_info) {
     for (const google::cloud::bigquery::v2::TableFieldSchema &field : schema.fields()) {
         // Create the ColumnDefinition
-        auto column_type = BigqueryUtils::FieldSchemaToLogicalType(field);
+        LogicalType column_type;
+        try {
+            column_type = BigqueryUtils::FieldSchemaToLogicalType(field);
+        } catch (Exception &ex) {
+            ErrorData error(ex);
+            MarkUnsupportedColumn(table_info, field.name(), error.RawMessage());
+            continue;
+        }
 
         ColumnDefinition column(field.name(), std::move(column_type));
         // column.SetComment(std::move(field.description));
@@ -992,29 +1091,33 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
             }
             column.SetDefaultValue(std::move(expressions[0]));
         }
-        res_columns.AddColumn(std::move(column));
+        table_info.create_info->columns.AddColumn(std::move(column));
 
         // The field mode. Possible values include NULLABLE, REQUIRED and REPEATED.
         // The default value is NULLABLE.
         const auto &mode = field.mode();
         if (mode == "REQUIRED") {
             auto field_name = field.name();
-            auto field_index = res_columns.GetColumnIndex(field_name);
-            res_constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+            auto field_index = table_info.create_info->columns.GetColumnIndex(field_name);
+            table_info.create_info->constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
 
-        std::regex string_length_regex(R"(STRING\((\d+)\))");
-        std::smatch match;
-
-        if (std::regex_match(field.type(), match, string_length_regex)) {
-            int max_length = std::stoi(match[1]);
-
-            auto constraint_str = "length(" + field.name() + ") <= " + std::to_string(max_length);
+        if (field.max_length() > 0) {
+            auto constraint_str = "length(" + field.name() + ") <= " + std::to_string(field.max_length());
             auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
 
             auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
-            res_constraints.push_back(std::move(check_constraint));
+            table_info.create_info->constraints.push_back(std::move(check_constraint));
         }
+    }
+}
+
+void BigqueryClient::MapTableMetadata(const google::cloud::bigquery::v2::Table &table, BigqueryTableInfo &table_info) {
+    if (table.has_num_rows() && table.num_rows().value() >= 0) {
+        table_info.num_rows = optional_idx(NumericCast<idx_t>(table.num_rows().value()));
+    }
+    if (table.has_num_bytes() && table.num_bytes().value() >= 0) {
+        table_info.num_bytes = optional_idx(NumericCast<idx_t>(table.num_bytes().value()));
     }
 }
 
@@ -1032,6 +1135,35 @@ bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
                                      const string &table_id,
                                      ColumnList &res_columns,
                                      vector<unique_ptr<Constraint>> &res_constraints) {
+    BigqueryTableInfo table_info(config.project_id, dataset_id, table_id);
+    if (!TryGetTableInfo(dataset_id, table_id, table_info)) {
+        return false;
+    }
+    if (table_info.has_unsupported_columns) {
+        auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
+        throw BinderException("BigQuery table \"%s\" contains unsupported columns: %s",
+                              table_ref,
+                              UnsupportedColumnsMessage(table_info));
+    }
+    res_columns = std::move(table_info.create_info->columns);
+    res_constraints = std::move(table_info.create_info->constraints);
+    return true;
+}
+
+void BigqueryClient::GetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info) {
+    if (!TryGetTableInfo(dataset_id, table_id, table_info)) {
+        auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
+        throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
+    }
+    if (table_info.has_unsupported_columns) {
+        auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
+        throw BinderException("BigQuery table \"%s\" contains unsupported columns: %s",
+                              table_ref,
+                              UnsupportedColumnsMessage(table_info));
+    }
+}
+
+bool BigqueryClient::TryGetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info) {
     CheckAuthentication();
 
     auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
@@ -1041,11 +1173,12 @@ bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
     request.set_project_id(config.project_id);
     request.set_dataset_id(dataset_id);
     request.set_table_id(table_id);
+    request.set_view(google::cloud::bigquery::v2::GetTableRequest::STORAGE_STATS);
 
     auto response = client->GetTable(request);
     if (!response.ok()) {
         if (CheckSSLError(response.status())) {
-            return TryGetTableInfo(dataset_id, table_id, res_columns, res_constraints);
+            return TryGetTableInfo(dataset_id, table_id, table_info);
         }
         if (response.status().code() == google::cloud::StatusCode::kNotFound) {
             return false;
@@ -1054,7 +1187,8 @@ bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
     }
 
     auto table = response.value();
-    MapTableSchema(table.schema(), res_columns, res_constraints);
+    MapTableSchema(table.schema(), table_info);
+    MapTableMetadata(table, table_info);
     return true;
 }
 
@@ -1423,31 +1557,39 @@ string BigqueryClient::GenerateJobId(const string &prefix) {
 void BigqueryClient::MapInformationSchemaRows(
     const std::string &project_id,
     const ::google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
-    std::map<std::string, CreateTableInfo> &table_infos) {
-    vector<string> tables_with_errornous_columns;
-
+    std::map<std::string, BigqueryTableInfo> &table_infos) {
     for (auto &row : rows) {
         const auto &fields = row.fields();
         const auto &field_list = fields.at("f").list_value().values();
 
-        if (field_list.size() < 6) {
+        if (field_list.size() < 7) {
             throw BinderException("Unexpected number of fields in the row.");
         }
 
-        string dataset_name = field_list[0].struct_value().fields().at("v").string_value();
-        string table_name = field_list[1].struct_value().fields().at("v").string_value();
-        string column_name = field_list[2].struct_value().fields().at("v").string_value();
-        string data_type = field_list[3].struct_value().fields().at("v").string_value();
-        string is_nullable = field_list[4].struct_value().fields().at("v").string_value();
-        string column_default = field_list[5].struct_value().fields().at("v").string_value();
+        string dataset_name = QueryCellToString(QueryRowCell(field_list, 0));
+        string table_name = QueryCellToString(QueryRowCell(field_list, 1));
+        string column_name = QueryCellToString(QueryRowCell(field_list, 2));
+        string data_type = QueryCellToString(QueryRowCell(field_list, 3));
+        string is_nullable = QueryCellToString(QueryRowCell(field_list, 4));
+        string column_default = QueryCellToString(QueryRowCell(field_list, 5));
 
         auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, dataset_name, table_name);
+        auto insert_result = table_infos.emplace(table_string, BigqueryTableInfo(project_id, dataset_name, table_name));
+        auto &table_info = insert_result.first->second;
+
+        if (field_list.size() > 7) {
+            table_info.num_rows = QueryCellToOptionalIdx(QueryRowCell(field_list, 7));
+        }
+        if (field_list.size() > 8) {
+            table_info.num_bytes = QueryCellToOptionalIdx(QueryRowCell(field_list, 8));
+        }
 
         LogicalType column_type;
         try {
             column_type = BigqueryUtils::BigquerySQLToLogicalType(data_type);
         } catch (BinderException &ex) {
             ErrorData error(ex);
+            MarkUnsupportedColumn(table_info, column_name, error.RawMessage());
             if (BigquerySettings::DebugQueryPrint()) {
                 std::ostringstream oss;
                 oss << "Skipping table " << table_string << " due to unsupported column type: " << error.RawMessage();
@@ -1466,15 +1608,11 @@ void BigqueryClient::MapInformationSchemaRows(
             column.SetDefaultValue(std::move(expressions[0]));
         }
 
-        if (table_infos.find(table_string) == table_infos.end()) {
-            table_infos[table_string] = CreateTableInfo(project_id, dataset_name, table_name);
-        }
-
-        table_infos[table_string].columns.AddColumn(std::move(column));
+        table_info.create_info->columns.AddColumn(std::move(column));
 
         if (is_nullable == "NO") {
-            auto field_index = table_infos[table_string].columns.GetColumnIndex(column_name);
-            table_infos[table_string].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+            auto field_index = table_info.create_info->columns.GetColumnIndex(column_name);
+            table_info.create_info->constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
 
         if (data_type.find("STRING(") != std::string::npos) {
@@ -1488,14 +1626,9 @@ void BigqueryClient::MapInformationSchemaRows(
                 auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
 
                 auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
-                table_infos[table_name].constraints.push_back(std::move(check_constraint));
+                table_info.create_info->constraints.push_back(std::move(check_constraint));
             }
         }
-    }
-
-    // remove tables with errornous columns
-    for (const auto &table_name : tables_with_errornous_columns) {
-        table_infos.erase(table_name);
     }
 }
 

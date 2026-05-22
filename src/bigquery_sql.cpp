@@ -1,6 +1,7 @@
 #include "duckdb.hpp"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_delete.hpp"
@@ -488,7 +489,9 @@ string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector
     return str.str();
 }
 
-string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets) {
+string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id,
+                                                      const vector<string> &datasets,
+                                                      const string &location) {
     std::stringstream query;
     bool is_first = true;
     for (const auto &dataset : datasets) {
@@ -501,26 +504,40 @@ string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, 
             query << " UNION ALL ";
         }
 
-        auto dataset_query = ColumnsFromInformationSchemaQuery(project_id, dataset, false);
+        auto dataset_query = ColumnsFromInformationSchemaQuery(project_id, dataset, location, false);
         query << dataset_query;
     }
-    query << "ORDER BY table_name, ordinal_position";
+    query << " ORDER BY table_schema, table_name, ordinal_position";
     return query.str();
 }
 
 string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id,
                                                       const string &dataset_id,
+                                                      const string &location,
                                                       const bool include_order_by) {
-    const auto table_string =
+    const auto columns_table =
         BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.COLUMNS");
 
     std::stringstream query;
-    query << "SELECT table_schema, table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
-    query << "FROM `" << table_string << "` ";
-    query << "WHERE is_system_defined = 'NO' "; // Adjusted the comparison
-    query << "AND ordinal_position IS NOT NULL ";
+    query << "SELECT cols.table_schema, cols.table_name, cols.column_name, cols.data_type, ";
+    query << "cols.is_nullable, cols.column_default, cols.ordinal_position, ";
+    if (location.empty()) {
+        query << "CAST(NULL AS INT64) AS total_rows, CAST(NULL AS INT64) AS total_logical_bytes ";
+        query << "FROM `" << columns_table << "` AS cols ";
+    } else {
+        const auto storage_table =
+            project_id + ".region-" + StringUtil::Lower(location) + ".INFORMATION_SCHEMA.TABLE_STORAGE";
+        query << "storage.total_rows, storage.total_logical_bytes ";
+        query << "FROM `" << columns_table << "` AS cols ";
+        query << "LEFT JOIN `" << storage_table << "` AS storage ";
+        query << "ON cols.table_schema = storage.table_schema ";
+        query << "AND cols.table_name = storage.table_name ";
+        query << "AND storage.deleted = FALSE ";
+    }
+    query << "WHERE cols.is_system_defined = 'NO' ";
+    query << "AND cols.ordinal_position IS NOT NULL ";
     if (include_order_by) {
-        query << "ORDER BY table_name, ordinal_position";
+        query << "ORDER BY cols.table_schema, cols.table_name, cols.ordinal_position";
     }
     return query.str();
 }

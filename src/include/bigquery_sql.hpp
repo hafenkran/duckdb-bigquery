@@ -36,9 +36,12 @@ public:
     static string BigqueryColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints);
     static string BigqueryOptionsToSQL(const unordered_map<string, string> &options);
 
-    static string ColumnsFromInformationSchemaQuery(const string &project_id, const vector<string> &datasets);
+    static string ColumnsFromInformationSchemaQuery(const string &project_id,
+                                                    const vector<string> &datasets,
+                                                    const string &location);
     static string ColumnsFromInformationSchemaQuery(const string &project_id,
                                                     const string &dataset,
+                                                    const string &location,
                                                     const bool include_order_by = true);
 };
 

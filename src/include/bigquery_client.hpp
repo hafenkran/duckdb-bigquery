@@ -19,6 +19,7 @@
 #include "google/cloud/bigquery/storage/v1/bigquery_write_client.h"
 #include "google/cloud/bigquery/storage/v1/storage.pb.h"
 #include "google/cloud/bigquery/storage/v1/stream.pb.h"
+#include "google/cloud/bigquery/v2/table.pb.h"
 
 #include "google/cloud/bigquerycontrol/v2/job_client.h"
 
@@ -62,9 +63,9 @@ public:
     void DropTable(const DropInfo &info);
     void DropView(const DropInfo &info);
 
-    void GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref, map<string, CreateTableInfo> &table_infos);
+    void GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref, map<string, BigqueryTableInfo> &table_infos);
     void GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_ref,
-                                   map<string, CreateTableInfo> &table_infos);
+                                   map<string, BigqueryTableInfo> &table_infos);
 
     void GetTableInfo(const string &dataset_id,
                       const string &table_id,
@@ -74,6 +75,8 @@ public:
                          const string &table_id,
                          ColumnList &res_columns,
                          vector<unique_ptr<Constraint>> &res_constraints);
+    void GetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info);
+    bool TryGetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info);
     void GetTableInfoForQuery(const string &query,
                               const vector<Value> &query_parameters,
                               ColumnList &res_columns,
@@ -172,10 +175,12 @@ private:
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
                         ColumnList &res_columns,
                         vector<unique_ptr<Constraint>> &res_constraints);
+    void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema, BigqueryTableInfo &table_info);
+    void MapTableMetadata(const google::cloud::bigquery::v2::Table &table, BigqueryTableInfo &table_info);
 
     void MapInformationSchemaRows(const std::string &project_id,
                                   const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
-                                  std::map<std::string, CreateTableInfo> &table_infos);
+                                  std::map<std::string, BigqueryTableInfo> &table_infos);
 
     void CheckAuthentication();
     void ThrowOnErrorStatus(const google::cloud::Status &status);

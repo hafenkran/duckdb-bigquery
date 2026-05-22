@@ -14,8 +14,6 @@
 #include <arrow/c/bridge.h>
 #include <arrow/util/iterator.h>
 
-#include <iostream>
-
 namespace duckdb {
 namespace bigquery {
 
@@ -24,7 +22,8 @@ BigqueryTableEntry::BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &sch
 }
 
 BigqueryTableEntry::BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, BigqueryTableInfo &info)
-    : TableCatalogEntry(catalog, schema, *info.create_info) {
+    : TableCatalogEntry(catalog, schema, *info.create_info), num_rows(info.num_rows), num_bytes(info.num_bytes),
+      bigquery_types(std::move(info.bigquery_types)), bigquery_names(std::move(info.bigquery_names)) {
 }
 
 unique_ptr<BaseStatistics> BigqueryTableEntry::GetStatistics(ClientContext &context, column_t column_id) {
@@ -42,6 +41,9 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     result->bq_catalog = &bigquery_catalog;
     result->bq_table_entry = *this;
     result->bq_config = bigquery_catalog.config;
+    if (num_rows.IsValid()) {
+        result->estimated_row_count = num_rows.GetIndex();
+    }
 
     auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
     auto status = arrow::ExportSchema(*arrow_schema_ptr, &result->schema_root.arrow_schema);
@@ -117,7 +119,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
 
 TableStorageInfo BigqueryTableEntry::GetStorageInfo(ClientContext &context) {
     TableStorageInfo result;
-    result.cardinality = 100000; // TODO
+    result.cardinality = num_rows;
     result.index_info = vector<IndexInfo>();
     return result;
 }

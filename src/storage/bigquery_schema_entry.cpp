@@ -18,7 +18,7 @@ BigquerySchemaEntry::BigquerySchemaEntry(Catalog &catalog, CreateSchemaInfo &inf
 BigquerySchemaEntry::BigquerySchemaEntry(Catalog &catalog,
                                          CreateSchemaInfo &info,
                                          BigqueryDatasetRef &bq_dataset_ref,
-                                         vector<CreateTableInfo> &table_infos)
+                                         vector<BigqueryTableInfo> &table_infos)
     : BigquerySchemaEntry(catalog, info, bq_dataset_ref) {
     this->prefetched_table_infos = std::make_optional(std::move(table_infos));
 }

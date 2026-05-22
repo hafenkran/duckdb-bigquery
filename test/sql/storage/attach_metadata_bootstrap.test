@@ -1,0 +1,29 @@
+# name: test/sql/storage/attach_metadata_bootstrap.test
+# description: Verify attached BigQuery catalog storage metadata is bootstrapped from BigQuery
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_DATASET}.metadata_bootstrap_rows` AS SELECT 1 AS i UNION ALL SELECT 2 AS i UNION ALL SELECT 3 AS i');
+
+sleep 30 seconds
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq_metadata_bootstrap (TYPE bigquery);
+
+query I
+SELECT estimated_size
+FROM duckdb_tables()
+WHERE database_name = 'bq_metadata_bootstrap'
+  AND schema_name = '${BQ_TEST_DATASET}'
+  AND table_name = 'metadata_bootstrap_rows';
+----
+3
+
+statement ok
+DROP TABLE bq_metadata_bootstrap.${BQ_TEST_DATASET}.metadata_bootstrap_rows;
