@@ -53,6 +53,11 @@ DESCRIBE bq_cache_reload.${BQ_TEST_DATASET}.catalog_cache_reload_view;
 ----
 i	BIGINT	YES	NULL	NULL	NULL
 
+query I
+SELECT i FROM bq_cache_reload.${BQ_TEST_DATASET}.catalog_cache_reload_view;
+----
+3
+
 statement ok
 DETACH bq_cache_reload;
 

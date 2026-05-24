@@ -1,0 +1,74 @@
+# name: test/sql/storage/attach_view_query_fallback.test
+# description: Validate attached BigQuery views scan through the query-job fallback
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.view_query_fallback_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.view_query_fallback_base`');
+
+sleep 2 seconds
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.view_query_fallback_base` AS
+    SELECT 1 AS id, "Berlin" AS city UNION ALL
+    SELECT 2 AS id, "Paris" AS city UNION ALL
+    SELECT 3 AS id, "New York" AS city
+');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE VIEW `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.view_query_fallback_view` AS
+    SELECT id, city
+    FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.view_query_fallback_base`
+    WHERE id <= 2
+');
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq_view_fallback (TYPE bigquery);
+
+query IT
+SELECT id, city FROM bq_view_fallback.${BQ_TEST_DATASET}.view_query_fallback_view ORDER BY id;
+----
+1	Berlin
+2	Paris
+
+query I
+SELECT id FROM bq_view_fallback.${BQ_TEST_DATASET}.view_query_fallback_view WHERE city = 'Berlin';
+----
+1
+
+statement ok
+EXPLAIN SELECT city FROM bq_view_fallback.${BQ_TEST_DATASET}.view_query_fallback_view WHERE id = 2;
+
+statement error
+UPDATE bq_view_fallback.${BQ_TEST_DATASET}.view_query_fallback_view SET city = 'Rome' WHERE id = 1;
+----
+<REGEX>:Binder Error: Cannot update BigQuery relation .+ of type VIEW.+
+
+statement error
+DELETE FROM bq_view_fallback.${BQ_TEST_DATASET}.view_query_fallback_view WHERE id = 1;
+----
+<REGEX>:Binder Error: Cannot delete from BigQuery relation .+ of type VIEW.+
+
+statement error
+INSERT INTO bq_view_fallback.${BQ_TEST_DATASET}.view_query_fallback_view VALUES (4, 'Rome');
+----
+<REGEX>:Binder Error: Cannot insert into BigQuery relation .+ of type VIEW.+
+
+statement ok
+DETACH bq_view_fallback;
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.view_query_fallback_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.view_query_fallback_base`');
