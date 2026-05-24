@@ -4,6 +4,7 @@
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 
 #include "bigquery_utils.hpp"
+#include "storage/bigquery_relation_type.hpp"
 
 namespace duckdb {
 namespace bigquery {
@@ -23,12 +24,31 @@ struct BigqueryTableInfo {
     explicit BigqueryTableInfo(unique_ptr<CreateTableInfo> info) : create_info(std::move(info)) {
         create_info->columns.SetAllowDuplicates(true);
     }
+    BigqueryTableInfo(const BigqueryTableInfo &) = delete;
+    BigqueryTableInfo &operator=(const BigqueryTableInfo &) = delete;
+    BigqueryTableInfo(BigqueryTableInfo &&) noexcept = default;
+    BigqueryTableInfo &operator=(BigqueryTableInfo &&) noexcept = default;
 
     const string &GetTableName() const {
         return create_info->table;
     }
 
+    bool SupportsStorageRead() const {
+        return BigqueryRelationSupportsStorageRead(relation_type);
+    }
+
+    bool RequiresQueryJobScan() const {
+        return !SupportsStorageRead();
+    }
+
+    bool SupportsMutation() const {
+        return BigqueryRelationSupportsMutation(relation_type, is_insertable_into);
+    }
+
     unique_ptr<CreateTableInfo> create_info;
+    BigqueryRelationType relation_type = BigqueryRelationType::STANDARD_TABLE;
+    string relation_type_name = BigqueryRelationTypeToString(BigqueryRelationType::STANDARD_TABLE);
+    bool is_insertable_into = true;
     vector<BigqueryType> bigquery_types;
     vector<string> bigquery_names;
 };
@@ -51,6 +71,26 @@ public:
                                LogicalProjection &proj,
                                LogicalUpdate &update,
                                ClientContext &context) override;
+
+    bool SupportsStorageRead() const {
+        return BigqueryRelationSupportsStorageRead(relation_type);
+    }
+
+    bool RequiresQueryJobScan() const {
+        return !SupportsStorageRead();
+    }
+
+    bool SupportsMutation() const {
+        return BigqueryRelationSupportsMutation(relation_type, is_insertable_into);
+    }
+
+    const char *RelationTypeName() const {
+        return BigqueryRelationTypeToString(relation_type);
+    }
+
+private:
+    BigqueryRelationType relation_type = BigqueryRelationType::STANDARD_TABLE;
+    bool is_insertable_into = true;
 };
 
 } // namespace bigquery

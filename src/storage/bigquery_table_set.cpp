@@ -50,7 +50,7 @@ unique_ptr<BigqueryTableInfo> BigqueryTableSet::GetTableInfo(ClientContext &cont
     auto dataset_id = schema.name;
 
     auto info = make_uniq<BigqueryTableInfo>(project_id, schema.name, table_name);
-    bqclient->GetTableInfo(dataset_id, table_name, info->create_info->columns, info->create_info->constraints);
+    bqclient->GetTableInfo(dataset_id, table_name, *info);
     return info;
 }
 
@@ -76,7 +76,7 @@ void BigqueryTableSet::LoadEntries(ClientContext &, BigqueryTransaction &transac
                 CreateEntry(transaction, std::move(table_entry));
             }
         } else {
-            std::map<string, CreateTableInfo> table_infos;
+            std::map<string, BigqueryTableInfo> table_infos;
             bqclient->GetTableInfosFromDataset(schema.GetBigqueryDatasetRef(), table_infos);
 
             for (auto &table_info : table_infos) {
@@ -91,10 +91,7 @@ void BigqueryTableSet::LoadEntries(ClientContext &, BigqueryTransaction &transac
         vector<BigqueryTableRef> table_refs = bqclient->GetTables(schema.name);
         for (auto &table_ref : table_refs) {
             info = make_uniq<BigqueryTableInfo>(table_ref);
-            bqclient->GetTableInfo(table_ref.dataset_id,
-                                   table_ref.table_id,
-                                   info->create_info->columns,
-                                   info->create_info->constraints);
+            bqclient->GetTableInfo(table_ref.dataset_id, table_ref.table_id, *info);
             auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, *info);
             CreateEntry(transaction, std::move(table_entry));
         }
@@ -107,10 +104,7 @@ optional_ptr<CatalogEntry> BigqueryTableSet::ReloadEntry(ClientContext &,
     auto bqclient = transaction.GetBigqueryClient();
     auto project_id = dynamic_cast<BigqueryCatalog &>(catalog).GetProjectID();
     auto table_info = make_uniq<BigqueryTableInfo>(project_id, schema.name, table_name);
-    if (!bqclient->TryGetTableInfo(schema.name,
-                                   table_name,
-                                   table_info->create_info->columns,
-                                   table_info->create_info->constraints)) {
+    if (!bqclient->TryGetTableInfo(schema.name, table_name, *table_info)) {
         return nullptr;
     }
     auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, *table_info);

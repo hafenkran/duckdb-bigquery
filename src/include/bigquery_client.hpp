@@ -28,6 +28,8 @@
 namespace duckdb {
 namespace bigquery {
 
+struct BigqueryTableInfo;
+
 struct ListJobsParams {
     std::optional<std::string> job_id;
     std::optional<bool> all_users;
@@ -104,9 +106,11 @@ public:
     void DropTable(const DropInfo &info);
     void DropView(const DropInfo &info);
 
-    void GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref, map<string, CreateTableInfo> &table_infos);
+    void GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref, map<string, BigqueryTableInfo> &table_infos);
     void GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_ref,
-                                   map<string, CreateTableInfo> &table_infos);
+                                   map<string, BigqueryTableInfo> &table_infos);
+    void GetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info);
+    bool TryGetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info);
 
     void GetTableInfo(const string &dataset_id,
                       const string &table_id,
@@ -284,7 +288,7 @@ private:
 
     void MapInformationSchemaRows(const std::string &project_id,
                                   const google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
-                                  std::map<std::string, CreateTableInfo> &table_infos);
+                                  std::map<std::string, BigqueryTableInfo> &table_infos);
 
     void CheckAuthentication();
     void ThrowOnErrorStatus(const google::cloud::Status &status);

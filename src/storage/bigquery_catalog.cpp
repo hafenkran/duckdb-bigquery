@@ -45,8 +45,8 @@ void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
             auto bq_client = bq_transaction->GetBigqueryClient();
 
             BigqueryDatasetRef dataset_ref;
-            vector<CreateTableInfo> table_infos_vec;
-            std::map<string, CreateTableInfo> table_infos;
+            vector<BigqueryTableInfo> table_infos_vec;
+            std::map<string, BigqueryTableInfo> table_infos;
 
             dataset_ref = bq_client->GetDataset(config.dataset_id);
             bq_client->GetTableInfosFromDataset(dataset_ref, table_infos);

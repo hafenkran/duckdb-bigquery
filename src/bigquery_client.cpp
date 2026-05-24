@@ -1104,13 +1104,13 @@ void BigqueryClient::DropDataset(const DropInfo &info) {
 
 
 void BigqueryClient::GetTableInfosFromDataset(const BigqueryDatasetRef &dataset_ref,
-                                              std::map<string, CreateTableInfo> &table_infos) {
+                                              std::map<string, BigqueryTableInfo> &table_infos) {
     auto dataset_refs = vector<BigqueryDatasetRef>{dataset_ref};
     GetTableInfosFromDatasets(dataset_refs, table_infos);
 }
 
 void BigqueryClient::GetTableInfosFromDatasets(const vector<BigqueryDatasetRef> &dataset_refs,
-                                               std::map<string, CreateTableInfo> &table_infos) {
+                                               std::map<string, BigqueryTableInfo> &table_infos) {
     if (dataset_refs.empty()) {
         throw BinderException("No datasets provided.");
     }
@@ -1201,6 +1201,13 @@ void BigqueryClient::GetTableInfo(const string &dataset_id,
     }
 }
 
+void BigqueryClient::GetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info) {
+    if (!TryGetTableInfo(dataset_id, table_id, table_info)) {
+        auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
+        throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
+    }
+}
+
 bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
                                      const string &table_id,
                                      ColumnList &res_columns,
@@ -1228,6 +1235,40 @@ bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
 
     auto table = response.value();
     MapTableSchema(table.schema(), res_columns, res_constraints);
+    return true;
+}
+
+bool BigqueryClient::TryGetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info) {
+    CheckAuthentication();
+
+    auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
+        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
+
+    auto request = google::cloud::bigquery::v2::GetTableRequest();
+    request.set_project_id(config.project_id);
+    request.set_dataset_id(dataset_id);
+    request.set_table_id(table_id);
+
+    auto response = client->GetTable(request);
+    if (!response.ok()) {
+        if (CheckSSLError(response.status())) {
+            return TryGetTableInfo(dataset_id, table_id, table_info);
+        }
+        if (response.status().code() == google::cloud::StatusCode::kNotFound) {
+            return false;
+        }
+        throw InternalException(response.status().message());
+    }
+
+    auto table = response.value();
+    table_info.relation_type_name = table.type();
+    table_info.relation_type = BigqueryRelationTypeFromRestResource(table_info.relation_type_name);
+    if (table_info.relation_type_name.empty()) {
+        table_info.relation_type_name = BigqueryRelationTypeToString(table_info.relation_type);
+    }
+    table_info.is_insertable_into = table_info.relation_type == BigqueryRelationType::STANDARD_TABLE ||
+                                    table_info.relation_type == BigqueryRelationType::CLONE;
+    MapTableSchema(table.schema(), table_info.create_info->columns, table_info.create_info->constraints);
     return true;
 }
 
@@ -2018,14 +2059,14 @@ string BigqueryClient::GenerateJobId(const string &prefix) {
 void BigqueryClient::MapInformationSchemaRows(
     const std::string &project_id,
     const ::google::protobuf::RepeatedPtrField<::google::protobuf::Struct> &rows,
-    std::map<std::string, CreateTableInfo> &table_infos) {
+    std::map<std::string, BigqueryTableInfo> &table_infos) {
     vector<string> tables_with_errornous_columns;
 
     for (auto &row : rows) {
         const auto &fields = row.fields();
         const auto &field_list = fields.at("f").list_value().values();
 
-        if (field_list.size() < 6) {
+        if (field_list.size() < 9) {
             throw BinderException("Unexpected number of fields in the row.");
         }
 
@@ -2035,6 +2076,8 @@ void BigqueryClient::MapInformationSchemaRows(
         string data_type = field_list[3].struct_value().fields().at("v").string_value();
         string is_nullable = field_list[4].struct_value().fields().at("v").string_value();
         string column_default = field_list[5].struct_value().fields().at("v").string_value();
+        string relation_type_name = field_list[7].struct_value().fields().at("v").string_value();
+        string is_insertable_into = field_list[8].struct_value().fields().at("v").string_value();
 
         auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, dataset_name, table_name);
 
@@ -2062,14 +2105,20 @@ void BigqueryClient::MapInformationSchemaRows(
         }
 
         if (table_infos.find(table_string) == table_infos.end()) {
-            table_infos[table_string] = CreateTableInfo(project_id, dataset_name, table_name);
+            auto info = BigqueryTableInfo(project_id, dataset_name, table_name);
+            info.relation_type = BigqueryRelationTypeFromInformationSchema(relation_type_name);
+            info.relation_type_name =
+                relation_type_name.empty() ? BigqueryRelationTypeToString(info.relation_type) : relation_type_name;
+            info.is_insertable_into = is_insertable_into == "YES";
+            table_infos[table_string] = std::move(info);
         }
 
-        table_infos[table_string].columns.AddColumn(std::move(column));
+        table_infos[table_string].create_info->columns.AddColumn(std::move(column));
 
         if (is_nullable == "NO") {
-            auto field_index = table_infos[table_string].columns.GetColumnIndex(column_name);
-            table_infos[table_string].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
+            auto field_index = table_infos[table_string].create_info->columns.GetColumnIndex(column_name);
+            table_infos[table_string].create_info->constraints.push_back(
+                make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
 
         if (data_type.find("STRING(") != std::string::npos) {
@@ -2083,7 +2132,7 @@ void BigqueryClient::MapInformationSchemaRows(
                 auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
 
                 auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
-                table_infos[table_name].constraints.push_back(std::move(check_constraint));
+                table_infos[table_string].create_info->constraints.push_back(std::move(check_constraint));
             }
         }
     }

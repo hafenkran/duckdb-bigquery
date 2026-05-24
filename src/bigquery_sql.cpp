@@ -2037,7 +2037,7 @@ string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id, 
         auto dataset_query = ColumnsFromInformationSchemaQuery(project_id, dataset, false);
         query << dataset_query;
     }
-    query << "ORDER BY table_name, ordinal_position";
+    query << "ORDER BY table_schema, table_name, ordinal_position";
     return query.str();
 }
 
@@ -2048,12 +2048,18 @@ string BigquerySQL::ColumnsFromInformationSchemaQuery(const string &project_id,
         BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.COLUMNS");
 
     std::stringstream query;
-    query << "SELECT table_schema, table_name, column_name, data_type, is_nullable, column_default, ordinal_position ";
-    query << "FROM `" << table_string << "` ";
-    query << "WHERE is_system_defined = 'NO' "; // Adjusted the comparison
-    query << "AND ordinal_position IS NOT NULL ";
+    const auto tables_string =
+        BigqueryUtils::FormatTableStringSimple(project_id, dataset_id, "INFORMATION_SCHEMA.TABLES");
+
+    query << "SELECT cols.table_schema, cols.table_name, cols.column_name, cols.data_type, cols.is_nullable, ";
+    query << "cols.column_default, cols.ordinal_position, tbls.table_type, tbls.is_insertable_into ";
+    query << "FROM `" << table_string << "` AS cols ";
+    query << "LEFT JOIN `" << tables_string << "` AS tbls ";
+    query << "ON cols.table_schema = tbls.table_schema AND cols.table_name = tbls.table_name ";
+    query << "WHERE cols.is_system_defined = 'NO' ";
+    query << "AND cols.ordinal_position IS NOT NULL ";
     if (include_order_by) {
-        query << "ORDER BY table_name, ordinal_position";
+        query << "ORDER BY cols.table_schema, cols.table_name, cols.ordinal_position";
     }
     return query.str();
 }

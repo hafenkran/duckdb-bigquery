@@ -17,7 +17,7 @@ public:
     BigquerySchemaEntry(Catalog &catalog,
                         CreateSchemaInfo &info,
                         BigqueryDatasetRef &bq_dataset_ref,
-                        vector<CreateTableInfo> &table_infos);
+                        vector<BigqueryTableInfo> &table_infos);
 
 public:
     optional_ptr<CatalogEntry> CreateTable(CatalogTransaction transaction, BoundCreateTableInfo &info) override;
@@ -52,7 +52,7 @@ public:
         return bq_dataset_ref;
     }
 
-    std::optional<vector<CreateTableInfo>> &GetTableInfos() {
+    std::optional<vector<BigqueryTableInfo>> &GetTableInfos() {
         return prefetched_table_infos;
     }
 
@@ -62,7 +62,7 @@ private:
 private:
     BigqueryTableSet tables;
     BigqueryDatasetRef bq_dataset_ref;
-    std::optional<vector<CreateTableInfo>> prefetched_table_infos;
+    std::optional<vector<BigqueryTableInfo>> prefetched_table_infos;
 };
 
 
