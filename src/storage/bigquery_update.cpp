@@ -3,6 +3,7 @@
 
 #include "bigquery_sql.hpp"
 #include "storage/bigquery_catalog.hpp"
+#include "storage/bigquery_table_entry.hpp"
 #include "storage/bigquery_transaction.hpp"
 #include "storage/bigquery_update.hpp"
 
@@ -67,6 +68,13 @@ PhysicalOperator &BigqueryCatalog::PlanUpdate(ClientContext &context,
     BigqueryTransaction::CheckReadWrite(context, *this, "update tables");
     if (op.return_chunk) {
         throw NotImplementedException("RETURNING clause not supported.");
+    }
+    auto &table_entry = op.table.Cast<BigqueryTableEntry>();
+    if (!table_entry.SupportsMutation()) {
+        throw BinderException("Cannot update BigQuery relation \"%s.%s\" of type %s",
+                              table_entry.schema.name,
+                              table_entry.name,
+                              table_entry.RelationTypeName());
     }
     auto query = BigquerySQL::LogicalUpdateToSQL(GetProjectID(), op);
     auto &update = planner.Make<BigqueryUpdate>(op, op.table, query);

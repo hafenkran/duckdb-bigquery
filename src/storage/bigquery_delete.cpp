@@ -73,6 +73,13 @@ PhysicalOperator &BigqueryCatalog::PlanDelete(ClientContext &context,
     if (op.return_chunk) {
         throw BinderException("RETURNING clause is not supported.");
     }
+    auto &table_entry = op.table.Cast<BigqueryTableEntry>();
+    if (!table_entry.SupportsMutation()) {
+        throw BinderException("Cannot delete from BigQuery relation \"%s.%s\" of type %s",
+                              table_entry.schema.name,
+                              table_entry.name,
+                              table_entry.RelationTypeName());
+    }
     auto query = BigquerySQL::LogicalDeleteToSQL(GetProjectID(), op);
     auto &delete_op = planner.Make<BigqueryDelete>(op, op.table, query);
     return delete_op;

@@ -1319,6 +1319,12 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
     if (entry == nullptr) {
         throw InternalException("Error while initializing proto writer: entry is null");
     }
+    if (!entry->SupportsMutation()) {
+        throw BinderException("Cannot write to BigQuery relation \"%s.%s\" of type %s",
+                              entry->schema.name,
+                              entry->name,
+                              entry->RelationTypeName());
+    }
     auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
     if (bq_catalog.GetProjectID() != config.project_id) {
         throw InternalException("Error while initializing proto writer: project_id mismatch");
