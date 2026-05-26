@@ -1499,6 +1499,10 @@ void BigqueryClient::MapInformationSchemaRows(
     }
 }
 
+void BigqueryClient::ValidateAuthentication() {
+    CheckAuthentication();
+}
+
 void BigqueryClient::CheckAuthentication() {
     if (authentication_checked) {
         return;

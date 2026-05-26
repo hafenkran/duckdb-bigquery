@@ -129,6 +129,11 @@ LOAD 'bigquery';
 
 After loading the extension, you can connect to your BigQuery project using the `ATTACH` statement. Replace `my_gcp_project` with the name of your actual Google Cloud Project. Here is an example:
 
+`ATTACH` immediately checks that configured credentials can provide an authentication token. It does not load catalog
+metadata or verify BigQuery permissions for datasets, tables, jobs, or Storage APIs; those checks occur when the
+corresponding objects or operations are used. When `ACCESS_TOKEN` is configured directly, BigQuery may only reject an
+invalid token on the first API request.
+
 ```sql
 -- Attach to your BigQuery Project
 D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery, READ_ONLY);

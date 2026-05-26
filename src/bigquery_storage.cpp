@@ -6,6 +6,7 @@
 #include "duckdb/parser/parsed_data/attach_info.hpp"
 #include "duckdb/transaction/transaction_manager.hpp"
 
+#include "bigquery_client.hpp"
 #include "bigquery_storage.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_options.hpp"
@@ -29,7 +30,10 @@ static unique_ptr<Catalog> BigqueryAttach(optional_ptr<StorageExtensionInfo> sto
 
     BigqueryOptions options;
     options.access_mode = attach_options.access_mode;
-    return duckdb::make_uniq<BigqueryCatalog>(db, info.path, options);
+    auto catalog = duckdb::make_uniq<BigqueryCatalog>(db, info.path, options);
+    BigqueryClient client(context, catalog->config);
+    client.ValidateAuthentication();
+    return catalog;
 }
 
 
