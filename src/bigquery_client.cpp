@@ -695,7 +695,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
                                                                  const string &location,
-                                                                 const std::map<string, string> &labels) {
+                                                                 const std::map<string, string> &labels,
+                                                                 const std::optional<int> &timeout_ms) {
     CheckAuthentication();
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
@@ -717,7 +718,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
                                    write_disposition,
                                    create_disposition,
                                    location,
-                                   labels);
+                                   labels,
+                                   timeout_ms);
         }
 
         throw BinderException("Load job submission failed: " + response.status().message());
@@ -726,7 +728,11 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
     if (!response->has_job_reference()) {
         throw BinderException("Load job submission succeeded but did not return a job reference");
     }
-    return WaitForJobCompletion(response->job_reference());
+    if (response->has_status() && response->status().state() == "DONE") {
+        ThrowOnJobStatusError(response->status(), "Load job");
+        return *response;
+    }
+    return WaitForJobCompletion(response->job_reference(), timeout_ms);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryTableRef &destination_table,
@@ -734,7 +740,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
                                                                  const string &location,
-                                                                 const std::map<string, string> &labels) {
+                                                                 const std::map<string, string> &labels,
+                                                                 const std::optional<int> &timeout_ms) {
     if (source_uris.empty()) {
         throw BinderException("At least one source URI must be provided for a BigQuery load job");
     }
@@ -768,7 +775,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
                                    write_disposition,
                                    create_disposition,
                                    location,
-                                   labels);
+                                   labels,
+                                   timeout_ms);
         }
 
         throw BinderException("Load job submission failed: " + response.status().message());
@@ -777,7 +785,11 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
     if (!response->has_job_reference()) {
         throw BinderException("Load job submission succeeded but did not return a job reference");
     }
-    return WaitForJobCompletion(response->job_reference());
+    if (response->has_status() && response->status().state() == "DONE") {
+        ThrowOnJobStatusError(response->status(), "Load job");
+        return *response;
+    }
+    return WaitForJobCompletion(response->job_reference(), timeout_ms);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &table_name,
@@ -785,7 +797,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
                                                                  const string &location,
-                                                                 const std::map<string, string> &labels) {
+                                                                 const std::map<string, string> &labels,
+                                                                 const std::optional<int> &timeout_ms) {
     if (!context) {
         throw InternalException("LoadDuckDBTable requires an active DuckDB client context");
     }
@@ -811,8 +824,13 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
             result->ThrowError("Failed to materialize DuckDB source table for bigquery_load: ");
         }
 
-        auto job =
-            LoadParquetFile(destination_table, temp_file_path, write_disposition, create_disposition, location, labels);
+        auto job = LoadParquetFile(destination_table,
+                                   temp_file_path,
+                                   write_disposition,
+                                   create_disposition,
+                                   location,
+                                   labels,
+                                   timeout_ms);
         fs.TryRemoveFile(temp_file_path);
         return job;
     } catch (...) {
@@ -1074,8 +1092,9 @@ bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
 void BigqueryClient::GetTableInfoForQuery(const string &query,
                                           const vector<Value> &query_parameters,
                                           ColumnList &res_columns,
-                                          vector<unique_ptr<Constraint>> &res_constraints) {
-    auto query_response = ExecuteQuery(query, "", true, query_parameters);
+                                          vector<unique_ptr<Constraint>> &res_constraints,
+                                          const std::optional<int> &timeout_ms) {
+    auto query_response = ExecuteQuery(query, "", true, query_parameters, false, timeout_ms);
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
@@ -1148,10 +1167,11 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
                                                                         const string &location,
                                                                         const bool &dry_run,
                                                                         const vector<Value> &query_parameters,
-                                                                        const bool &optional_job_creation) {
+                                                                        const bool &optional_job_creation,
+                                                                        const std::optional<int> &timeout_override_ms) {
     CheckAuthentication();
 
-    const auto timeout_ms = BigquerySettings::QueryTimeoutMs();
+    const auto timeout_ms = timeout_override_ms.value_or(BigquerySettings::QueryTimeoutMs());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     auto request_timeout_ms = timeout_ms;
 
@@ -1548,12 +1568,42 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
-    const google::cloud::bigquery::v2::JobReference &job_ref) {
+    const google::cloud::bigquery::v2::JobReference &job_ref,
+    const std::optional<int> &timeout_ms) {
     if (job_ref.job_id().empty()) {
         throw BinderException("Load job reference did not contain a job ID");
     }
 
+    if (timeout_ms.has_value()) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms.value());
+        while (true) {
+            if (context && context->IsInterrupted()) {
+                throw InterruptException();
+            }
+            if (RemainingQueryTimeoutMs(deadline) == 0) {
+                throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
+
+            auto job = GetLoadJobUntilDeadline(job_ref, deadline);
+            if (!job.has_status() || job.status().state() == "DONE") {
+                if (job.has_status()) {
+                    ThrowOnJobStatusError(job.status(), "Load job");
+                }
+                return job;
+            }
+
+            auto remaining_ms = RemainingQueryTimeoutMs(deadline);
+            if (remaining_ms == 0) {
+                throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::min(remaining_ms, 250)));
+        }
+    }
+
     while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
+        }
         auto job = GetJobByReference(job_ref);
         if (!job.has_status() || job.status().state() == "DONE") {
             if (job.has_status()) {
@@ -1562,6 +1612,39 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
             return job;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::GetLoadJobUntilDeadline(
+    const google::cloud::bigquery::v2::JobReference &job_ref,
+    const std::chrono::steady_clock::time_point &deadline) {
+    while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
+        }
+        if (RemainingQueryTimeoutMs(deadline) == 0) {
+            throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
+        }
+
+        CheckAuthentication();
+        auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+            google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+        auto request = google::cloud::bigquery::v2::GetJobRequest();
+        request.set_project_id(job_ref.project_id());
+        request.set_job_id(job_ref.job_id());
+        if (job_ref.has_location()) {
+            request.set_location(job_ref.location().value());
+        }
+
+        auto response = client.GetJob(request);
+        if (response.ok()) {
+            return *response;
+        }
+
+        ThrowOnErrorStatus(response.status());
+        if (!CheckSSLError(response.status())) {
+            throw BinderException(response.status().message());
+        }
     }
 }
 

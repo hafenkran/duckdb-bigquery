@@ -55,6 +55,17 @@ SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test
 ----
 14
 
+statement ok
+SET bq_query_timeout_ms = 0;
+
+query I
+SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view', timeout_ms := 90000);
+----
+14
+
+statement ok
+SET bq_query_timeout_ms = 90000;
+
 query I
 SELECT name FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view ORDER BY name ASC LIMIT 1');
 ----
@@ -83,6 +94,16 @@ statement error
 SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x', [1,2,3]);
 ----
 <REGEX>:Binder Error: Unsupported DuckDB type for BigQuery query parameter .+: .+
+
+statement error
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 1 AS x', timeout_ms := -1);
+----
+Invalid Input Error: Timeout must be non-negative
+
+statement error
+SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 1 AS x', timeout_ms := 2147483648);
+----
+Invalid Input Error: Timeout must fit in a 32-bit integer
 
 statement ok
 CALL bigquery_execute('bq', 'DROP VIEW ${BQ_TEST_DATASET}.test_cities_view;');

@@ -5,6 +5,8 @@
 #include "bigquery_client.hpp"
 #include "bigquery_utils.hpp"
 
+#include <optional>
+
 namespace duckdb {
 namespace bigquery {
 
@@ -13,6 +15,7 @@ struct BigqueryQueryDryRunBindData : public TableFunctionData {
     shared_ptr<BigqueryClient> bq_client;
     string query;
     vector<Value> query_parameters;
+    std::optional<int> timeout_ms;
     bool finished = false;
 };
 
@@ -22,6 +25,7 @@ struct BigqueryQueryRestBindData : public TableFunctionData {
     shared_ptr<BigqueryClient> bq_client;
     string query;
     vector<Value> query_parameters;
+    std::optional<int> timeout_ms;
 
     vector<string> names;
     vector<LogicalType> types;

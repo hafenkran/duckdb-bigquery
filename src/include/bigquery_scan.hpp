@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 namespace duckdb {
 namespace bigquery {
@@ -32,6 +33,7 @@ struct BigqueryScanBindData : public ArrowScanFunctionData {
     BigqueryTableRef table_ref;
     string query;
     vector<Value> query_parameters;
+    std::optional<int> query_timeout_ms;
     string filter_condition;
 
     BigqueryConfig bq_config;

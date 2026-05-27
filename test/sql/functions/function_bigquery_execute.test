@@ -12,12 +12,12 @@ statement ok
 SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table`')
 
 query IIIIIII
-SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table` (x INT64)')
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table` (x INT64)', timeout_ms := 90000)
 ----
 1	<REGEX>:job_.+	<REGEX>:.+	<REGEX>:.+	0	0	0
 
 query III
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table`', dry_run=true)
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table`', dry_run=true, timeout_ms := 90000)
 ----
 0	false	<REGEX>:.+
 
@@ -30,7 +30,7 @@ SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'exec_table';
 1
 
 statement ok
-CALL bigquery_execute('bq', 'DROP TABLE ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table;')
+CALL bigquery_execute('bq', 'DROP TABLE ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table;', timeout_ms := 90000)
 
 statement ok
 CALL bigquery_clear_cache();

@@ -334,12 +334,13 @@ The `bigquery_query` function supports the following named parameters:
 | `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                               |
 | `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
 | `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
+| `timeout_ms`      | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms` for this call.   |
 
 > **REST API vs Storage API**: By default, `bigquery_query` uses the [BigQuery Storage Read API](https://cloud.google.com/bigquery/docs/reference/storage) to fetch results. This executes the query as a job, materializes results into a temporary table, and reads them via gRPC — optimized for large result sets but adds overhead for small queries.
 >
 > With `use_rest_api=true`, the query is executed using the [jobs.query REST endpoint](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query) with [`JOB_CREATION_OPTIONAL`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query#JobCreationMode) mode. For short-running queries, BigQuery can return results inline without creating a job at all, significantly reducing latency. This is ideal for interactive or exploratory queries with small result sets (under ~10MB).
 >
-> If a query job is still running when a REST wait request returns, the extension polls until it completes or `bq_query_timeout_ms` is reached. Long-running queries are therefore supported on both result paths when the timeout is configured accordingly.
+> If a query job is still running when a REST wait request returns, the extension polls until it completes or the configured timeout is reached. Set `timeout_ms` for one call or `bq_query_timeout_ms` as the session default.
 >
 > ```sql
 > D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT count(*) FROM `my_dataset.my_table`', use_rest_api=true);
@@ -347,7 +348,7 @@ The `bigquery_query` function supports the following named parameters:
 
 ### `bigquery_execute` Function
 
-The `bigquery_execute` function runs arbitrary GoogleSQL queries directly in BigQuery. These queries are executed without interpretation by DuckDB. The call waits for BigQuery job completion up to `bq_query_timeout_ms`, polling long-running jobs when required, and returns a result with details about the query execution, like the following.
+The `bigquery_execute` function runs arbitrary GoogleSQL queries directly in BigQuery. These queries are executed without interpretation by DuckDB. The call waits for BigQuery job completion up to its effective timeout, polling long-running jobs when required, and returns a result with details about the query execution, like the following.
 
 ```sql
 D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
@@ -386,6 +387,7 @@ The `bigquery_execute` function supports the following named parameters:
 | `dry_run`       | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
 | `api_endpoint`  | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
 | `grpc_endpoint` | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
+| `timeout_ms`    | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms` for this call.   |
 
 ### `bigquery_load` Function
 
@@ -451,8 +453,9 @@ The `bigquery_load` function supports the following named parameters:
 | `location`           | `VARCHAR` | BigQuery job location.                                                                 |
 | `billing_project`    | `VARCHAR` | Project ID to bill for the load job. Only supported for direct project-ID calls.       |
 | `labels`             | `MAP(VARCHAR, VARCHAR)` | BigQuery job labels to attach to the load job.                                         |
+| `timeout_ms`         | `BIGINT`  | Optional maximum time to wait for the submitted load job to finish. Timed-out jobs may continue running in BigQuery. |
 
-Exactly one of `source_file`, `source_uris`, or `source_table` must be provided. For Cloud Storage loads, the BigQuery job identity needs permission to read the objects, and the bucket location must be compatible with the destination dataset location.
+Exactly one of `source_file`, `source_uris`, or `source_table` must be provided. Without `timeout_ms`, `bigquery_load` continues waiting for the load job as before. For Cloud Storage loads, the BigQuery job identity needs permission to read the objects, and the bucket location must be compatible with the destination dataset location.
 
 ### `bigquery_jobs` Function
 

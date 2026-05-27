@@ -41,6 +41,7 @@ struct BigQueryLoadBindData : public TableFunctionData {
     string create_disposition;
     string location;
     std::map<string, string> labels;
+    std::optional<int> timeout_ms;
     bool remove_staged_source_file = false;
     bool finished = false;
 
@@ -61,6 +62,7 @@ struct BigQueryLoadParameters {
     string billing_project;
     string api_endpoint;
     std::map<string, string> labels;
+    std::optional<int> timeout_ms;
 };
 
 static string NormalizeEnumValue(const string &value) {
@@ -185,6 +187,7 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
     auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
     params.api_endpoint = api_endpoint ? *api_endpoint : string();
     params.labels = ParseOptionalLabelsParameter(named_parameters);
+    params.timeout_ms = BigqueryUtils::ParseTimeoutMsParameter(named_parameters);
     params.write_disposition = ParseEnumParameter(named_parameters,
                                                   "write_disposition",
                                                   "WRITE_TRUNCATE",
@@ -349,6 +352,7 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     bind_data->source_table = params.source_table;
     bind_data->location = params.location ? *params.location : BigquerySettings::DefaultLocation();
     bind_data->labels = params.labels;
+    bind_data->timeout_ms = params.timeout_ms;
 
     auto destination_table = BigqueryUtils::ParseDatasetTableString(destination_table_string);
 
@@ -416,14 +420,16 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
                                               data.write_disposition,
                                               data.create_disposition,
                                               data.location,
-                                              data.labels);
+                                              data.labels,
+                                              data.timeout_ms);
     } else if (!data.source_uris.empty()) {
         job = data.bq_client->LoadParquetUris(data.destination_table,
                                               data.source_uris,
                                               data.write_disposition,
                                               data.create_disposition,
                                               data.location,
-                                              data.labels);
+                                              data.labels,
+                                              data.timeout_ms);
     } else {
         throw InternalException("bigquery_load has no source to load");
     }
@@ -467,6 +473,7 @@ BigQueryLoadFunction::BigQueryLoadFunction()
     named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["api_endpoint"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["labels"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
+    named_parameters["timeout_ms"] = LogicalType::BIGINT;
 }
 
 } // namespace bigquery

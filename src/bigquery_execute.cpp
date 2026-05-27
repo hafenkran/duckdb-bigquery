@@ -7,6 +7,8 @@
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_transaction.hpp"
 
+#include <optional>
+
 namespace duckdb {
 namespace bigquery {
 
@@ -15,6 +17,7 @@ struct BigQueryExecuteBindData : public TableFunctionData {
     shared_ptr<BigqueryClient> bq_client;
     string query;
     bool dry_run = false;
+    std::optional<int> timeout_ms;
     bool finished = false;
 };
 
@@ -31,6 +34,7 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
     auto result = make_uniq<BigQueryExecuteBindData>();
     result->query = query_string;
     result->dry_run = params.dry_run;
+    result->timeout_ms = params.timeout_ms;
 
     auto &database_manager = DatabaseManager::Get(context);
     auto database = database_manager.GetDatabase(context, dbname_or_project_id);
@@ -92,7 +96,7 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
     if (data.finished) {
         return;
     }
-    auto response = data.bq_client->ExecuteQuery(data.query, "", data.dry_run);
+    auto response = data.bq_client->ExecuteQuery(data.query, "", data.dry_run, {}, false, data.timeout_ms);
     data.finished = true;
 
     if (!data.dry_run) {
@@ -120,6 +124,7 @@ BigQueryExecuteFunction::BigQueryExecuteFunction()
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
     named_parameters["dry_run"] = LogicalType::BOOLEAN;
+    named_parameters["timeout_ms"] = LogicalType::BIGINT;
 }
 
 } // namespace bigquery

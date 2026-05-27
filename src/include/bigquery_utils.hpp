@@ -12,6 +12,7 @@
 
 #include <arrow/api.h>
 #include <chrono>
+#include <optional>
 #include <regex>
 #include <thread>
 
@@ -223,6 +224,8 @@ public:
                                       const vector<LogicalType> &types,
                                       DataChunk &output);
 
+    static std::optional<int> ParseTimeoutMsParameter(const named_parameter_map_t &named_parameters);
+
 private:
     static vector<string> SplitStructFields(const string &struct_field_str);
     static string StructRemoveWhitespaces(const string &struct_str);
@@ -236,6 +239,7 @@ struct BigQueryCommonParameters {
     string filter;
     bool dry_run = false;
     bool use_rest_api = false;
+    std::optional<int> timeout_ms;
 
     //! Parse common parameters from named_parameters map
     static BigQueryCommonParameters ParseFromNamedParameters(const named_parameter_map_t &named_parameters);
