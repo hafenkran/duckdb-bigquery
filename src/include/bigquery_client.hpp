@@ -118,6 +118,8 @@ public:
 
     shared_ptr<BigqueryProtoWriter> CreateProtoWriter(BigqueryTableEntry *entry);
 
+    void ValidateAuthentication();
+
     string GetProjectID() const {
         return config.project_id;
     }
