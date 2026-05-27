@@ -36,10 +36,16 @@ INSERT INTO bq.${BQ_TEST_DATASET}.dml_struct_filters VALUES
     (2, 0, {'name': 'Bob Johnson', 'address': {'city': 'Los Angeles', 'zip_code': '90001'}}),
     (3, 0, {'name': 'Alice Smith', 'address': {'city': 'New York', 'zip_code': '10001'}});
 
+statement ok
+SET bq_query_timeout_ms = 0;
+
 query I
 UPDATE bq.${BQ_TEST_DATASET}.dml_statements SET i=10 WHERE 1=1;
 ----
 5
+
+statement ok
+SET bq_query_timeout_ms = 90000;
 
 query I
 SELECT * FROM bq.${BQ_TEST_DATASET}.dml_statements;

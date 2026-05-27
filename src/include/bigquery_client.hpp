@@ -145,6 +145,11 @@ private:
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
+    google::cloud::bigquery::v2::QueryResponse WaitForQueryCompletion(
+        google::cloud::bigquery::v2::QueryResponse response);
+    void MergeQueryResultsResponse(google::cloud::bigquery::v2::QueryResponse &query_response,
+                                   const google::cloud::bigquery::v2::GetQueryResultsResponse &results_response);
+    void ThrowOnQueryJobStatusError(const google::cloud::bigquery::v2::JobStatus &status);
     google::cloud::bigquery::v2::InsertJobRequest BuildLoadJobRequest(const BigqueryTableRef &destination_table,
                                                                       const string &write_disposition,
                                                                       const string &create_disposition,

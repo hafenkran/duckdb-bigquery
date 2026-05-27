@@ -339,13 +339,15 @@ The `bigquery_query` function supports the following named parameters:
 >
 > With `use_rest_api=true`, the query is executed using the [jobs.query REST endpoint](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query) with [`JOB_CREATION_OPTIONAL`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query#JobCreationMode) mode. For short-running queries, BigQuery can return results inline without creating a job at all, significantly reducing latency. This is ideal for interactive or exploratory queries with small result sets (under ~10MB).
 >
+> If a query job is still running when a REST wait request returns, the extension polls it to completion. Long-running queries are therefore supported on both result paths.
+>
 > ```sql
 > D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT count(*) FROM `my_dataset.my_table`', use_rest_api=true);
 > ```
 
 ### `bigquery_execute` Function
 
-The `bigquery_execute` function runs arbitrary GoogleSQL queries directly in BigQuery. These queries are executed without interpretation by DuckDB. The call is synchronous and returns a result with details about the query execution, like the following.
+The `bigquery_execute` function runs arbitrary GoogleSQL queries directly in BigQuery. These queries are executed without interpretation by DuckDB. The call waits for BigQuery job completion, polling long-running jobs when required, and returns a result with details about the query execution, like the following.
 
 ```sql
 D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
@@ -565,7 +567,7 @@ D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
 | Setting                                   | Description                                                                                                                                                                                        | Default |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | `bq_bignumeric_as_varchar`                | Compatibility setting kept for older workflows. `BIGNUMERIC` columns are exposed as `VARCHAR` by default in current versions.                                                                        | `true`  |
-| `bq_query_timeout_ms`                     | Timeout for BigQuery queries in milliseconds. If a query exceeds this time, the operation stops waiting.                                                                                           | `90000` |
+| `bq_query_timeout_ms`                     | Maximum wait time for each `jobs.query` or `jobs.getQueryResults` REST request in milliseconds. Incomplete query jobs are polled until BigQuery completes them. A DuckDB interrupt stops local waiting but does not cancel the BigQuery job.                       | `90000` |
 | `bq_auth_timeout_s`                       | Timeout for authentication token fetches in seconds. This bounds ADC metadata and OAuth token requests without changing normal BigQuery query timeouts.                                             | `10`    |
 | `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
 | `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |

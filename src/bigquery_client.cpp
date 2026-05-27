@@ -1159,16 +1159,12 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
         throw BinderException("Query execution failed: " + message);
     }
 
-    auto complete = response->job_complete().value();
-    if (!complete) {
-        if (response->has_job_reference()) {
-            auto job_id = response->job_reference().job_id();
-            throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
-        }
-        throw BinderException("Query execution exceeded the timeout.");
+    auto query_response = *response;
+    if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
+        return WaitForQueryCompletion(std::move(query_response));
     }
 
-    return *response;
+    return query_response;
 }
 
 idx_t BigqueryClient::ExecuteDmlQuery(const string &query,
@@ -1208,6 +1204,101 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
         throw BinderException("GetQueryResults failed: " + response.status().message());
     }
     return *response;
+}
+
+google::cloud::bigquery::v2::QueryResponse BigqueryClient::WaitForQueryCompletion(
+    google::cloud::bigquery::v2::QueryResponse response) {
+    if (!response.has_job_reference() || response.job_reference().job_id().empty()) {
+        throw BinderException("BigQuery query did not complete and did not return a valid job reference.");
+    }
+
+    const auto job_ref = response.job_reference();
+    while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
+        }
+
+        auto results_response = GetQueryResults(job_ref);
+        if (results_response.has_job_complete() && results_response.job_complete().value()) {
+            MergeQueryResultsResponse(response, results_response);
+            auto job = GetJobByReference(job_ref);
+            if (job.has_status()) {
+                ThrowOnQueryJobStatusError(job.status());
+            }
+            return response;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+}
+
+void BigqueryClient::MergeQueryResultsResponse(
+    google::cloud::bigquery::v2::QueryResponse &query_response,
+    const google::cloud::bigquery::v2::GetQueryResultsResponse &results_response) {
+    if (results_response.has_schema()) {
+        *query_response.mutable_schema() = results_response.schema();
+    } else {
+        query_response.clear_schema();
+    }
+    if (results_response.has_job_reference()) {
+        *query_response.mutable_job_reference() = results_response.job_reference();
+    }
+    query_response.clear_rows();
+    query_response.mutable_rows()->CopyFrom(results_response.rows());
+    query_response.set_page_token(results_response.page_token());
+    if (results_response.has_total_rows()) {
+        *query_response.mutable_total_rows() = results_response.total_rows();
+    } else {
+        query_response.clear_total_rows();
+    }
+    if (results_response.has_total_bytes_processed()) {
+        *query_response.mutable_total_bytes_processed() = results_response.total_bytes_processed();
+    } else {
+        query_response.clear_total_bytes_processed();
+    }
+    if (results_response.has_job_complete()) {
+        *query_response.mutable_job_complete() = results_response.job_complete();
+    } else {
+        query_response.clear_job_complete();
+    }
+    if (results_response.has_cache_hit()) {
+        *query_response.mutable_cache_hit() = results_response.cache_hit();
+    } else {
+        query_response.clear_cache_hit();
+    }
+    if (results_response.has_num_dml_affected_rows()) {
+        *query_response.mutable_num_dml_affected_rows() = results_response.num_dml_affected_rows();
+    } else {
+        query_response.clear_num_dml_affected_rows();
+    }
+    query_response.clear_errors();
+    query_response.mutable_errors()->CopyFrom(results_response.errors());
+}
+
+void BigqueryClient::ThrowOnQueryJobStatusError(const google::cloud::bigquery::v2::JobStatus &status) {
+    if (!status.has_error_result()) {
+        return;
+    }
+
+    const auto &error = status.error_result();
+    if (error.reason() == "accessDenied") {
+        throw PermissionException(
+            "BigQuery query permission denied.\n"
+            "\n"
+            "The query job was created, but BigQuery rejected access while executing it.\n"
+            "\n"
+            "Check query-job permission on the project (`bigquery.jobs.create`) and read access on the "
+            "referenced tables or views (`bigquery.tables.getData`).\n"
+            "\n"
+            "Error details: %s",
+            error.message());
+    }
+    if (error.message().find("Array cannot have a null element") != string::npos) {
+        throw BinderException("Query execution failed: BigQuery does not allow query results with ARRAY values "
+                              "that contain NULL elements. Original error: " +
+                              error.message());
+    }
+    ThrowOnJobStatusError(status, "Query execution");
 }
 
 google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJobInternal(
@@ -1377,6 +1468,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
     auto get_results_request = google::cloud::bigquery::v2::GetQueryResultsRequest();
     get_results_request.set_project_id(job_ref.project_id());
     get_results_request.set_job_id(job_ref.job_id());
+    get_results_request.mutable_timeout_ms()->set_value(BigquerySettings::QueryTimeoutMs());
     // get_results_request.mutable_max_results()->set_value(3);
 
     if (job_ref.has_location()) {
@@ -1387,12 +1479,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
         get_results_request.set_page_token(page_token);
     }
 
-    auto response = job_client.GetQueryResults(get_results_request);
-    if (!response.ok()) {
-        ThrowOnErrorStatus(response.status());
-        throw BinderException(response.status().message());
-    }
-    return response;
+    return job_client.GetQueryResults(get_results_request);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(

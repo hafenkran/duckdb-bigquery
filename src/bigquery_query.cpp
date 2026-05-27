@@ -213,7 +213,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
                                                                 /*optional_job_creation=*/true);
 
         if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
-            throw BinderException("Query did not complete within the timeout.");
+            throw InternalException(
+                "BigQuery query execution returned an incomplete response after completion polling.");
         }
 
         auto gstate = make_uniq<BigqueryQueryInlineGlobalState>();

@@ -65,6 +65,18 @@ SELECT x FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x', 42);
 ----
 42
 
+# Best-effort coverage for jobs.query returning before job completion.
+statement ok
+SET bq_query_timeout_ms = 0;
+
+query I
+SELECT x FROM bigquery_query('bq', 'SELECT 7 AS x');
+----
+7
+
+statement ok
+SET bq_query_timeout_ms = 90000;
+
 statement error
 SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x');
 ----
