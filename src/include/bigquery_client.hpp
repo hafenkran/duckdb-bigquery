@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <string>
@@ -136,17 +137,23 @@ private:
     google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> PostQueryJobInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const string &query,
-        const string &location = "",
-        const bool &dry_run = false,
-        const vector<Value> &query_parameters = {},
-        const bool &optional_job_creation = false);
+        const string &location,
+        const bool &dry_run,
+        const vector<Value> &query_parameters,
+        const bool &optional_job_creation,
+        const int timeout_ms);
 
     google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> GetQueryResultsInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const google::cloud::bigquery::v2::JobReference &job_ref,
-        const string &page_token = "");
+        const string &page_token,
+        const int timeout_ms);
     google::cloud::bigquery::v2::QueryResponse WaitForQueryCompletion(
-        google::cloud::bigquery::v2::QueryResponse response);
+        google::cloud::bigquery::v2::QueryResponse response,
+        const std::chrono::steady_clock::time_point &deadline);
+    google::cloud::bigquery::v2::GetQueryResultsResponse GetQueryResultsUntilDeadline(
+        const google::cloud::bigquery::v2::JobReference &job_ref,
+        const std::chrono::steady_clock::time_point &deadline);
     void MergeQueryResultsResponse(google::cloud::bigquery::v2::QueryResponse &query_response,
                                    const google::cloud::bigquery::v2::GetQueryResultsResponse &results_response);
     void ThrowOnQueryJobStatusError(const google::cloud::bigquery::v2::JobStatus &status);

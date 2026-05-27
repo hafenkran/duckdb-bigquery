@@ -123,7 +123,7 @@ static void LoadInternal(ExtensionLoader &loader) {
                               Value(bigquery::BigquerySettings::DefaultLocation()),
                               bigquery::BigquerySettings::SetDefaultLocation);
     config.AddExtensionOption("bq_query_timeout_ms",
-                              "Maximum wait time for each BigQuery query REST request in milliseconds",
+                              "Maximum time to wait for BigQuery query completion in milliseconds",
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::QueryTimeoutMs()),
                               bigquery::BigquerySettings::SetQueryTimeoutMs);
