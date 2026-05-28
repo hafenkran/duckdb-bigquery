@@ -122,11 +122,12 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::VARCHAR,
                               Value(bigquery::BigquerySettings::DefaultLocation()),
                               bigquery::BigquerySettings::SetDefaultLocation);
-    config.AddExtensionOption("bq_query_timeout_ms",
-                              "Maximum time to wait for BigQuery query completion in milliseconds",
-                              LogicalType::BIGINT,
-                              Value(bigquery::BigquerySettings::QueryTimeoutMs()),
-                              bigquery::BigquerySettings::SetQueryTimeoutMs);
+    config.AddExtensionOption(
+        "bq_query_timeout_ms",
+        "Maximum time to wait for BigQuery query completion in milliseconds; 0 waits until completion",
+        LogicalType::BIGINT,
+        Value(bigquery::BigquerySettings::QueryTimeoutMs()),
+        bigquery::BigquerySettings::SetQueryTimeoutMs);
     config.AddExtensionOption("bq_auth_timeout_s",
                               "Timeout for BigQuery authentication token fetches in seconds",
                               LogicalType::BIGINT,

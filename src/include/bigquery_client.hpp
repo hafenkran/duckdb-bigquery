@@ -156,10 +156,10 @@ private:
         const int timeout_ms);
     google::cloud::bigquery::v2::QueryResponse WaitForQueryCompletion(
         google::cloud::bigquery::v2::QueryResponse response,
-        const std::chrono::steady_clock::time_point &deadline);
-    google::cloud::bigquery::v2::GetQueryResultsResponse GetQueryResultsUntilDeadline(
+        const std::optional<std::chrono::steady_clock::time_point> &wait_until);
+    google::cloud::bigquery::v2::GetQueryResultsResponse GetQueryResultsForCompletion(
         const google::cloud::bigquery::v2::JobReference &job_ref,
-        const std::chrono::steady_clock::time_point &deadline);
+        const std::optional<std::chrono::steady_clock::time_point> &wait_until);
     void MergeQueryResultsResponse(google::cloud::bigquery::v2::QueryResponse &query_response,
                                    const google::cloud::bigquery::v2::GetQueryResultsResponse &results_response);
     void ThrowOnQueryJobStatusError(const google::cloud::bigquery::v2::JobStatus &status);
@@ -186,8 +186,8 @@ private:
         const std::map<string, string> &labels);
     google::cloud::bigquery::v2::Job WaitForJobCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
                                                           const std::optional<int> &timeout_ms = std::nullopt);
-    google::cloud::bigquery::v2::Job GetLoadJobUntilDeadline(const google::cloud::bigquery::v2::JobReference &job_ref,
-                                                             const std::chrono::steady_clock::time_point &deadline);
+    google::cloud::bigquery::v2::Job GetLoadJobForCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
+                                                             const std::chrono::steady_clock::time_point &wait_until);
     void ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status, const string &operation_name);
 
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,

@@ -59,7 +59,7 @@ statement ok
 SET bq_query_timeout_ms = 0;
 
 query I
-SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view', timeout_ms := 90000);
+SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view');
 ----
 14
 
@@ -67,7 +67,12 @@ statement ok
 SET bq_query_timeout_ms = 90000;
 
 query I
-SELECT name FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view ORDER BY name ASC LIMIT 1');
+SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view', timeout_ms := 0);
+----
+14
+
+query I
+SELECT name FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view ORDER BY name ASC LIMIT 1', timeout_ms := 90000);
 ----
 Amsterdam
 

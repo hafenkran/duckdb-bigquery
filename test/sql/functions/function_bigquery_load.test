@@ -95,7 +95,8 @@ CALL bigquery_load(
 	'bq',
 	'${BQ_TEST_DATASET}.load_file_table',
 	source_table := 'local_load_source',
-	location='europe-west3'
+	location='europe-west3',
+	timeout_ms := 0
 );
 
 sleep 5 seconds

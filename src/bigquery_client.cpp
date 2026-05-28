@@ -297,8 +297,8 @@ static idx_t CastDmlAffectedRows(int64_t affected_rows, BigqueryDmlStatementType
     return static_cast<idx_t>(affected_rows);
 }
 
-static int RemainingQueryTimeoutMs(const std::chrono::steady_clock::time_point &deadline) {
-    auto remaining = deadline - std::chrono::steady_clock::now();
+static int RemainingWaitTimeMs(const std::chrono::steady_clock::time_point &wait_until) {
+    auto remaining = wait_until - std::chrono::steady_clock::now();
     if (remaining <= std::chrono::steady_clock::duration::zero()) {
         return 0;
     }
@@ -307,6 +307,12 @@ static int RemainingQueryTimeoutMs(const std::chrono::steady_clock::time_point &
         return 1;
     }
     return static_cast<int>(std::min<int64_t>(remaining_ms, std::numeric_limits<int>::max()));
+}
+
+static constexpr int QUERY_REQUEST_WAIT_TIMEOUT_MS = 120000;
+
+static int QueryRequestTimeoutMs(const int timeout_ms) {
+    return timeout_ms > 0 ? timeout_ms : QUERY_REQUEST_WAIT_TIMEOUT_MS;
 }
 
 static string GetLoadStagingDirectory(FileSystem &fs) {
@@ -1172,8 +1178,11 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
     CheckAuthentication();
 
     const auto timeout_ms = timeout_override_ms.value_or(BigquerySettings::QueryTimeoutMs());
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    auto request_timeout_ms = timeout_ms;
+    std::optional<std::chrono::steady_clock::time_point> wait_until;
+    if (timeout_ms > 0) {
+        wait_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    }
+    auto request_timeout_ms = QueryRequestTimeoutMs(timeout_ms);
 
     while (true) {
         if (context && context->IsInterrupted()) {
@@ -1193,9 +1202,11 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
             ThrowOnErrorStatus(response.status());
 
             if (CheckSSLError(response.status())) {
-                request_timeout_ms = RemainingQueryTimeoutMs(deadline);
-                if (request_timeout_ms == 0) {
-                    throw BinderException("Query execution exceeded the timeout.");
+                if (wait_until.has_value()) {
+                    request_timeout_ms = RemainingWaitTimeMs(wait_until.value());
+                    if (request_timeout_ms == 0) {
+                        throw BinderException("Query execution exceeded the timeout.");
+                    }
                 }
                 continue;
             }
@@ -1212,7 +1223,7 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
 
         auto query_response = *response;
         if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
-            return WaitForQueryCompletion(std::move(query_response), deadline);
+            return WaitForQueryCompletion(std::move(query_response), wait_until);
         }
 
         return query_response;
@@ -1247,7 +1258,8 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response = GetQueryResultsInternal(client, job_ref, page_token, BigquerySettings::QueryTimeoutMs());
+    auto response =
+        GetQueryResultsInternal(client, job_ref, page_token, QueryRequestTimeoutMs(BigquerySettings::QueryTimeoutMs()));
     if (!response) {
         ThrowOnErrorStatus(response.status());
         if (CheckSSLError(response.status())) {
@@ -1260,7 +1272,7 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
 
 google::cloud::bigquery::v2::QueryResponse BigqueryClient::WaitForQueryCompletion(
     google::cloud::bigquery::v2::QueryResponse response,
-    const std::chrono::steady_clock::time_point &deadline) {
+    const std::optional<std::chrono::steady_clock::time_point> &wait_until) {
     if (!response.has_job_reference() || response.job_reference().job_id().empty()) {
         throw BinderException("BigQuery query did not complete and did not return a valid job reference.");
     }
@@ -1271,7 +1283,7 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::WaitForQueryCompletio
             throw InterruptException();
         }
 
-        auto results_response = GetQueryResultsUntilDeadline(job_ref, deadline);
+        auto results_response = GetQueryResultsForCompletion(job_ref, wait_until);
         if (results_response.has_job_complete() && results_response.job_complete().value()) {
             MergeQueryResultsResponse(response, results_response);
             auto job = GetJobByReference(job_ref);
@@ -1281,25 +1293,32 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::WaitForQueryCompletio
             return response;
         }
 
-        auto remaining_ms = RemainingQueryTimeoutMs(deadline);
-        if (remaining_ms == 0) {
-            throw BinderException("Query execution exceeded the timeout. Job ID: " + job_ref.job_id());
+        if (wait_until.has_value()) {
+            auto remaining_ms = RemainingWaitTimeMs(wait_until.value());
+            if (remaining_ms == 0) {
+                throw BinderException("Query execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::min(remaining_ms, 250)));
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(std::min(remaining_ms, 250)));
     }
 }
 
-google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryResultsUntilDeadline(
+google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryResultsForCompletion(
     const google::cloud::bigquery::v2::JobReference &job_ref,
-    const std::chrono::steady_clock::time_point &deadline) {
+    const std::optional<std::chrono::steady_clock::time_point> &wait_until) {
     while (true) {
         if (context && context->IsInterrupted()) {
             throw InterruptException();
         }
 
-        auto timeout_ms = RemainingQueryTimeoutMs(deadline);
-        if (timeout_ms == 0) {
-            throw BinderException("Query execution exceeded the timeout. Job ID: " + job_ref.job_id());
+        auto timeout_ms = QUERY_REQUEST_WAIT_TIMEOUT_MS;
+        if (wait_until.has_value()) {
+            timeout_ms = RemainingWaitTimeMs(wait_until.value());
+            if (timeout_ms == 0) {
+                throw BinderException("Query execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
         }
 
         auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
@@ -1574,17 +1593,17 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
         throw BinderException("Load job reference did not contain a job ID");
     }
 
-    if (timeout_ms.has_value()) {
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms.value());
+    if (timeout_ms.has_value() && timeout_ms.value() > 0) {
+        const auto wait_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms.value());
         while (true) {
             if (context && context->IsInterrupted()) {
                 throw InterruptException();
             }
-            if (RemainingQueryTimeoutMs(deadline) == 0) {
+            if (RemainingWaitTimeMs(wait_until) == 0) {
                 throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
             }
 
-            auto job = GetLoadJobUntilDeadline(job_ref, deadline);
+            auto job = GetLoadJobForCompletion(job_ref, wait_until);
             if (!job.has_status() || job.status().state() == "DONE") {
                 if (job.has_status()) {
                     ThrowOnJobStatusError(job.status(), "Load job");
@@ -1592,7 +1611,7 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
                 return job;
             }
 
-            auto remaining_ms = RemainingQueryTimeoutMs(deadline);
+            auto remaining_ms = RemainingWaitTimeMs(wait_until);
             if (remaining_ms == 0) {
                 throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
             }
@@ -1615,14 +1634,14 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
     }
 }
 
-google::cloud::bigquery::v2::Job BigqueryClient::GetLoadJobUntilDeadline(
+google::cloud::bigquery::v2::Job BigqueryClient::GetLoadJobForCompletion(
     const google::cloud::bigquery::v2::JobReference &job_ref,
-    const std::chrono::steady_clock::time_point &deadline) {
+    const std::chrono::steady_clock::time_point &wait_until) {
     while (true) {
         if (context && context->IsInterrupted()) {
             throw InterruptException();
         }
-        if (RemainingQueryTimeoutMs(deadline) == 0) {
+        if (RemainingWaitTimeMs(wait_until) == 0) {
             throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
         }
 
