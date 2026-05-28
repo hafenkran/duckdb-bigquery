@@ -798,6 +798,53 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
     return WaitForJobCompletion(response->job_reference(), timeout_ms);
 }
 
+google::cloud::bigquery::v2::Job BigqueryClient::ExecuteQueryToTable(const string &query,
+                                                                    const BigqueryTableRef &destination_table,
+                                                                    const string &write_disposition,
+                                                                    const string &create_disposition,
+                                                                    const string &location,
+                                                                    const std::map<string, string> &labels,
+                                                                    const std::optional<int> &timeout_ms) {
+    if (query.empty()) {
+        throw BinderException("ExecuteQueryToTable requires a non-empty query");
+    }
+    if (destination_table.dataset_id.empty() || destination_table.table_id.empty()) {
+        throw BinderException("ExecuteQueryToTable requires a destination table with a dataset and table id");
+    }
+
+    CheckAuthentication();
+
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto request = BuildQueryJobRequest(query, destination_table, write_disposition, create_disposition, location, labels);
+    auto response = client.InsertJob(request);
+    if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
+
+        if (CheckSSLError(response.status())) {
+            return ExecuteQueryToTable(query,
+                                       destination_table,
+                                       write_disposition,
+                                       create_disposition,
+                                       location,
+                                       labels,
+                                       timeout_ms);
+        }
+
+        throw BinderException("Query job submission failed: " + response.status().message());
+    }
+
+    if (!response->has_job_reference()) {
+        throw BinderException("Query job submission succeeded but did not return a job reference");
+    }
+    if (response->has_status() && response->status().state() == "DONE") {
+        ThrowOnJobStatusError(response->status(), "Query job");
+        return *response;
+    }
+    return WaitForJobCompletion(response->job_reference(), timeout_ms);
+}
+
 google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &table_name,
                                                                  const BigqueryTableRef &destination_table,
                                                                  const string &write_disposition,
@@ -1513,6 +1560,45 @@ google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildLoadJobReques
     load_config->set_create_disposition(create_disposition);
     load_config->set_write_disposition(write_disposition);
     auto *destination = load_config->mutable_destination_table();
+    destination->set_project_id(destination_table.project_id);
+    destination->set_dataset_id(destination_table.dataset_id);
+    destination->set_table_id(destination_table.table_id);
+
+    google::cloud::bigquery::v2::InsertJobRequest request;
+    request.set_project_id(config.BillingProject());
+    *request.mutable_job() = job;
+    return request;
+}
+
+google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildQueryJobRequest(
+    const string &query,
+    const BigqueryTableRef &destination_table,
+    const string &write_disposition,
+    const string &create_disposition,
+    const string &location,
+    const std::map<string, string> &labels) {
+    google::cloud::bigquery::v2::Job job;
+    auto *job_reference = job.mutable_job_reference();
+    job_reference->set_project_id(config.BillingProject());
+    job_reference->set_job_id(GenerateJobId("query"));
+    if (!location.empty()) {
+        job_reference->mutable_location()->set_value(location);
+    }
+
+    auto *job_config = job.mutable_configuration();
+    if (!labels.empty()) {
+        auto *job_labels = job_config->mutable_labels();
+        for (const auto &label : labels) {
+            (*job_labels)[label.first] = label.second;
+        }
+    }
+
+    auto *query_config = job_config->mutable_query();
+    query_config->set_query(query);
+    query_config->mutable_use_legacy_sql()->set_value(false);
+    query_config->set_create_disposition(create_disposition);
+    query_config->set_write_disposition(write_disposition);
+    auto *destination = query_config->mutable_destination_table();
     destination->set_project_id(destination_table.project_id);
     destination->set_dataset_id(destination_table.dataset_id);
     destination->set_table_id(destination_table.table_id);
