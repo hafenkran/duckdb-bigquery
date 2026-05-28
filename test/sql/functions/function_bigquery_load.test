@@ -34,6 +34,26 @@ CALL bigquery_load(
 ----
 Binder Error: Null label values are not allowed in parameter 'labels'
 
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/multiple_row_groups.parquet',
+	timeout_ms := -1
+);
+----
+Invalid Input Error: Timeout must be non-negative
+
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/multiple_row_groups.parquet',
+	timeout_ms := 2147483648
+);
+----
+Invalid Input Error: Timeout must fit in a 32-bit integer
+
 statement ok
 CREATE OR REPLACE TEMP TABLE load_file_job AS
 SELECT *
@@ -42,6 +62,7 @@ FROM bigquery_load(
 	'${BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	location := 'europe-west3',
+	timeout_ms := 90000,
 	labels := MAP {'duckdb_label_env': 'test', 'duckdb_load_label': 'load_job'}
 );
 
@@ -74,7 +95,8 @@ CALL bigquery_load(
 	'bq',
 	'${BQ_TEST_DATASET}.load_file_table',
 	source_table := 'local_load_source',
-	location='europe-west3'
+	location='europe-west3',
+	timeout_ms := 0
 );
 
 sleep 5 seconds

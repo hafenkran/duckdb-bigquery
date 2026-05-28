@@ -52,6 +52,7 @@
 #include <chrono>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <optional>
 
 
@@ -294,6 +295,24 @@ static idx_t CastDmlAffectedRows(int64_t affected_rows, BigqueryDmlStatementType
                                 DmlStatementName(statement_type));
     }
     return static_cast<idx_t>(affected_rows);
+}
+
+static int RemainingWaitTimeMs(const std::chrono::steady_clock::time_point &wait_until) {
+    auto remaining = wait_until - std::chrono::steady_clock::now();
+    if (remaining <= std::chrono::steady_clock::duration::zero()) {
+        return 0;
+    }
+    auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count();
+    if (remaining_ms <= 0) {
+        return 1;
+    }
+    return static_cast<int>(std::min<int64_t>(remaining_ms, std::numeric_limits<int>::max()));
+}
+
+static constexpr int QUERY_REQUEST_WAIT_TIMEOUT_MS = 120000;
+
+static int QueryRequestTimeoutMs(const int timeout_ms) {
+    return timeout_ms > 0 ? timeout_ms : QUERY_REQUEST_WAIT_TIMEOUT_MS;
 }
 
 static string GetLoadStagingDirectory(FileSystem &fs) {
@@ -682,7 +701,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
                                                                  const string &location,
-                                                                 const std::map<string, string> &labels) {
+                                                                 const std::map<string, string> &labels,
+                                                                 const std::optional<int> &timeout_ms) {
     CheckAuthentication();
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
@@ -704,7 +724,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
                                    write_disposition,
                                    create_disposition,
                                    location,
-                                   labels);
+                                   labels,
+                                   timeout_ms);
         }
 
         throw BinderException("Load job submission failed: " + response.status().message());
@@ -713,7 +734,11 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
     if (!response->has_job_reference()) {
         throw BinderException("Load job submission succeeded but did not return a job reference");
     }
-    return WaitForJobCompletion(response->job_reference());
+    if (response->has_status() && response->status().state() == "DONE") {
+        ThrowOnJobStatusError(response->status(), "Load job");
+        return *response;
+    }
+    return WaitForJobCompletion(response->job_reference(), timeout_ms);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryTableRef &destination_table,
@@ -721,7 +746,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
                                                                  const string &location,
-                                                                 const std::map<string, string> &labels) {
+                                                                 const std::map<string, string> &labels,
+                                                                 const std::optional<int> &timeout_ms) {
     if (source_uris.empty()) {
         throw BinderException("At least one source URI must be provided for a BigQuery load job");
     }
@@ -755,7 +781,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
                                    write_disposition,
                                    create_disposition,
                                    location,
-                                   labels);
+                                   labels,
+                                   timeout_ms);
         }
 
         throw BinderException("Load job submission failed: " + response.status().message());
@@ -764,7 +791,11 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
     if (!response->has_job_reference()) {
         throw BinderException("Load job submission succeeded but did not return a job reference");
     }
-    return WaitForJobCompletion(response->job_reference());
+    if (response->has_status() && response->status().state() == "DONE") {
+        ThrowOnJobStatusError(response->status(), "Load job");
+        return *response;
+    }
+    return WaitForJobCompletion(response->job_reference(), timeout_ms);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &table_name,
@@ -772,7 +803,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
                                                                  const string &write_disposition,
                                                                  const string &create_disposition,
                                                                  const string &location,
-                                                                 const std::map<string, string> &labels) {
+                                                                 const std::map<string, string> &labels,
+                                                                 const std::optional<int> &timeout_ms) {
     if (!context) {
         throw InternalException("LoadDuckDBTable requires an active DuckDB client context");
     }
@@ -798,8 +830,13 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
             result->ThrowError("Failed to materialize DuckDB source table for bigquery_load: ");
         }
 
-        auto job =
-            LoadParquetFile(destination_table, temp_file_path, write_disposition, create_disposition, location, labels);
+        auto job = LoadParquetFile(destination_table,
+                                   temp_file_path,
+                                   write_disposition,
+                                   create_disposition,
+                                   location,
+                                   labels,
+                                   timeout_ms);
         fs.TryRemoveFile(temp_file_path);
         return job;
     } catch (...) {
@@ -1061,8 +1098,9 @@ bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
 void BigqueryClient::GetTableInfoForQuery(const string &query,
                                           const vector<Value> &query_parameters,
                                           ColumnList &res_columns,
-                                          vector<unique_ptr<Constraint>> &res_constraints) {
-    auto query_response = ExecuteQuery(query, "", true, query_parameters);
+                                          vector<unique_ptr<Constraint>> &res_constraints,
+                                          const std::optional<int> &timeout_ms) {
+    auto query_response = ExecuteQuery(query, "", true, query_parameters, false, timeout_ms);
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
@@ -1135,40 +1173,61 @@ google::cloud::bigquery::v2::QueryResponse BigqueryClient::ExecuteQuery(const st
                                                                         const string &location,
                                                                         const bool &dry_run,
                                                                         const vector<Value> &query_parameters,
-                                                                        const bool &optional_job_creation) {
+                                                                        const bool &optional_job_creation,
+                                                                        const std::optional<int> &timeout_override_ms) {
     CheckAuthentication();
 
-    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
-
-    auto response = PostQueryJobInternal(client, query, location, dry_run, query_parameters, optional_job_creation);
-    if (!response.ok()) {
-        ThrowOnErrorStatus(response.status());
-
-        if (CheckSSLError(response.status())) {
-            return ExecuteQuery(query, location, dry_run, query_parameters, optional_job_creation);
-        }
-
-        const auto &message = response.status().message();
-        if (message.find("Array cannot have a null element") != string::npos) {
-            throw BinderException("Query execution failed: BigQuery does not allow query results with ARRAY values "
-                                  "that contain NULL elements. Original error: " +
-                                  message);
-        }
-
-        throw BinderException("Query execution failed: " + message);
+    const auto timeout_ms = timeout_override_ms.value_or(BigquerySettings::QueryTimeoutMs());
+    std::optional<std::chrono::steady_clock::time_point> wait_until;
+    if (timeout_ms > 0) {
+        wait_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     }
+    auto request_timeout_ms = QueryRequestTimeoutMs(timeout_ms);
 
-    auto complete = response->job_complete().value();
-    if (!complete) {
-        if (response->has_job_reference()) {
-            auto job_id = response->job_reference().job_id();
-            throw BinderException("Query execution exceeded the timeout. Job ID: " + job_id);
+    while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
         }
-        throw BinderException("Query execution exceeded the timeout.");
-    }
 
-    return *response;
+        auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+            google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+        auto response = PostQueryJobInternal(client,
+                                             query,
+                                             location,
+                                             dry_run,
+                                             query_parameters,
+                                             optional_job_creation,
+                                             request_timeout_ms);
+        if (!response.ok()) {
+            ThrowOnErrorStatus(response.status());
+
+            if (CheckSSLError(response.status())) {
+                if (wait_until.has_value()) {
+                    request_timeout_ms = RemainingWaitTimeMs(wait_until.value());
+                    if (request_timeout_ms == 0) {
+                        throw BinderException("Query execution exceeded the timeout.");
+                    }
+                }
+                continue;
+            }
+
+            const auto &message = response.status().message();
+            if (message.find("Array cannot have a null element") != string::npos) {
+                throw BinderException("Query execution failed: BigQuery does not allow query results with ARRAY "
+                                      "values that contain NULL elements. Original error: " +
+                                      message);
+            }
+
+            throw BinderException("Query execution failed: " + message);
+        }
+
+        auto query_response = *response;
+        if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
+            return WaitForQueryCompletion(std::move(query_response), wait_until);
+        }
+
+        return query_response;
+    }
 }
 
 idx_t BigqueryClient::ExecuteDmlQuery(const string &query,
@@ -1199,7 +1258,8 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response = GetQueryResultsInternal(client, job_ref, page_token);
+    auto response =
+        GetQueryResultsInternal(client, job_ref, page_token, QueryRequestTimeoutMs(BigquerySettings::QueryTimeoutMs()));
     if (!response) {
         ThrowOnErrorStatus(response.status());
         if (CheckSSLError(response.status())) {
@@ -1208,6 +1268,140 @@ google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryRes
         throw BinderException("GetQueryResults failed: " + response.status().message());
     }
     return *response;
+}
+
+google::cloud::bigquery::v2::QueryResponse BigqueryClient::WaitForQueryCompletion(
+    google::cloud::bigquery::v2::QueryResponse response,
+    const std::optional<std::chrono::steady_clock::time_point> &wait_until) {
+    if (!response.has_job_reference() || response.job_reference().job_id().empty()) {
+        throw BinderException("BigQuery query did not complete and did not return a valid job reference.");
+    }
+
+    const auto job_ref = response.job_reference();
+    while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
+        }
+
+        auto results_response = GetQueryResultsForCompletion(job_ref, wait_until);
+        if (results_response.has_job_complete() && results_response.job_complete().value()) {
+            MergeQueryResultsResponse(response, results_response);
+            auto job = GetJobByReference(job_ref);
+            if (job.has_status()) {
+                ThrowOnQueryJobStatusError(job.status());
+            }
+            return response;
+        }
+
+        if (wait_until.has_value()) {
+            auto remaining_ms = RemainingWaitTimeMs(wait_until.value());
+            if (remaining_ms == 0) {
+                throw BinderException("Query execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::min(remaining_ms, 250)));
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+    }
+}
+
+google::cloud::bigquery::v2::GetQueryResultsResponse BigqueryClient::GetQueryResultsForCompletion(
+    const google::cloud::bigquery::v2::JobReference &job_ref,
+    const std::optional<std::chrono::steady_clock::time_point> &wait_until) {
+    while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
+        }
+
+        auto timeout_ms = QUERY_REQUEST_WAIT_TIMEOUT_MS;
+        if (wait_until.has_value()) {
+            timeout_ms = RemainingWaitTimeMs(wait_until.value());
+            if (timeout_ms == 0) {
+                throw BinderException("Query execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
+        }
+
+        auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+            google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+        auto response = GetQueryResultsInternal(client, job_ref, "", timeout_ms);
+        if (response.ok()) {
+            return *response;
+        }
+
+        ThrowOnErrorStatus(response.status());
+        if (!CheckSSLError(response.status())) {
+            throw BinderException("GetQueryResults failed: " + response.status().message());
+        }
+    }
+}
+
+void BigqueryClient::MergeQueryResultsResponse(
+    google::cloud::bigquery::v2::QueryResponse &query_response,
+    const google::cloud::bigquery::v2::GetQueryResultsResponse &results_response) {
+    if (results_response.has_schema()) {
+        *query_response.mutable_schema() = results_response.schema();
+    } else {
+        query_response.clear_schema();
+    }
+    if (results_response.has_job_reference()) {
+        *query_response.mutable_job_reference() = results_response.job_reference();
+    }
+    query_response.clear_rows();
+    query_response.mutable_rows()->CopyFrom(results_response.rows());
+    query_response.set_page_token(results_response.page_token());
+    if (results_response.has_total_rows()) {
+        *query_response.mutable_total_rows() = results_response.total_rows();
+    } else {
+        query_response.clear_total_rows();
+    }
+    if (results_response.has_total_bytes_processed()) {
+        *query_response.mutable_total_bytes_processed() = results_response.total_bytes_processed();
+    } else {
+        query_response.clear_total_bytes_processed();
+    }
+    if (results_response.has_job_complete()) {
+        *query_response.mutable_job_complete() = results_response.job_complete();
+    } else {
+        query_response.clear_job_complete();
+    }
+    if (results_response.has_cache_hit()) {
+        *query_response.mutable_cache_hit() = results_response.cache_hit();
+    } else {
+        query_response.clear_cache_hit();
+    }
+    if (results_response.has_num_dml_affected_rows()) {
+        *query_response.mutable_num_dml_affected_rows() = results_response.num_dml_affected_rows();
+    } else {
+        query_response.clear_num_dml_affected_rows();
+    }
+    query_response.clear_errors();
+    query_response.mutable_errors()->CopyFrom(results_response.errors());
+}
+
+void BigqueryClient::ThrowOnQueryJobStatusError(const google::cloud::bigquery::v2::JobStatus &status) {
+    if (!status.has_error_result()) {
+        return;
+    }
+
+    const auto &error = status.error_result();
+    if (error.reason() == "accessDenied") {
+        throw PermissionException(
+            "BigQuery query permission denied.\n"
+            "\n"
+            "The query job was created, but BigQuery rejected access while executing it.\n"
+            "\n"
+            "Check query-job permission on the project (`bigquery.jobs.create`) and read access on the "
+            "referenced tables or views (`bigquery.tables.getData`).\n"
+            "\n"
+            "Error details: %s",
+            error.message());
+    }
+    if (error.message().find("Array cannot have a null element") != string::npos) {
+        throw BinderException("Query execution failed: BigQuery does not allow query results with ARRAY values "
+                              "that contain NULL elements. Original error: " +
+                              error.message());
+    }
+    ThrowOnJobStatusError(status, "Query execution");
 }
 
 google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::GetJobInternal(
@@ -1245,7 +1439,8 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     const string &location,
     const bool &dry_run,
     const vector<Value> &query_parameters,
-    const bool &optional_job_creation) {
+    const bool &optional_job_creation,
+    const int timeout_ms) {
 
     if (!dry_run && BigquerySettings::DebugQueryPrint()) {
         std::cout << "query: " << query << std::endl;
@@ -1271,7 +1466,6 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
         query_request.set_job_creation_mode(google::cloud::bigquery::v2::QueryRequest::JOB_CREATION_OPTIONAL);
     }
 
-    int timeout_ms = BigquerySettings::QueryTimeoutMs();
     query_request.mutable_timeout_ms()->set_value(timeout_ms);
 
     if (!location.empty()) {
@@ -1372,11 +1566,13 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
 google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> BigqueryClient::GetQueryResultsInternal(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const google::cloud::bigquery::v2::JobReference &job_ref,
-    const string &page_token) {
+    const string &page_token,
+    const int timeout_ms) {
 
     auto get_results_request = google::cloud::bigquery::v2::GetQueryResultsRequest();
     get_results_request.set_project_id(job_ref.project_id());
     get_results_request.set_job_id(job_ref.job_id());
+    get_results_request.mutable_timeout_ms()->set_value(timeout_ms);
     // get_results_request.mutable_max_results()->set_value(3);
 
     if (job_ref.has_location()) {
@@ -1387,21 +1583,46 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
         get_results_request.set_page_token(page_token);
     }
 
-    auto response = job_client.GetQueryResults(get_results_request);
-    if (!response.ok()) {
-        ThrowOnErrorStatus(response.status());
-        throw BinderException(response.status().message());
-    }
-    return response;
+    return job_client.GetQueryResults(get_results_request);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
-    const google::cloud::bigquery::v2::JobReference &job_ref) {
+    const google::cloud::bigquery::v2::JobReference &job_ref,
+    const std::optional<int> &timeout_ms) {
     if (job_ref.job_id().empty()) {
         throw BinderException("Load job reference did not contain a job ID");
     }
 
+    if (timeout_ms.has_value() && timeout_ms.value() > 0) {
+        const auto wait_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms.value());
+        while (true) {
+            if (context && context->IsInterrupted()) {
+                throw InterruptException();
+            }
+            if (RemainingWaitTimeMs(wait_until) == 0) {
+                throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
+
+            auto job = GetLoadJobForCompletion(job_ref, wait_until);
+            if (!job.has_status() || job.status().state() == "DONE") {
+                if (job.has_status()) {
+                    ThrowOnJobStatusError(job.status(), "Load job");
+                }
+                return job;
+            }
+
+            auto remaining_ms = RemainingWaitTimeMs(wait_until);
+            if (remaining_ms == 0) {
+                throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::min(remaining_ms, 250)));
+        }
+    }
+
     while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
+        }
         auto job = GetJobByReference(job_ref);
         if (!job.has_status() || job.status().state() == "DONE") {
             if (job.has_status()) {
@@ -1410,6 +1631,39 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
             return job;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::GetLoadJobForCompletion(
+    const google::cloud::bigquery::v2::JobReference &job_ref,
+    const std::chrono::steady_clock::time_point &wait_until) {
+    while (true) {
+        if (context && context->IsInterrupted()) {
+            throw InterruptException();
+        }
+        if (RemainingWaitTimeMs(wait_until) == 0) {
+            throw BinderException("Load job execution exceeded the timeout. Job ID: " + job_ref.job_id());
+        }
+
+        CheckAuthentication();
+        auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+            google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+        auto request = google::cloud::bigquery::v2::GetJobRequest();
+        request.set_project_id(job_ref.project_id());
+        request.set_job_id(job_ref.job_id());
+        if (job_ref.has_location()) {
+            request.set_location(job_ref.location().value());
+        }
+
+        auto response = client.GetJob(request);
+        if (response.ok()) {
+            return *response;
+        }
+
+        ThrowOnErrorStatus(response.status());
+        if (!CheckSSLError(response.status())) {
+            throw BinderException(response.status().message());
+        }
     }
 }
 

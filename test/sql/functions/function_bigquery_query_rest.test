@@ -17,7 +17,7 @@ SELECT count(*) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 1 AS x UNION A
 
 # Simple value
 query I
-SELECT x FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 42 AS x', use_rest_api=true);
+SELECT x FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 42 AS x', use_rest_api=true, timeout_ms := 0);
 ----
 42
 

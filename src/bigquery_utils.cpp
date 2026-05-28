@@ -1,5 +1,6 @@
 #include <arrow/api.h>
 #include <iostream>
+#include <limits>
 #include <regex>
 
 #include <google/protobuf/descriptor.h>
@@ -1079,6 +1080,7 @@ BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
     const named_parameter_map_t &named_parameters) {
 
     BigQueryCommonParameters params;
+    params.timeout_ms = BigqueryUtils::ParseTimeoutMsParameter(named_parameters);
     for (auto &kv : named_parameters) {
         auto loption = StringUtil::Lower(kv.first);
 
@@ -1098,6 +1100,22 @@ BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
         // otherwise, ignore
     }
     return params;
+}
+
+std::optional<int> BigqueryUtils::ParseTimeoutMsParameter(const named_parameter_map_t &named_parameters) {
+    auto entry = named_parameters.find("timeout_ms");
+    if (entry == named_parameters.end() || entry->second.IsNull()) {
+        return std::nullopt;
+    }
+
+    auto value = entry->second.GetValue<int64_t>();
+    if (value < 0) {
+        throw InvalidInputException("Timeout must be non-negative");
+    }
+    if (value > std::numeric_limits<int>::max()) {
+        throw InvalidInputException("Timeout must fit in a 32-bit integer");
+    }
+    return static_cast<int>(value);
 }
 
 

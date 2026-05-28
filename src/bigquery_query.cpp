@@ -44,6 +44,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         auto result = make_uniq<BigqueryQueryDryRunBindData>();
         result->query = query_string;
         result->query_parameters = query_parameters;
+        result->timeout_ms = params.timeout_ms;
 
         if (database) {
             auto &catalog = database->GetCatalog();
@@ -76,6 +77,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         auto bind_data = make_uniq<BigqueryQueryRestBindData>();
         bind_data->query = query_string;
         bind_data->query_parameters = query_parameters;
+        bind_data->timeout_ms = params.timeout_ms;
 
         if (database) {
             auto &catalog = database->GetCatalog();
@@ -104,7 +106,11 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         ColumnList columns;
         vector<unique_ptr<Constraint>> constraints;
-        bind_data->bq_client->GetTableInfoForQuery(query_string, bind_data->query_parameters, columns, constraints);
+        bind_data->bq_client->GetTableInfoForQuery(query_string,
+                                                   bind_data->query_parameters,
+                                                   columns,
+                                                   constraints,
+                                                   bind_data->timeout_ms);
 
         for (auto &column : columns.Logical()) {
             names.push_back(column.GetName());
@@ -122,6 +128,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     auto bind_data = make_uniq<BigqueryScanBindData>();
     bind_data->query = query_string;
     bind_data->query_parameters = query_parameters;
+    bind_data->query_timeout_ms = params.timeout_ms;
     bind_data->estimated_row_count = 1;
 
     if (database) {
@@ -151,7 +158,11 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
     ColumnList columns;
     vector<unique_ptr<Constraint>> constraints;
-    bind_data->bq_client->GetTableInfoForQuery(query_string, bind_data->query_parameters, columns, constraints);
+    bind_data->bq_client->GetTableInfoForQuery(query_string,
+                                               bind_data->query_parameters,
+                                               columns,
+                                               constraints,
+                                               bind_data->query_timeout_ms);
 
     auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
     auto status = arrow::ExportSchema(*std::move(arrow_schema_ptr), &bind_data->schema_root.arrow_schema);
@@ -210,10 +221,12 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
                                                                 "",
                                                                 false,
                                                                 bind_data.query_parameters,
-                                                                /*optional_job_creation=*/true);
+                                                                /*optional_job_creation=*/true,
+                                                                bind_data.timeout_ms);
 
         if (!query_response.has_job_complete() || !query_response.job_complete().value()) {
-            throw BinderException("Query did not complete within the timeout.");
+            throw InternalException(
+                "BigQuery query execution returned an incomplete response after completion polling.");
         }
 
         auto gstate = make_uniq<BigqueryQueryInlineGlobalState>();
@@ -239,7 +252,8 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
                                                             "",
                                                             false,
                                                             bind_data.query_parameters,
-                                                            /*optional_job_creation=*/false);
+                                                            /*optional_job_creation=*/false,
+                                                            bind_data.query_timeout_ms);
     auto job = bind_data.bq_client->GetJobByReference(query_response.job_reference());
 
     if (job.status().has_error_result()) {
@@ -291,7 +305,12 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
             return;
         }
 
-        auto response = bind_data.bq_client->ExecuteQuery(bind_data.query, "", true, bind_data.query_parameters);
+        auto response = bind_data.bq_client->ExecuteQuery(bind_data.query,
+                                                          "",
+                                                          true,
+                                                          bind_data.query_parameters,
+                                                          false,
+                                                          bind_data.timeout_ms);
         bind_data.finished = true;
 
         output.SetValue(0, 0, Value::BIGINT(response.total_bytes_processed().value()));
@@ -458,6 +477,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
     named_parameters["use_rest_api"] = LogicalType::BOOLEAN;
     named_parameters["dry_run"] = LogicalType::BOOLEAN;
+    named_parameters["timeout_ms"] = LogicalType::BIGINT;
     varargs = LogicalType::ANY;
 }
 
