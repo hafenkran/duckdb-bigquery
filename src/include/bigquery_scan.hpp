@@ -67,6 +67,7 @@ struct BigqueryScanBindData : public ArrowScanFunctionData {
 struct BigqueryScanGlobalState : public ArrowScanGlobalState {
     mutable mutex lock;
     atomic<idx_t> position = 0;
+    atomic<idx_t> next_batch_index = 0;
 };
 
 struct BigqueryScanLocalState : public ArrowScanLocalState {
@@ -74,6 +75,7 @@ struct BigqueryScanLocalState : public ArrowScanLocalState {
         : ArrowScanLocalState(std::move(current_chunk), context) {
     }
 
+    unique_ptr<ArrowArrayStreamWrapper> stream;
     DataChunk tmp_bq_chunk;
 };
 

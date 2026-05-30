@@ -10,6 +10,7 @@
 
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 #include "google/cloud/bigquery/storage/v1/bigquery_read_client.h"
+#include "google/cloud/bigquery/storage/v1/bigquery_read_connection.h"
 #include "google/cloud/stream_range.h"
 
 #include "bigquery_utils.hpp"
@@ -47,12 +48,11 @@ public:
 
     std::shared_ptr<arrow::Schema> GetSchema();
     int64_t GetEstimatedRowCount();
+    idx_t GetStreamCount() const;
     BigqueryTableRef GetTableRef() const;
 
     shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> GetStream(idx_t stream_idx);
-    google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> ReadRows(
-        const string &stream_name,
-        int row_offset);
+    unique_ptr<google::cloud::bigquery_storage_v1::BigQueryReadClient> CreateReadClient() const;
 
     std::shared_ptr<arrow::Schema> ReadSchema(const google::cloud::bigquery::storage::v1::ArrowSchema &schema);
     std::shared_ptr<arrow::RecordBatch> ReadBatch(const google::cloud::bigquery::storage::v1::ArrowRecordBatch &batch);
@@ -64,8 +64,10 @@ private:
     idx_t num_streams;
     google::cloud::Options options;
 
+    std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryReadConnection> read_connection;
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryReadClient> read_client;
     unique_ptr<google::cloud::bigquery::storage::v1::ReadSession> read_session;
+    vector<google::cloud::bigquery::storage::v1::ReadStream> streams;
     std::shared_ptr<arrow::Schema> arrow_schema;
 
     bool localhost_test_env;

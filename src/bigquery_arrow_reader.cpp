@@ -46,6 +46,7 @@ private:
 
 struct BigqueryStreamState {
     shared_ptr<BigqueryArrowReader> reader;
+    unique_ptr<google::cloud::bigquery_storage_v1::BigQueryReadClient> read_client;
     shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> stream;
     BigqueryStreamFactory *factory;
 
@@ -120,19 +121,20 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
 
     auto st = std::make_shared<BigqueryStreamState>();
     st->reader = reader;
+    st->read_client = reader->CreateReadClient();
     st->factory = factory;
     st->stream = bq_stream;
 
     auto iter = arrow::MakeFunctionIterator([st, modified_schema]() -> arrow::Result<BatchPtr> {
         while (true) {
             if (!st->range_open) {
-                st->range = st->reader->ReadRows(st->stream->name(), 0);
+                st->range = st->read_client->ReadRows(st->stream->name(), 0);
                 st->it = st->range.begin();
                 st->range_open = true;
             }
 
             if (st->it == st->range.end()) {
-                st->range = st->reader->ReadRows(st->stream->name(), st->rows_delivered);
+                st->range = st->read_client->ReadRows(st->stream->name(), st->rows_delivered);
                 st->it = st->range.begin();
 
                 if (st->it == st->range.end()) {
@@ -222,8 +224,8 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
     const string parent = BigqueryUtils::FormatParentString(billing_project_id);
     const string table_string = table_ref.TableString();
 
-    auto connection = google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection(options);
-    read_client = make_uniq<google::cloud::bigquery_storage_v1::BigQueryReadClient>(connection);
+    read_connection = google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection(options);
+    read_client = make_uniq<google::cloud::bigquery_storage_v1::BigQueryReadClient>(read_connection);
 
     auto session = google::cloud::bigquery::storage::v1::ReadSession();
     session.set_table(table_string);
@@ -274,16 +276,20 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
     }
 
     read_session = make_uniq<google::cloud::bigquery::storage::v1::ReadSession>(std::move(new_session.value()));
+    streams.reserve(read_session->streams_size());
+    for (int stream_idx = 0; stream_idx < read_session->streams_size(); stream_idx++) {
+        streams.push_back(read_session->streams(stream_idx));
+    }
 }
 
 shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> BigqueryArrowReader::GetStream(idx_t stream_idx) {
     if (!read_session) {
         throw BinderException("Read session is not initialized.");
     }
-    if (stream_idx >= static_cast<duckdb::idx_t>(read_session->streams_size())) {
+    if (stream_idx >= static_cast<idx_t>(streams.size())) {
         return nullptr;
     }
-    return make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>(read_session->streams(stream_idx));
+    return make_shared_ptr<google::cloud::bigquery::storage::v1::ReadStream>(streams[stream_idx]);
 }
 
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::GetSchema() {
@@ -296,10 +302,18 @@ std::shared_ptr<arrow::Schema> BigqueryArrowReader::GetSchema() {
     return arrow_schema;
 }
 
-google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> BigqueryArrowReader::ReadRows(
-    const string &stream_name,
-    int row_offset) {
-    return read_client->ReadRows(stream_name, row_offset);
+idx_t BigqueryArrowReader::GetStreamCount() const {
+    if (!read_session) {
+        throw BinderException("Read session is not initialized.");
+    }
+    return static_cast<idx_t>(streams.size());
+}
+
+unique_ptr<google::cloud::bigquery_storage_v1::BigQueryReadClient> BigqueryArrowReader::CreateReadClient() const {
+    if (!read_connection) {
+        throw BinderException("Read connection is not initialized.");
+    }
+    return make_uniq<google::cloud::bigquery_storage_v1::BigQueryReadClient>(read_connection);
 }
 
 std::shared_ptr<arrow::Schema> BigqueryArrowReader::ReadSchema(
