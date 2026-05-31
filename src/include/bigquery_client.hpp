@@ -114,6 +114,16 @@ public:
                                                             const bool &optional_job_creation = false,
                                                             const std::optional<int> &timeout_ms = std::nullopt);
     idx_t ExecuteDmlQuery(const string &query, BigqueryDmlStatementType statement_type, const string &location = "");
+    //! Run a query whose result is materialised into `destination_table` (jobs.insert +
+    //! JobConfigurationQuery, polled via WaitForJobCompletion). Unlike ExecuteQuery (jobs.query),
+    //! this can write the result of a SELECT into a table with a write/create disposition.
+    google::cloud::bigquery::v2::Job ExecuteQueryToTable(const string &query,
+                                                         const BigqueryTableRef &destination_table,
+                                                         const string &write_disposition = "WRITE_TRUNCATE",
+                                                         const string &create_disposition = "CREATE_IF_NEEDED",
+                                                         const string &location = "",
+                                                         const std::map<string, string> &labels = {},
+                                                         const std::optional<int> &timeout_ms = std::nullopt);
     google::cloud::bigquery::v2::GetQueryResultsResponse GetQueryResults(
         const google::cloud::bigquery::v2::JobReference &job_ref,
         const string &page_token = "");
@@ -165,6 +175,12 @@ private:
     void MergeQueryResultsResponse(google::cloud::bigquery::v2::QueryResponse &query_response,
                                    const google::cloud::bigquery::v2::GetQueryResultsResponse &results_response);
     void ThrowOnQueryJobStatusError(const google::cloud::bigquery::v2::JobStatus &status);
+    google::cloud::bigquery::v2::InsertJobRequest BuildQueryJobRequest(const string &query,
+                                                                       const BigqueryTableRef &destination_table,
+                                                                       const string &write_disposition,
+                                                                       const string &create_disposition,
+                                                                       const string &location,
+                                                                       const std::map<string, string> &labels);
     google::cloud::bigquery::v2::InsertJobRequest BuildLoadJobRequest(const BigqueryTableRef &destination_table,
                                                                       const string &write_disposition,
                                                                       const string &create_disposition,
@@ -187,9 +203,11 @@ private:
         const string &location,
         const std::map<string, string> &labels);
     google::cloud::bigquery::v2::Job WaitForJobCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
-                                                          const std::optional<int> &timeout_ms = std::nullopt);
+                                                          const std::optional<int> &timeout_ms = std::nullopt,
+                                                          const string &job_kind = "Load job");
     google::cloud::bigquery::v2::Job GetLoadJobForCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
-                                                             const std::chrono::steady_clock::time_point &wait_until);
+                                                             const std::chrono::steady_clock::time_point &wait_until,
+                                                             const string &job_kind = "Load job");
     void ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status, const string &operation_name);
 
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,
