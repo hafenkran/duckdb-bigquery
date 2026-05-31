@@ -15,15 +15,17 @@
 
 #include "bigquery_utils.hpp"
 
+#include <atomic>
+
 namespace duckdb {
 namespace bigquery {
 
 struct BigqueryArrowReader;
+struct PrefetchMemoryBudget;
 
 class BigqueryStreamFactory {
 public:
-    explicit BigqueryStreamFactory(shared_ptr<BigqueryArrowReader> reader) : reader(std::move(reader)) {
-    }
+    explicit BigqueryStreamFactory(shared_ptr<BigqueryArrowReader> reader);
 
     static unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t factory_ptr, ArrowStreamParameters &parameters);
     static void GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema);
@@ -32,9 +34,26 @@ public:
         return reader;
     }
 
+    shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> GetNextStream();
+
+    idx_t GetPrefetchQueueSize() const {
+        return prefetch_queue_size;
+    }
+
+    shared_ptr<PrefetchMemoryBudget> GetPrefetchMemoryBudget() {
+        return prefetch_memory_budget;
+    }
+
+    std::shared_ptr<arrow::Schema> GetModifiedSchema() {
+        return modified_schema;
+    }
+
 private:
     shared_ptr<BigqueryArrowReader> reader;
     std::atomic<idx_t> next_stream{0};
+    idx_t prefetch_queue_size;
+    shared_ptr<PrefetchMemoryBudget> prefetch_memory_budget;
+    std::shared_ptr<arrow::Schema> modified_schema;
 };
 
 struct BigqueryArrowReader {

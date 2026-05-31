@@ -218,6 +218,32 @@ public:
         return max_read_streams;
     }
 
+    static int &ReadPrefetchQueueSize() {
+        static int BIGQUERY_READ_PREFETCH_QUEUE_SIZE = 2;
+        return BIGQUERY_READ_PREFETCH_QUEUE_SIZE;
+    }
+
+    static void SetReadPrefetchQueueSize(ClientContext &context, SetScope scope, Value &parameter) {
+        int queue_size = GetIntSettingValue("Read prefetch queue size", parameter);
+        if (queue_size < 0 || queue_size > 16) {
+            throw InvalidInputException("Read prefetch queue size must be between 0 and 16");
+        }
+        ReadPrefetchQueueSize() = queue_size;
+    }
+
+    static int64_t &ReadPrefetchMaxMemory() {
+        static int64_t BIGQUERY_READ_PREFETCH_MAX_MEMORY = 67108864;
+        return BIGQUERY_READ_PREFETCH_MAX_MEMORY;
+    }
+
+    static void SetReadPrefetchMaxMemory(ClientContext &context, SetScope scope, Value &parameter) {
+        auto max_memory = parameter.GetValue<int64_t>();
+        if (max_memory < 0) {
+            throw InvalidInputException("Read prefetch max memory must be non-negative");
+        }
+        ReadPrefetchMaxMemory() = max_memory;
+    }
+
     static bool &EnableInflightRequestWindowing() {
         static bool BIGQUERY_ENABLE_INFLIGHT_REQUEST_WINDOWING = true;
         return BIGQUERY_ENABLE_INFLIGHT_REQUEST_WINDOWING;

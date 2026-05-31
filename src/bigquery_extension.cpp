@@ -166,6 +166,18 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::MaxReadStreams()),
                               bigquery::BigquerySettings::SetMaxReadStreams);
+    config.AddExtensionOption("bq_read_prefetch_queue_size",
+                              "[EXPERIMENTAL] Maximum number of decoded BigQuery Storage Read Arrow batches to "
+                              "prefetch per active read worker. Set to 0 to disable read prefetching.",
+                              LogicalType::BIGINT,
+                              Value(bigquery::BigquerySettings::ReadPrefetchQueueSize()),
+                              bigquery::BigquerySettings::SetReadPrefetchQueueSize);
+    config.AddExtensionOption("bq_read_prefetch_max_memory",
+                              "[EXPERIMENTAL] Approximate shared memory budget in bytes for queued BigQuery Storage "
+                              "Read prefetch batches. Set to 0 to disable the byte budget.",
+                              LogicalType::BIGINT,
+                              Value(bigquery::BigquerySettings::ReadPrefetchMaxMemory()),
+                              bigquery::BigquerySettings::SetReadPrefetchMaxMemory);
     config.AddExtensionOption("bq_enable_inflight_request_windowing",
                               "Whether to allow multiple BigQuery Storage Write AppendRows requests to remain in "
                               "flight before waiting for acknowledgements. Usually faster, but slightly less memory "
