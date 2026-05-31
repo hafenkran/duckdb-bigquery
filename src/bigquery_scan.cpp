@@ -121,7 +121,9 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
     bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
 
     auto gstate = make_uniq<BigqueryScanGlobalState>();
-    gstate->max_threads = max_read_streams;
+    const idx_t requested_read_streams = MaxValue<idx_t>(1, max_read_streams);
+    const idx_t actual_read_streams = MaxValue<idx_t>(1, bq_arrow_reader->GetStreamCount());
+    gstate->max_threads = MinValue<idx_t>(requested_read_streams, actual_read_streams);
     bind_data.estimated_row_count = bq_arrow_reader->GetEstimatedRowCount();
 
     auto arrow_schema = bq_arrow_reader->GetSchema();
@@ -208,8 +210,26 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
         }
     }
 
-    gstate->stream = ::duckdb::ProduceArrowScan(bind_data, input.column_ids, input.filters.get());
     return std::move(gstate);
+}
+
+static bool BigqueryScanNextChunk(BigqueryScanLocalState &state, BigqueryScanGlobalState &global_state) {
+    if (!state.stream) {
+        return false;
+    }
+    state.Reset();
+
+    auto current_chunk = state.stream->GetNextChunk();
+    while (current_chunk->arrow_array.length == 0 && current_chunk->arrow_array.release) {
+        current_chunk = state.stream->GetNextChunk();
+    }
+    state.chunk = std::move(current_chunk);
+
+    if (!state.chunk->arrow_array.release) {
+        return false;
+    }
+    state.batch_index = global_state.next_batch_index.fetch_add(1) + 1;
+    return true;
 }
 
 unique_ptr<LocalTableFunctionState> BigqueryScanFunction::BigqueryScanInitLocalState(
@@ -218,7 +238,7 @@ unique_ptr<LocalTableFunctionState> BigqueryScanFunction::BigqueryScanInitLocalS
     GlobalTableFunctionState *global_state_p) {
     auto &client_context = context.client;
     auto &bind_data = input.bind_data->CastNoConst<BigqueryScanBindData>();
-    auto &global_state = global_state_p->Cast<ArrowScanGlobalState>();
+    auto &global_state = global_state_p->Cast<BigqueryScanGlobalState>();
 
     auto current_chunk = make_uniq<ArrowArrayWrapper>();
     auto result = make_uniq<BigqueryScanLocalState>(std::move(current_chunk), client_context);
@@ -231,10 +251,10 @@ unique_ptr<LocalTableFunctionState> BigqueryScanFunction::BigqueryScanInitLocalS
     if (!bind_data.projection_pushdown_enabled) {
         result->column_ids.clear();
     } else if (!input.projection_ids.empty() || bind_data.requires_cast || !global_state.projection_ids.empty()) {
-        auto &asgs = global_state_p->Cast<ArrowScanGlobalState>();
-        result->all_columns.Initialize(client_context, asgs.scanned_types);
+        result->all_columns.Initialize(client_context, global_state.scanned_types);
     }
-    if (!ArrowTableFunction::ArrowScanParallelStateNext(client_context, input.bind_data.get(), *result, global_state)) {
+    result->stream = ::duckdb::ProduceArrowScan(bind_data, input.column_ids, input.filters.get());
+    if (!BigqueryScanNextChunk(*result, global_state)) {
         return nullptr;
     }
 
@@ -251,7 +271,7 @@ void BigqueryScanFunction::BigqueryScanExecute(ClientContext &ctx, TableFunction
     auto &gstate = data_p.global_state->Cast<BigqueryScanGlobalState>();
 
     if (state.chunk_offset >= static_cast<idx_t>(state.chunk->arrow_array.length)) {
-        if (!ArrowTableFunction::ArrowScanParallelStateNext(ctx, data_p.bind_data.get(), state, gstate)) {
+        if (!BigqueryScanNextChunk(state, gstate)) {
             return;
         }
     }
@@ -348,15 +368,13 @@ void BigqueryScanFunction::BigqueryScanExecute(ClientContext &ctx, TableFunction
                                               COLUMN_IDENTIFIER_ROW_ID);
         } else {
             if (only_rowid_columns) {
+                auto rowid_start = gstate.position.fetch_add(output_size);
                 for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
-                    output.data[col_idx].Sequence(NumericCast<int64_t>(gstate.position.load()), 1, output_size);
+                    output.data[col_idx].Sequence(NumericCast<int64_t>(rowid_start), 1, output_size);
                 }
                 output.SetCardinality(output_size);
                 output.Verify();
                 state.chunk_offset += output.size();
-
-                lock_guard<mutex> glock(gstate.lock);
-                gstate.position += output.size();
                 return;
             }
 
@@ -382,8 +400,7 @@ void BigqueryScanFunction::BigqueryScanExecute(ClientContext &ctx, TableFunction
     output.Verify();
     state.chunk_offset += output.size();
 
-    lock_guard<mutex> glock(gstate.lock);
-    gstate.position += output.size();
+    gstate.position.fetch_add(output.size());
 }
 
 static InsertionOrderPreservingMap<string> BigqueryScanToString(TableFunctionToStringInput &input) {
@@ -407,6 +424,14 @@ static BindInfo BigqueryScanGetBindInfo(const optional_ptr<FunctionData> bind_da
 static unique_ptr<NodeStatistics> BigqueryScanCardinality(ClientContext &, const FunctionData *bind_data_p) {
     auto &bind_data = bind_data_p->Cast<BigqueryScanBindData>();
     return make_uniq<NodeStatistics>(bind_data.estimated_row_count, bind_data.estimated_row_count);
+}
+
+static OperatorPartitionData BigqueryScanGetPartitionData(ClientContext &, TableFunctionGetPartitionInput &input) {
+    if (input.partition_info.RequiresPartitionColumns()) {
+        throw InternalException("BigqueryScanFunction::GetPartitionData: partition columns not supported");
+    }
+    auto &state = input.local_state->Cast<BigqueryScanLocalState>();
+    return OperatorPartitionData(state.batch_index);
 }
 
 static double BigqueryScanProgress(ClientContext &,
@@ -436,6 +461,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     to_string = BigqueryScanToString;
     cardinality = BigqueryScanCardinality;
     table_scan_progress = BigqueryScanProgress;
+    get_partition_data = BigqueryScanGetPartitionData;
     get_bind_info = BigqueryScanGetBindInfo;
 
     named_parameters["billing_project"] = LogicalType::VARCHAR;

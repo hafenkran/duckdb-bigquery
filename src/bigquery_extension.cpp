@@ -160,9 +160,9 @@ static void LoadInternal(ExtensionLoader &loader) {
                               Value(bigquery::BigquerySettings::CurlCaBundlePath()),
                               bigquery::BigquerySettings::SetCurlCaBundlePath);
     config.AddExtensionOption("bq_max_read_streams",
-                              "Maximum number of read streams for BigQuery Storage Read. Set to 0 to automatically "
-                              "match the number of DuckDB threads. `preserve_insertion_order` must be false for "
-                              "parallelization to work.",
+                              "Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match "
+                              "the number of DuckDB threads. `preserve_insertion_order` must be false for "
+                              "parallelization to work, and BigQuery may return fewer streams than requested.",
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::MaxReadStreams()),
                               bigquery::BigquerySettings::SetMaxReadStreams);
