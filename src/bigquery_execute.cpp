@@ -152,7 +152,7 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
         names.emplace_back("total_rows");
         return_types.emplace_back(LogicalTypeId::BIGINT);
         names.emplace_back("total_bytes_processed");
-        return_types.emplace_back(LogicalTypeId::VARCHAR);
+        return_types.emplace_back(LogicalTypeId::BIGINT);
         names.emplace_back("num_dml_affected_rows");
     } else {
         return_types.emplace_back(LogicalTypeId::BIGINT);
@@ -201,7 +201,7 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
                                   : Value(LogicalType::BIGINT));
         output.SetValue(6, 0, query_stats.has_num_dml_affected_rows()
                                   ? Value::BIGINT(query_stats.num_dml_affected_rows().value())
-                                  : Value(LogicalType::VARCHAR));
+                                  : Value(LogicalType::BIGINT));
         output.SetCardinality(1);
         return;
     }

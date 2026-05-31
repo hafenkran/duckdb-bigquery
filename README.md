@@ -367,9 +367,9 @@ D CALL bigquery_execute('bq', '
 ');
 ┌─────────┬──────────────────────────────────┬─────────────────┬──────────┬────────────┬───────────────────────┬───────────────────────┐
 │ success │             job_id               │    project_id   │ location │ total_rows │ total_bytes_processed │ num_dml_affected_rows │
-│ boolean │             varchar              │     varchar     │ varchar  │   uint64   │         int64         │        varchar        │
+│ boolean │             varchar              │     varchar     │ varchar  │   uint64   │         int64         │         int64         │
 ├─────────┼──────────────────────────────────┼─────────────────┼──────────┼────────────┼───────────────────────┼───────────────────────┤
-│ true    │ job_-Xu_D2wxe2Xjh-ArZNwZ6gut5ggi │ my_gcp_project  │ US       │          0 │                     0 │ 0                     │
+│ true    │ job_-Xu_D2wxe2Xjh-ArZNwZ6gut5ggi │ my_gcp_project  │ US       │          0 │                     0 │                     0 │
 └─────────┴──────────────────────────────────┴─────────────────┴──────────┴────────────┴───────────────────────┴───────────────────────┘
 ```
 
