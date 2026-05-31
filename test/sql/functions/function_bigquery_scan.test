@@ -16,6 +16,18 @@ FROM bigquery_execute('${BQ_TEST_PROJECT}', '
     SELECT 3 AS a, 4 AS b, "beta" AS c
 ');
 
+statement ok
+SET bq_read_prefetch_queue_size=0;
+
+# Synchronous fallback should preserve projection, filtering, and LIMIT behavior
+query II
+SELECT a, c FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') WHERE b = 2 LIMIT 1;
+----
+1	alpha
+
+statement ok
+SET bq_read_prefetch_queue_size=2;
+
 # Default scan should preserve natural ordering and column layout
 query III
 SELECT a, b, c FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_test') ORDER BY a;

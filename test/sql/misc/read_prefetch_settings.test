@@ -1,0 +1,44 @@
+# name: test/sql/misc/read_prefetch_settings.test
+# description: Validate BigQuery Storage Read prefetch settings
+# group: [misc]
+
+require bigquery
+
+statement ok
+SET bq_read_prefetch_queue_size=0;
+
+statement ok
+SET bq_read_prefetch_queue_size=1;
+
+statement ok
+SET bq_read_prefetch_queue_size=2;
+
+statement ok
+SET bq_read_prefetch_queue_size=16;
+
+statement error
+SET bq_read_prefetch_queue_size=-1;
+----
+Invalid Input Error: Read prefetch queue size must be between 0 and 16
+
+statement error
+SET bq_read_prefetch_queue_size=17;
+----
+Invalid Input Error: Read prefetch queue size must be between 0 and 16
+
+statement ok
+SET bq_read_prefetch_max_memory=0;
+
+statement ok
+SET bq_read_prefetch_max_memory=67108864;
+
+statement error
+SET bq_read_prefetch_max_memory=-1;
+----
+Invalid Input Error: Read prefetch max memory must be non-negative
+
+statement ok
+SET bq_read_prefetch_queue_size=2;
+
+statement ok
+SET bq_read_prefetch_max_memory=67108864;
