@@ -203,9 +203,11 @@ private:
         const string &location,
         const std::map<string, string> &labels);
     google::cloud::bigquery::v2::Job WaitForJobCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
-                                                          const std::optional<int> &timeout_ms = std::nullopt);
+                                                          const std::optional<int> &timeout_ms = std::nullopt,
+                                                          const string &job_kind = "Load job");
     google::cloud::bigquery::v2::Job GetLoadJobForCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
-                                                             const std::chrono::steady_clock::time_point &wait_until);
+                                                             const std::chrono::steady_clock::time_point &wait_until,
+                                                             const string &job_kind = "Load job");
     void ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status, const string &operation_name);
 
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,

@@ -185,13 +185,23 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
         data.finished = true;
 
         const auto &job_ref = job.job_reference();
+        const auto &query_stats = job.statistics().query();
         output.SetValue(0, 0, true);
         output.SetValue(1, 0, Value(job_ref.job_id()));
         output.SetValue(2, 0, Value(job_ref.project_id()));
         output.SetValue(3, 0, job_ref.has_location() ? Value(job_ref.location().value()) : Value(LogicalType::VARCHAR));
-        output.SetValue(4, 0, Value::UBIGINT(0));
-        output.SetValue(5, 0, Value::BIGINT(0));
-        output.SetValue(6, 0, Value(LogicalType::VARCHAR));
+        // The query job statistics carry bytes processed and DML-affected rows, but not the
+        // result row count. Fetch total_rows via the job's query results, matching the source
+        // used by the inline jobs.query path. Anything BigQuery doesn't report stays NULL.
+        auto results = data.bq_client->GetQueryResults(job_ref);
+        output.SetValue(4, 0, results.has_total_rows() ? Value::UBIGINT(results.total_rows().value())
+                                                       : Value(LogicalType::UBIGINT));
+        output.SetValue(5, 0, query_stats.has_total_bytes_processed()
+                                  ? Value::BIGINT(query_stats.total_bytes_processed().value())
+                                  : Value(LogicalType::BIGINT));
+        output.SetValue(6, 0, query_stats.has_num_dml_affected_rows()
+                                  ? Value::BIGINT(query_stats.num_dml_affected_rows().value())
+                                  : Value(LogicalType::VARCHAR));
         output.SetCardinality(1);
         return;
     }

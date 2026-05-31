@@ -32,6 +32,59 @@ SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'exec_table';
 ----
 1
 
+# --- destination_table: materialise a SELECT result into a table ---
+
+# Write two rows into a fresh destination table. total_rows reflects the query
+# result and total_bytes_processed comes from the job statistics; a plain SELECT
+# is not DML, so num_dml_affected_rows stays NULL.
+query IIIIIII
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}',
+    'SELECT 1 AS id UNION ALL SELECT 2 AS id',
+    destination_table := '${BQ_TEST_DATASET}.exec_dest_table',
+    write_disposition := 'WRITE_TRUNCATE',
+    timeout_ms := 90000)
+----
+1	<REGEX>:job_.+	<REGEX>:.+	<REGEX>:.+	2	<REGEX>:\d+	NULL
+
+query I
+SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.exec_dest_table;
+----
+2
+
+# WRITE_TRUNCATE replaces the contents in place rather than appending.
+statement ok
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}',
+    'SELECT 42 AS id',
+    destination_table := '${BQ_TEST_DATASET}.exec_dest_table',
+    write_disposition := 'WRITE_TRUNCATE',
+    timeout_ms := 90000)
+
+query I
+SELECT id FROM bq.${BQ_TEST_DATASET}.exec_dest_table;
+----
+42
+
+# An invalid disposition is rejected at bind time.
+statement error
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'SELECT 1 AS id',
+    destination_table := '${BQ_TEST_DATASET}.exec_dest_table',
+    write_disposition := 'NOPE',
+    timeout_ms := 90000)
+----
+Invalid value for parameter 'write_disposition'
+
+# destination_table cannot be combined with dry_run.
+statement error
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'SELECT 1 AS id',
+    destination_table := '${BQ_TEST_DATASET}.exec_dest_table',
+    dry_run := true,
+    timeout_ms := 90000)
+----
+'destination_table' cannot be combined with 'dry_run'
+
+statement ok
+SELECT * FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_dest_table`', timeout_ms := 90000)
+
 statement ok
 CALL bigquery_execute('bq', 'DROP TABLE ${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.exec_table;', timeout_ms := 90000)
 

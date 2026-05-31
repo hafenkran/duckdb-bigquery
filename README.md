@@ -393,6 +393,18 @@ The `bigquery_execute` function supports the following named parameters:
 | `api_endpoint`  | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
 | `grpc_endpoint` | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
 | `timeout_ms`    | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms`; `0` waits indefinitely. |
+| `destination_table` | `VARCHAR` | Materialise the query result into this table (`dataset.table` or `project.dataset.table`). Runs the query as a `jobs.insert` job writing to the table — something the default `jobs.query` path cannot do. Cannot be combined with `dry_run`. |
+| `write_disposition` | `VARCHAR` | How to write into an existing `destination_table`: `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`. Ignored without `destination_table`. |
+| `create_disposition` | `VARCHAR` | Whether to create `destination_table` if it does not exist: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`. Ignored without `destination_table`. |
+
+When `destination_table` is set, the query runs as a query job that writes its result into the table, and the returned `total_rows` / `total_bytes_processed` reflect that job (`num_dml_affected_rows` is `NULL` for non-DML queries):
+
+```sql
+D CALL bigquery_execute('my_gcp_project',
+    'SELECT id, name FROM `my_gcp_project.quacking_dataset.ducks` WHERE active',
+    destination_table := 'quacking_dataset.active_ducks',
+    write_disposition := 'WRITE_TRUNCATE');
+```
 
 ### `bigquery_load` Function
 
