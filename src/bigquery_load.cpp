@@ -137,39 +137,6 @@ static std::optional<string> ParseOptionalAliasedStringParameter(const named_par
     return value ? value : legacy_value;
 }
 
-static std::map<string, string> ParseOptionalLabelsParameter(const named_parameter_map_t &named_parameters) {
-    auto entry = named_parameters.find("labels");
-    if (entry == named_parameters.end() || entry->second.IsNull()) {
-        return {};
-    }
-
-    const auto &labels_value = entry->second;
-    if (labels_value.type().id() != LogicalTypeId::MAP ||
-        MapType::KeyType(labels_value.type()).id() != LogicalTypeId::VARCHAR ||
-        MapType::ValueType(labels_value.type()).id() != LogicalTypeId::VARCHAR) {
-        throw BinderException("Parameter 'labels' must be MAP(VARCHAR, VARCHAR)");
-    }
-
-    std::map<string, string> labels;
-    for (const auto &entry_value : MapValue::GetChildren(labels_value)) {
-        if (entry_value.IsNull()) {
-            throw BinderException("Null entries are not allowed in parameter 'labels'");
-        }
-        const auto &children = StructValue::GetChildren(entry_value);
-        D_ASSERT(children.size() == 2);
-        const auto &key = children[0];
-        const auto &value = children[1];
-        if (key.IsNull()) {
-            throw BinderException("Null label keys are not allowed in parameter 'labels'");
-        }
-        if (value.IsNull()) {
-            throw BinderException("Null label values are not allowed in parameter 'labels'");
-        }
-        labels[key.GetValue<string>()] = value.GetValue<string>();
-    }
-    return labels;
-}
-
 static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &named_parameters) {
     BigQueryLoadParameters params;
     params.source_file = ParseOptionalAliasedStringParameter(named_parameters, "source_file", "file");
@@ -186,7 +153,7 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
     params.billing_project = billing_project ? *billing_project : string();
     auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
     params.api_endpoint = api_endpoint ? *api_endpoint : string();
-    params.labels = ParseOptionalLabelsParameter(named_parameters);
+    params.labels = BigqueryUtils::ParseOptionalLabelsParameter(named_parameters);
     params.timeout_ms = BigqueryUtils::ParseTimeoutMsParameter(named_parameters);
     params.write_disposition = ParseEnumParameter(named_parameters,
                                                   "write_disposition",

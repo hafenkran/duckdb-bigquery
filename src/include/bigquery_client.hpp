@@ -106,6 +106,16 @@ public:
                                                      const string &location = "",
                                                      const std::map<string, string> &labels = {},
                                                      const std::optional<int> &timeout_ms = std::nullopt);
+    google::cloud::bigquery::v2::Job ExtractTableToGcs(const BigqueryTableRef &source_table,
+                                                       const vector<string> &destination_uris,
+                                                       const string &destination_format,
+                                                       const string &location = "",
+                                                       const string &compression = "",
+                                                       const std::optional<bool> &print_header = std::nullopt,
+                                                       const string &field_delimiter = "",
+                                                       const std::optional<bool> &use_avro_logical_types = std::nullopt,
+                                                       const std::map<string, string> &labels = {},
+                                                       const std::optional<int> &timeout_ms = std::nullopt);
 
     google::cloud::bigquery::v2::QueryResponse ExecuteQuery(const string &query,
                                                             const string &location = "",
@@ -186,6 +196,16 @@ private:
                                                                       const string &create_disposition,
                                                                       const string &location,
                                                                       const std::map<string, string> &labels);
+    google::cloud::bigquery::v2::InsertJobRequest BuildExtractJobRequest(
+        const BigqueryTableRef &source_table,
+        const vector<string> &destination_uris,
+        const string &destination_format,
+        const string &location,
+        const string &compression,
+        const std::optional<bool> &print_header,
+        const string &field_delimiter,
+        const std::optional<bool> &use_avro_logical_types,
+        const std::map<string, string> &labels);
     google::cloud::StatusOr<google::cloud::bigquery::v2::Job> InsertLoadJobInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const BigqueryTableRef &destination_table,
@@ -202,12 +222,23 @@ private:
         const string &create_disposition,
         const string &location,
         const std::map<string, string> &labels);
+    google::cloud::StatusOr<google::cloud::bigquery::v2::Job> InsertExtractJobInternal(
+        google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+        const BigqueryTableRef &source_table,
+        const vector<string> &destination_uris,
+        const string &destination_format,
+        const string &location,
+        const string &compression,
+        const std::optional<bool> &print_header,
+        const string &field_delimiter,
+        const std::optional<bool> &use_avro_logical_types,
+        const std::map<string, string> &labels);
     google::cloud::bigquery::v2::Job WaitForJobCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
                                                           const std::optional<int> &timeout_ms = std::nullopt,
-                                                          const string &job_kind = "Load job");
-    google::cloud::bigquery::v2::Job GetLoadJobForCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
-                                                             const std::chrono::steady_clock::time_point &wait_until,
-                                                             const string &job_kind = "Load job");
+                                                          const string &operation_name = "Load job");
+    google::cloud::bigquery::v2::Job GetJobForCompletion(const google::cloud::bigquery::v2::JobReference &job_ref,
+                                                         const std::chrono::steady_clock::time_point &wait_until,
+                                                         const string &operation_name);
     void ThrowOnJobStatusError(const google::cloud::bigquery::v2::JobStatus &status, const string &operation_name);
 
     void MapTableSchema(const google::cloud::bigquery::v2::TableSchema &schema,

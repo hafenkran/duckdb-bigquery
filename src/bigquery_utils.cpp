@@ -1102,6 +1102,39 @@ BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
     return params;
 }
 
+std::map<string, string> BigqueryUtils::ParseOptionalLabelsParameter(const named_parameter_map_t &named_parameters) {
+    auto entry = named_parameters.find("labels");
+    if (entry == named_parameters.end() || entry->second.IsNull()) {
+        return {};
+    }
+
+    const auto &labels_value = entry->second;
+    if (labels_value.type().id() != LogicalTypeId::MAP ||
+        MapType::KeyType(labels_value.type()).id() != LogicalTypeId::VARCHAR ||
+        MapType::ValueType(labels_value.type()).id() != LogicalTypeId::VARCHAR) {
+        throw BinderException("Parameter 'labels' must be MAP(VARCHAR, VARCHAR)");
+    }
+
+    std::map<string, string> labels;
+    for (const auto &entry_value : MapValue::GetChildren(labels_value)) {
+        if (entry_value.IsNull()) {
+            throw BinderException("Null entries are not allowed in parameter 'labels'");
+        }
+        const auto &children = StructValue::GetChildren(entry_value);
+        D_ASSERT(children.size() == 2);
+        const auto &key = children[0];
+        const auto &value = children[1];
+        if (key.IsNull()) {
+            throw BinderException("Null label keys are not allowed in parameter 'labels'");
+        }
+        if (value.IsNull()) {
+            throw BinderException("Null label values are not allowed in parameter 'labels'");
+        }
+        labels[key.GetValue<string>()] = value.GetValue<string>();
+    }
+    return labels;
+}
+
 std::optional<int> BigqueryUtils::ParseTimeoutMsParameter(const named_parameter_map_t &named_parameters) {
     auto entry = named_parameters.find("timeout_ms");
     if (entry == named_parameters.end() || entry->second.IsNull()) {
