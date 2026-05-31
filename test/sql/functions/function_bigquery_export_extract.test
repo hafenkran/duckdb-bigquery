@@ -1,0 +1,53 @@
+# name: test/sql/functions/function_bigquery_export_extract.test
+# description: Tests the JobConfigurationExtract-based bigquery_export(...) function
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+require-env BQ_TEST_EXPORT_URI
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.export_extract_source;
+
+statement ok
+CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.export_extract_source AS
+SELECT 1 AS id, 'duckdb' AS name;
+
+statement ok
+CREATE OR REPLACE TEMP TABLE export_extract_job AS
+SELECT *
+FROM bigquery_export(
+	'bq',
+	source_table := '${BQ_TEST_DATASET}.export_extract_source',
+	uri := '${BQ_TEST_EXPORT_URI}',
+	format := 'PARQUET',
+	location := 'europe-west3',
+	timeout_ms := 90000,
+	labels := MAP {'duckdb_export_label': 'extract_job'}
+);
+
+query IIIIIIIIII
+SELECT
+	success,
+	job_id <> '',
+	project_id = '${BQ_TEST_PROJECT}',
+	location <> '',
+	source_table = '${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.export_extract_source',
+	contains(destination_uris::VARCHAR, '${BQ_TEST_EXPORT_URI}'),
+	format = 'PARQUET',
+	coalesce(destination_uri_file_counts::VARCHAR, '') <> '',
+	input_bytes >= 0,
+	status = '{"state":"DONE"}'
+FROM export_extract_job;
+----
+true	true	true	true	true	true	true	true	true	true
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.export_extract_source;

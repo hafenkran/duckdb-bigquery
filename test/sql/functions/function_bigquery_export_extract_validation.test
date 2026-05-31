@@ -1,0 +1,97 @@
+# name: test/sql/functions/function_bigquery_export_extract_validation.test
+# description: Binder validation for the JobConfigurationExtract-based bigquery_export(...) function
+# group: [functions]
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	uri := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET'
+);
+----
+Binder Error: Parameter 'source_table' is required
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	format := 'PARQUET'
+);
+----
+Binder Error: Exactly one of the named parameters 'uri' or 'destination_uris' must be provided
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	uri := 'gs://bucket/export/*.parquet',
+	destination_uris := ['gs://bucket/export2/*.parquet'],
+	format := 'PARQUET'
+);
+----
+Binder Error: Cannot specify both named parameters 'uri' and 'destination_uris'
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	uri := 's3://bucket/export/*.parquet',
+	format := 'PARQUET'
+);
+----
+Binder Error: BigQuery extract destination URI must use the gs:// scheme: s3://bucket/export/*.parquet
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	uri := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET',
+	timeout_ms := -1
+);
+----
+Invalid Input Error: Timeout must be non-negative
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	uri := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET',
+	labels := MAP {'duckdb_export_label': NULL}
+);
+----
+Binder Error: Null label values are not allowed in parameter 'labels'
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	uri := 'gs://bucket/export/*.csv',
+	format := 'CSV',
+	print_header := true,
+	header := true
+);
+----
+Binder Error: Cannot specify both named parameters 'print_header' and 'header'
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	uri := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET',
+	overwrite := true
+);
+----
+Binder Error: Parameter 'overwrite' is not supported by JobConfigurationExtract-based bigquery_export
+
+statement error
+CALL bigquery_export(
+	'test_project',
+	source_table := 'dataset.source_table',
+	uri := 'gs://bucket/export/*.parquet',
+	format := 'JSON'
+);
+----
+Binder Error: Invalid value for parameter 'format': JSON
