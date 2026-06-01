@@ -194,14 +194,20 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
         // result row count. Fetch total_rows via the job's query results, matching the source
         // used by the inline jobs.query path. Anything BigQuery doesn't report stays NULL.
         auto results = data.bq_client->GetQueryResults(job_ref);
-        output.SetValue(4, 0, results.has_total_rows() ? Value::UBIGINT(results.total_rows().value())
-                                                       : Value(LogicalType::UBIGINT));
-        output.SetValue(5, 0, query_stats.has_total_bytes_processed()
-                                  ? Value::BIGINT(query_stats.total_bytes_processed().value())
-                                  : Value(LogicalType::BIGINT));
-        output.SetValue(6, 0, query_stats.has_num_dml_affected_rows()
-                                  ? Value::BIGINT(query_stats.num_dml_affected_rows().value())
-                                  : Value(LogicalType::BIGINT));
+        output.SetValue(4,
+                        0,
+                        results.has_total_rows() ? Value::UBIGINT(results.total_rows().value())
+                                                 : Value(LogicalType::UBIGINT));
+        output.SetValue(5,
+                        0,
+                        query_stats.has_total_bytes_processed()
+                            ? Value::BIGINT(query_stats.total_bytes_processed().value())
+                            : Value(LogicalType::BIGINT));
+        output.SetValue(6,
+                        0,
+                        query_stats.has_num_dml_affected_rows()
+                            ? Value::BIGINT(query_stats.num_dml_affected_rows().value())
+                            : Value(LogicalType::BIGINT));
         output.SetCardinality(1);
         return;
     }

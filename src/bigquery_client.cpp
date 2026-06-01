@@ -799,12 +799,12 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::ExecuteQueryToTable(const string &query,
-                                                                    const BigqueryTableRef &destination_table,
-                                                                    const string &write_disposition,
-                                                                    const string &create_disposition,
-                                                                    const string &location,
-                                                                    const std::map<string, string> &labels,
-                                                                    const std::optional<int> &timeout_ms) {
+                                                                     const BigqueryTableRef &destination_table,
+                                                                     const string &write_disposition,
+                                                                     const string &create_disposition,
+                                                                     const string &location,
+                                                                     const std::map<string, string> &labels,
+                                                                     const std::optional<int> &timeout_ms) {
     if (query.empty()) {
         throw BinderException("ExecuteQueryToTable requires a non-empty query");
     }
@@ -817,7 +817,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::ExecuteQueryToTable(const strin
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto request = BuildQueryJobRequest(query, destination_table, write_disposition, create_disposition, location, labels);
+    auto request =
+        BuildQueryJobRequest(query, destination_table, write_disposition, create_disposition, location, labels);
     auto response = client.InsertJob(request);
     if (!response.ok()) {
         ThrowOnErrorStatus(response.status());
