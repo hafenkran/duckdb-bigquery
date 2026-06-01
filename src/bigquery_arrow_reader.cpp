@@ -122,8 +122,7 @@ static idx_t EstimateRecordBatchBytes(const BatchPtr &batch, idx_t serialized_si
 static arrow::Status ReadRowsErrorStatus(const BigqueryArrowReader &reader, const google::cloud::Status &status) {
     if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
         return arrow::Status::IOError(
-            "BigQuery Storage Read API permission denied while reading rows for " +
-            reader.GetTableRef().TableString() +
+            "BigQuery Storage Read API permission denied while reading rows for " + reader.GetTableRef().TableString() +
             ".\n"
             "\n"
             "This path requires both table/view read access and permission to create and use read "
