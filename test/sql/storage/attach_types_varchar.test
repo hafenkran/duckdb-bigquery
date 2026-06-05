@@ -40,7 +40,7 @@ statement ok
 INSERT INTO bq.${BQ_TEST_DATASET}.table_varchars VALUES ('some BIG...query string');
 
 query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.table_varchars;
+SELECT * FROM bq.${BQ_TEST_DATASET}.table_varchars ORDER BY v;
 ----
 (empty)
 some BIG...query string

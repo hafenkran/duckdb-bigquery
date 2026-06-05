@@ -1161,7 +1161,7 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
 }
 
 shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const BigqueryTableRef &table_ref,
-                                                                  const idx_t num_streams,
+                                                                  BigqueryReadSessionStreamLimits stream_limits,
                                                                   const vector<string> &column_ids,
                                                                   const string &filter_cond) {
     CheckAuthentication();
@@ -1182,7 +1182,7 @@ shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const Bigquery
 
     return make_shared_ptr<BigqueryArrowReader>(table_ref,
                                                 config.BillingProject(),
-                                                num_streams,
+                                                stream_limits,
                                                 options,
                                                 column_ids,
                                                 filter_cond);

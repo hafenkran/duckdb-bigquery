@@ -1,0 +1,61 @@
+# name: test/sql/functions/function_bigquery_scan_stream_settings.test
+# description: Validate BigQuery Storage Read stream settings
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+query I
+SELECT current_setting('bq_max_read_streams');
+----
+4
+
+query I
+SELECT current_setting('bq_preferred_min_read_streams');
+----
+0
+
+statement error
+SET bq_preferred_min_read_streams = -1;
+----
+Invalid Input Error: Preferred min read streams must be non-negative (0 or greater). Use 0 to automatically derive the preferred minimum from DuckDB threads.
+
+statement error
+SET bq_preferred_min_read_streams = 2147483648;
+----
+Invalid Input Error: Preferred min read streams must fit in a 32-bit integer
+
+statement ok
+SET preserve_insertion_order = true;
+
+statement ok
+SET bq_max_read_streams = 8;
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_stream_settings_test` AS
+    SELECT 1 AS a
+');
+
+statement ok
+SET bq_max_read_streams = 2;
+
+statement ok
+SET bq_preferred_min_read_streams = 3;
+
+statement error
+SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.function_scan_stream_settings_test');
+----
+Invalid Input Error: Preferred min read streams (3) must be less than or equal to max read streams (2).
+
+statement ok
+SET bq_preferred_min_read_streams = 0;
+
+statement ok
+SET bq_max_read_streams = 0;
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_DATASET}.function_scan_stream_settings_test`');
