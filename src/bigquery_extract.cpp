@@ -67,7 +67,7 @@ static bool IsCompressionSupported(const string &format, const string &compressi
     if (compression.empty()) {
         return true;
     }
-    if (format == "CSV" || format == "g") {
+    if (format == "CSV" || format == "NEWLINE_DELIMITED_JSON") {
         return IsAllowedValue(compression, {"NONE", "GZIP"});
     }
     if (format == "AVRO") {
@@ -79,12 +79,32 @@ static bool IsCompressionSupported(const string &format, const string &compressi
     return false;
 }
 
-static BigQueryExtractParameters ParseExtractParameters(const named_parameter_map_t &named_parameters) {
-    if (named_parameters.find("overwrite") != named_parameters.end()) {
-        throw BinderException(
-            "Parameter 'overwrite' is not supported by JobConfigurationExtract-based bigquery_extract");
+static std::optional<string> ExtractFormatFromUri(const string &destination_uri) {
+    auto lower_uri = StringUtil::Lower(destination_uri);
+    if (StringUtil::EndsWith(lower_uri, ".csv") || StringUtil::EndsWith(lower_uri, ".csv.gz")) {
+        return "CSV";
     }
+    if (StringUtil::EndsWith(lower_uri, ".json") || StringUtil::EndsWith(lower_uri, ".json.gz")) {
+        return "NEWLINE_DELIMITED_JSON";
+    }
+    if (StringUtil::EndsWith(lower_uri, ".avro")) {
+        return "AVRO";
+    }
+    if (StringUtil::EndsWith(lower_uri, ".parquet")) {
+        return "PARQUET";
+    }
+    return std::nullopt;
+}
 
+static string NormalizeExtractFormat(const string &format) {
+    auto normalized = StringUtil::Upper(format);
+    if (normalized == "JSON") {
+        return "NEWLINE_DELIMITED_JSON";
+    }
+    return normalized;
+}
+
+static BigQueryExtractParameters ParseExtractParameters(const named_parameter_map_t &named_parameters) {
     BigQueryExtractParameters params;
 
     auto source_table = named_parameters.find("source_table");
@@ -94,15 +114,6 @@ static BigQueryExtractParameters ParseExtractParameters(const named_parameter_ma
     params.source_table = source_table->second.GetValue<string>();
     if (params.source_table.empty()) {
         throw BinderException("Parameter 'source_table' is required");
-    }
-
-    auto format = named_parameters.find("format");
-    if (format == named_parameters.end() || format->second.IsNull()) {
-        throw BinderException("Parameter 'format' is required");
-    }
-    params.destination_format = StringUtil::Upper(format->second.GetValue<string>());
-    if (!IsAllowedValue(params.destination_format, {"CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "PARQUET"})) {
-        throw BinderException("Invalid value for parameter 'format': %s", params.destination_format);
     }
 
     auto destination_uris = named_parameters.find("destination_uris");
@@ -133,6 +144,28 @@ static BigQueryExtractParameters ParseExtractParameters(const named_parameter_ma
         }
         if (!StringUtil::CIStartsWith(destination_uri, "gs://")) {
             throw BinderException("BigQuery extract destination URI must use the gs:// scheme: %s", destination_uri);
+        }
+    }
+
+    auto format = named_parameters.find("format");
+    if (format != named_parameters.end() && !format->second.IsNull()) {
+        params.destination_format = NormalizeExtractFormat(format->second.GetValue<string>());
+        if (!IsAllowedValue(params.destination_format, {"CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "PARQUET"})) {
+            throw BinderException("Invalid value for parameter 'format': %s", params.destination_format);
+        }
+    } else {
+        for (const auto &destination_uri : params.destination_uris) {
+            auto inferred_format = ExtractFormatFromUri(destination_uri);
+            if (!inferred_format) {
+                throw BinderException("Parameter 'format' is required when destination URI file extension is not one "
+                                      "of: .csv, .csv.gz, .json, .json.gz, .avro, .parquet");
+            }
+            if (params.destination_format.empty()) {
+                params.destination_format = *inferred_format;
+            } else if (params.destination_format != *inferred_format) {
+                throw BinderException(
+                    "Parameter 'format' is required when destination URI file extensions imply different formats");
+            }
         }
     }
 
@@ -389,7 +422,6 @@ BigQueryExtractFunction::BigQueryExtractFunction()
     named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["api_endpoint"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["timeout_ms"] = LogicalType::BIGINT;
-    named_parameters["overwrite"] = LogicalType(LogicalTypeId::BOOLEAN);
 }
 
 } // namespace bigquery

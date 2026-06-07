@@ -2,6 +2,8 @@
 # description: Binder validation for the JobConfigurationExtract-based bigquery_extract(...) function
 # group: [functions]
 
+require bigquery
+
 statement error
 CALL bigquery_extract(
 	'test_project',
@@ -122,7 +124,6 @@ CALL bigquery_extract(
 	'test_project',
 	source_table := 'dataset.source_table',
 	destination_uris := 'gs://bucket/export/*.parquet',
-	format := 'PARQUET',
 	compression := 'DEFLATE'
 );
 ----
@@ -132,19 +133,37 @@ statement error
 CALL bigquery_extract(
 	'test_project',
 	source_table := 'dataset.source_table',
-	destination_uris := 'gs://bucket/export/*.parquet',
-	format := 'PARQUET',
-	overwrite := true
+	destination_uris := 'gs://bucket/export/*'
 );
 ----
-Binder Error: Parameter 'overwrite' is not supported by JobConfigurationExtract-based bigquery_extract
+Binder Error: Parameter 'format' is required when destination URI file extension is not one of: .csv, .csv.gz, .json, .json.gz, .avro, .parquet
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := ['gs://bucket/export/*.csv', 'gs://bucket/export/*.parquet']
+);
+----
+Binder Error: Parameter 'format' is required when destination URI file extensions imply different formats
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.json',
+	format := 'JSON',
+	compression := 'SNAPPY'
+);
+----
+Binder Error: Compression 'SNAPPY' is not supported for format 'NEWLINE_DELIMITED_JSON'
 
 statement error
 CALL bigquery_extract(
 	'test_project',
 	source_table := 'dataset.source_table',
 	destination_uris := 'gs://bucket/export/*.parquet',
-	format := 'JSON'
+	format := 'XML'
 );
 ----
-Binder Error: Invalid value for parameter 'format': JSON
+Binder Error: Invalid value for parameter 'format': XML

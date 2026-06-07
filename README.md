@@ -484,7 +484,6 @@ D CALL bigquery_extract(
     'bq',
     source_table := 'my_dataset.source_table',
     destination_uris := 'gs://my_bucket/export/source_table_*.parquet',
-    format := 'PARQUET',
     location := 'EU'
 );
 ┌─────────┬─────────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────┬───────────────────────────────────────────────┬─────────┬─────────────────────────────┬─────────────┬──────────────────┐
@@ -495,7 +494,7 @@ D CALL bigquery_extract(
 └─────────┴─────────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────┴───────────────────────────────────────────────┴─────────┴─────────────────────────────┴─────────────┴──────────────────┘
 ```
 
-Use `destination_uris` for a single Cloud Storage URI or a `LIST<VARCHAR>`. Destination URIs must use the `gs://` scheme. Formats are `CSV`, `NEWLINE_DELIMITED_JSON`, `AVRO`, and `PARQUET`. CSV-only options are prefixed with `csv_`, AVRO-only options are prefixed with `avro_`, and `compression` is validated against the selected format before submitting the BigQuery extract job.
+Use `destination_uris` for a single Cloud Storage URI or a `LIST<VARCHAR>`. Destination URIs must use the `gs://` scheme. If `format` is omitted, it is inferred from the destination file extension: `.csv`, `.csv.gz`, `.json`, `.json.gz`, `.avro`, or `.parquet`. All destination URIs must imply the same format. CSV-only options are prefixed with `csv_`, AVRO-only options are prefixed with `avro_`, and `compression` is validated against the selected format before submitting the BigQuery extract job.
 
 The `bigquery_extract` function supports the following named parameters:
 
@@ -503,7 +502,7 @@ The `bigquery_extract` function supports the following named parameters:
 | ------------------------- | --------- | --------------------------------------------------------------------------- |
 | `source_table`            | `VARCHAR` | BigQuery table to export. Accepts `dataset.table`, `project.dataset.table`, `project:dataset.table`, or `projects/.../datasets/.../tables/...`. |
 | `destination_uris`        | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` destination URIs.                         |
-| `format`                  | `VARCHAR` | Export format: `CSV`, `NEWLINE_DELIMITED_JSON`, `AVRO`, or `PARQUET`.       |
+| `format`                  | `VARCHAR` | Optional export format: `CSV`, `JSON`, `AVRO`, or `PARQUET`. `JSON` maps to BigQuery's newline-delimited JSON extract format. |
 | `compression`             | `VARCHAR` | Optional BigQuery export compression. Supported values depend on `format`: CSV/JSON support `NONE` and `GZIP`; AVRO supports `NONE`, `DEFLATE`, and `SNAPPY`; PARQUET supports `NONE`, `GZIP`, `SNAPPY`, and `ZSTD`. |
 | `csv_print_header`        | `BOOLEAN` | CSV only: whether to include a header row.                                  |
 | `csv_field_delimiter`     | `VARCHAR` | CSV only: field delimiter.                                                  |
@@ -514,7 +513,7 @@ The `bigquery_extract` function supports the following named parameters:
 | `labels`                  | `MAP(VARCHAR, VARCHAR)` | BigQuery job labels to attach to the extract job.                          |
 | `timeout_ms`              | `BIGINT`  | Optional maximum time to wait for the extract job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery. |
 
-`destination_uris` must be provided. This extract-job based function does not support `overwrite`, query result exports, S3, or Azure Blob Storage. Use an empty or unique Cloud Storage destination path for each extract. Query exports and non-GCS destinations require BigQuery's `EXPORT DATA` SQL statement rather than `JobConfigurationExtract`.
+`destination_uris` must be provided. This extract-job based function writes to Cloud Storage through BigQuery's extract-job API; use an empty or unique destination path for each extract.
 
 ### `bigquery_jobs` Function
 
