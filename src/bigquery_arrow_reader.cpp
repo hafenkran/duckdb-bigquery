@@ -54,7 +54,6 @@ struct BigqueryStreamState {
     google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator it;
 
     bool range_open = false;
-    int64_t rows_delivered = 0;
 };
 
 static std::shared_ptr<arrow::Schema> SchemaWithDecimal256AsString(const std::shared_ptr<arrow::Schema> &schema) {
@@ -134,19 +133,13 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
             }
 
             if (st->it == st->range.end()) {
-                st->range = st->read_client->ReadRows(st->stream->name(), st->rows_delivered);
-                st->it = st->range.begin();
-
-                if (st->it == st->range.end()) {
-                    const idx_t next = st->factory->next_stream.fetch_add(1);
-                    st->stream = st->reader->GetStream(next);
-                    if (!st->stream) {
-                        return nullptr;
-                    }
-                    st->range_open = false;
-                    st->rows_delivered = 0;
-                    continue;
+                const idx_t next = st->factory->next_stream.fetch_add(1);
+                st->stream = st->reader->GetStream(next);
+                if (!st->stream) {
+                    return nullptr;
                 }
+                st->range_open = false;
+                continue;
             }
 
             auto &resp_or = *st->it;
@@ -183,7 +176,6 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
                 return arrow::Status::IOError("Arrow deserialization failed");
             }
 
-            st->rows_delivered += batch->num_rows();
             return ConvertDecimal256ToString(batch, modified_schema);
         }
     });
