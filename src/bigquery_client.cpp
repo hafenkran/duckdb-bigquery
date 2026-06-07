@@ -868,7 +868,7 @@ google::cloud::bigquery::v2::Job BigqueryClient::ExtractTableToGcs(const Bigquer
     }
     for (const auto &destination_uri : destination_uris) {
         if (destination_uri.empty()) {
-            throw BinderException("BigQuery export destination URIs cannot be empty");
+            throw BinderException("BigQuery extract destination URIs cannot be empty");
         }
         if (!StringUtil::CIStartsWith(destination_uri, "gs://")) {
             throw BinderException("BigQuery extract destination URI must use the gs:// scheme: %s", destination_uri);
@@ -1714,10 +1714,11 @@ google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildExtractJobReq
     source->set_project_id(source_table.project_id);
     source->set_dataset_id(source_table.dataset_id);
     source->set_table_id(source_table.table_id);
+
+    extract_config->set_destination_format(destination_format);
     for (const auto &destination_uri : destination_uris) {
         extract_config->add_destination_uris(destination_uri);
     }
-    extract_config->set_destination_format(destination_format);
     if (!compression.empty()) {
         extract_config->set_compression(compression);
     }

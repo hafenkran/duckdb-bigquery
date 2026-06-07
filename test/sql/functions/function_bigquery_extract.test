@@ -1,5 +1,5 @@
-# name: test/sql/functions/function_bigquery_export_extract.test
-# description: Tests the JobConfigurationExtract-based bigquery_export(...) function
+# name: test/sql/functions/function_bigquery_extract.test
+# description: Tests the JobConfigurationExtract-based bigquery_extract(...) function
 # group: [functions]
 
 require bigquery
@@ -23,10 +23,10 @@ SELECT 1 AS id, 'duckdb' AS name;
 statement ok
 CREATE OR REPLACE TEMP TABLE export_extract_job AS
 SELECT *
-FROM bigquery_export(
+FROM bigquery_extract(
 	'bq',
 	source_table := '${BQ_TEST_DATASET}.export_extract_source',
-	uri := '${BQ_TEST_EXPORT_URI}',
+	destination_uris := '${BQ_TEST_EXPORT_URI}',
 	format := 'PARQUET',
 	location := 'europe-west3',
 	timeout_ms := 90000,

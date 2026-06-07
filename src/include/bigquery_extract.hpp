@@ -5,9 +5,9 @@
 namespace duckdb {
 namespace bigquery {
 
-class BigQueryExportFunction : public TableFunction {
+class BigQueryExtractFunction : public TableFunction {
 public:
-    BigQueryExportFunction();
+    BigQueryExtractFunction();
 };
 
 } // namespace bigquery

@@ -9,7 +9,7 @@
 
 #include "absl/status/status.h"
 #include "bigquery_client.hpp"
-#include "bigquery_export.hpp"
+#include "bigquery_extract.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_utils.hpp"
 #include "storage/bigquery_catalog.hpp"
@@ -23,7 +23,7 @@
 namespace duckdb {
 namespace bigquery {
 
-struct BigQueryExportBindData : public TableFunctionData {
+struct BigQueryExtractBindData : public TableFunctionData {
     BigqueryConfig config;
     shared_ptr<BigqueryClient> bq_client;
     BigqueryTableRef source_table;
@@ -31,15 +31,15 @@ struct BigQueryExportBindData : public TableFunctionData {
     string destination_format;
     string location;
     string compression;
-    std::optional<bool> print_header;
-    string field_delimiter;
-    std::optional<bool> use_avro_logical_types;
+    std::optional<bool> csv_print_header;
+    string csv_field_delimiter;
+    std::optional<bool> avro_use_logical_types;
     std::map<string, string> labels;
     std::optional<int> timeout_ms;
     bool finished = false;
 };
 
-struct BigQueryExportParameters {
+struct BigQueryExtractParameters {
     string source_table;
     vector<string> destination_uris;
     string destination_format;
@@ -47,158 +47,149 @@ struct BigQueryExportParameters {
     string billing_project;
     string api_endpoint;
     string compression;
-    std::optional<bool> print_header;
-    string field_delimiter;
-    std::optional<bool> use_avro_logical_types;
+    std::optional<bool> csv_print_header;
+    string csv_field_delimiter;
+    std::optional<bool> avro_use_logical_types;
     std::map<string, string> labels;
     std::optional<int> timeout_ms;
 };
 
-static string NormalizeEnumValue(const string &value) {
-    return StringUtil::Upper(value);
-}
-
-static std::optional<string> ParseOptionalStringParameter(const named_parameter_map_t &named_parameters,
-                                                          const string &parameter_name) {
-    auto entry = named_parameters.find(parameter_name);
-    if (entry == named_parameters.end() || entry->second.IsNull()) {
-        return std::nullopt;
-    }
-    return entry->second.GetValue<string>();
-}
-
-static string ParseRequiredStringParameter(const named_parameter_map_t &named_parameters,
-                                           const string &parameter_name) {
-    auto value = ParseOptionalStringParameter(named_parameters, parameter_name);
-    if (!value || value->empty()) {
-        throw BinderException("Parameter '%s' is required", parameter_name);
-    }
-    return *value;
-}
-
-static string ParseRequiredEnumParameter(const named_parameter_map_t &named_parameters,
-                                         const string &parameter_name,
-                                         const vector<string> &allowed_values) {
-    auto normalized = NormalizeEnumValue(ParseRequiredStringParameter(named_parameters, parameter_name));
+static bool IsAllowedValue(const string &value, const vector<string> &allowed_values) {
     for (const auto &allowed_value : allowed_values) {
-        if (normalized == allowed_value) {
-            return normalized;
+        if (value == allowed_value) {
+            return true;
         }
     }
-
-    throw BinderException("Invalid value for parameter '%s': %s", parameter_name, normalized);
+    return false;
 }
 
-static string ParseOptionalEnumParameter(const named_parameter_map_t &named_parameters,
-                                         const string &parameter_name,
-                                         const vector<string> &allowed_values) {
-    auto value = ParseOptionalStringParameter(named_parameters, parameter_name);
-    if (!value) {
-        return string();
+static bool IsCompressionSupported(const string &format, const string &compression) {
+    if (compression.empty()) {
+        return true;
+    }
+    if (format == "CSV" || format == "g") {
+        return IsAllowedValue(compression, {"NONE", "GZIP"});
+    }
+    if (format == "AVRO") {
+        return IsAllowedValue(compression, {"NONE", "DEFLATE", "SNAPPY"});
+    }
+    if (format == "PARQUET") {
+        return IsAllowedValue(compression, {"NONE", "GZIP", "SNAPPY", "ZSTD"});
+    }
+    return false;
+}
+
+static BigQueryExtractParameters ParseExtractParameters(const named_parameter_map_t &named_parameters) {
+    if (named_parameters.find("overwrite") != named_parameters.end()) {
+        throw BinderException(
+            "Parameter 'overwrite' is not supported by JobConfigurationExtract-based bigquery_extract");
     }
 
-    auto normalized = NormalizeEnumValue(*value);
-    for (const auto &allowed_value : allowed_values) {
-        if (normalized == allowed_value) {
-            return normalized;
+    BigQueryExtractParameters params;
+
+    auto source_table = named_parameters.find("source_table");
+    if (source_table == named_parameters.end() || source_table->second.IsNull()) {
+        throw BinderException("Parameter 'source_table' is required");
+    }
+    params.source_table = source_table->second.GetValue<string>();
+    if (params.source_table.empty()) {
+        throw BinderException("Parameter 'source_table' is required");
+    }
+
+    auto format = named_parameters.find("format");
+    if (format == named_parameters.end() || format->second.IsNull()) {
+        throw BinderException("Parameter 'format' is required");
+    }
+    params.destination_format = StringUtil::Upper(format->second.GetValue<string>());
+    if (!IsAllowedValue(params.destination_format, {"CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "PARQUET"})) {
+        throw BinderException("Invalid value for parameter 'format': %s", params.destination_format);
+    }
+
+    auto destination_uris = named_parameters.find("destination_uris");
+    if (destination_uris == named_parameters.end() || destination_uris->second.IsNull()) {
+        throw BinderException("Parameter 'destination_uris' is required");
+    }
+    if (destination_uris->second.type().id() == LogicalTypeId::VARCHAR) {
+        params.destination_uris.push_back(destination_uris->second.GetValue<string>());
+    } else if (destination_uris->second.type().id() == LogicalTypeId::LIST) {
+        for (const auto &child : ListValue::GetChildren(destination_uris->second)) {
+            if (child.IsNull()) {
+                throw BinderException("Null entries are not allowed in parameter 'destination_uris'");
+            }
+            if (child.type().id() != LogicalTypeId::VARCHAR) {
+                throw BinderException("Parameter 'destination_uris' must contain only VARCHAR entries");
+            }
+            params.destination_uris.push_back(child.GetValue<string>());
         }
+    } else {
+        throw BinderException("Parameter 'destination_uris' must be VARCHAR or LIST<VARCHAR>");
     }
-
-    throw BinderException("Invalid value for parameter '%s': %s", parameter_name, normalized);
-}
-
-static std::optional<bool> ParseOptionalBoolParameter(const named_parameter_map_t &named_parameters,
-                                                      const string &parameter_name) {
-    auto entry = named_parameters.find(parameter_name);
-    if (entry == named_parameters.end() || entry->second.IsNull()) {
-        return std::nullopt;
-    }
-    return BooleanValue::Get(entry->second);
-}
-
-static std::optional<bool> ParseOptionalAliasedBoolParameter(const named_parameter_map_t &named_parameters,
-                                                             const string &parameter_name,
-                                                             const string &alias_parameter_name) {
-    auto value = ParseOptionalBoolParameter(named_parameters, parameter_name);
-    auto alias_value = ParseOptionalBoolParameter(named_parameters, alias_parameter_name);
-    if (value && alias_value) {
-        throw BinderException("Cannot specify both named parameters '%s' and '%s'",
-                              parameter_name,
-                              alias_parameter_name);
-    }
-    return value ? value : alias_value;
-}
-
-static std::optional<vector<string>> ParseDestinationUrisParameter(const named_parameter_map_t &named_parameters) {
-    auto entry = named_parameters.find("destination_uris");
-    if (entry == named_parameters.end() || entry->second.IsNull()) {
-        return std::nullopt;
-    }
-    if (entry->second.type().id() != LogicalTypeId::LIST) {
-        throw BinderException("Parameter 'destination_uris' must be LIST<VARCHAR>");
-    }
-
-    vector<string> destination_uris;
-    for (const auto &child : ListValue::GetChildren(entry->second)) {
-        if (child.IsNull()) {
-            throw BinderException("Null entries are not allowed in parameter 'destination_uris'");
-        }
-        if (child.type().id() != LogicalTypeId::VARCHAR) {
-            throw BinderException("Parameter 'destination_uris' must contain only VARCHAR entries");
-        }
-        destination_uris.push_back(child.GetValue<string>());
-    }
-    return destination_uris;
-}
-
-static void ValidateDestinationUris(const vector<string> &destination_uris) {
-    if (destination_uris.empty()) {
+    if (params.destination_uris.empty()) {
         throw BinderException("Parameter 'destination_uris' must contain at least one URI");
     }
-    for (const auto &destination_uri : destination_uris) {
+    for (const auto &destination_uri : params.destination_uris) {
         if (destination_uri.empty()) {
-            throw BinderException("BigQuery export destination URIs cannot be empty");
+            throw BinderException("BigQuery extract destination URIs cannot be empty");
         }
         if (!StringUtil::CIStartsWith(destination_uri, "gs://")) {
             throw BinderException("BigQuery extract destination URI must use the gs:// scheme: %s", destination_uri);
         }
     }
-}
 
-static BigQueryExportParameters ParseExportParameters(const named_parameter_map_t &named_parameters) {
-    if (named_parameters.find("overwrite") != named_parameters.end()) {
-        throw BinderException(
-            "Parameter 'overwrite' is not supported by JobConfigurationExtract-based bigquery_export");
+    auto compression = named_parameters.find("compression");
+    if (compression != named_parameters.end() && !compression->second.IsNull()) {
+        params.compression = StringUtil::Upper(compression->second.GetValue<string>());
+        if (!IsAllowedValue(params.compression, {"DEFLATE", "GZIP", "NONE", "SNAPPY", "ZSTD"})) {
+            throw BinderException("Invalid value for parameter 'compression': %s", params.compression);
+        }
+        if (!IsCompressionSupported(params.destination_format, params.compression)) {
+            throw BinderException("Compression '%s' is not supported for format '%s'",
+                                  params.compression,
+                                  params.destination_format);
+        }
     }
 
-    BigQueryExportParameters params;
-    params.source_table = ParseRequiredStringParameter(named_parameters, "source_table");
-    params.destination_format =
-        ParseRequiredEnumParameter(named_parameters, "format", {"CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "PARQUET"});
-    params.compression =
-        ParseOptionalEnumParameter(named_parameters, "compression", {"DEFLATE", "GZIP", "NONE", "SNAPPY", "ZSTD"});
-    params.print_header = ParseOptionalAliasedBoolParameter(named_parameters, "print_header", "header");
-    auto field_delimiter = ParseOptionalStringParameter(named_parameters, "field_delimiter");
-    params.field_delimiter = field_delimiter ? *field_delimiter : string();
-    params.use_avro_logical_types = ParseOptionalBoolParameter(named_parameters, "use_avro_logical_types");
-    params.location = ParseOptionalStringParameter(named_parameters, "location");
-    auto billing_project = ParseOptionalStringParameter(named_parameters, "billing_project");
-    params.billing_project = billing_project ? *billing_project : string();
-    auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
-    params.api_endpoint = api_endpoint ? *api_endpoint : string();
+    auto csv_print_header = named_parameters.find("csv_print_header");
+    if (csv_print_header != named_parameters.end() && !csv_print_header->second.IsNull()) {
+        if (params.destination_format != "CSV") {
+            throw BinderException("Parameter 'csv_print_header' is only supported for CSV extracts");
+        }
+        params.csv_print_header = BooleanValue::Get(csv_print_header->second);
+    }
+
+    auto csv_field_delimiter = named_parameters.find("csv_field_delimiter");
+    if (csv_field_delimiter != named_parameters.end() && !csv_field_delimiter->second.IsNull()) {
+        if (params.destination_format != "CSV") {
+            throw BinderException("Parameter 'csv_field_delimiter' is only supported for CSV extracts");
+        }
+        params.csv_field_delimiter = csv_field_delimiter->second.GetValue<string>();
+    }
+
+    auto avro_use_logical_types = named_parameters.find("avro_use_logical_types");
+    if (avro_use_logical_types != named_parameters.end() && !avro_use_logical_types->second.IsNull()) {
+        if (params.destination_format != "AVRO") {
+            throw BinderException("Parameter 'avro_use_logical_types' is only supported for AVRO extracts");
+        }
+        params.avro_use_logical_types = BooleanValue::Get(avro_use_logical_types->second);
+    }
+
+    auto location = named_parameters.find("location");
+    if (location != named_parameters.end() && !location->second.IsNull()) {
+        params.location = location->second.GetValue<string>();
+    }
+
+    auto billing_project = named_parameters.find("billing_project");
+    if (billing_project != named_parameters.end() && !billing_project->second.IsNull()) {
+        params.billing_project = billing_project->second.GetValue<string>();
+    }
+
+    auto api_endpoint = named_parameters.find("api_endpoint");
+    if (api_endpoint != named_parameters.end() && !api_endpoint->second.IsNull()) {
+        params.api_endpoint = api_endpoint->second.GetValue<string>();
+    }
+
     params.labels = BigqueryUtils::ParseOptionalLabelsParameter(named_parameters);
     params.timeout_ms = BigqueryUtils::ParseTimeoutMsParameter(named_parameters);
-
-    auto uri = ParseOptionalStringParameter(named_parameters, "uri");
-    auto destination_uris = ParseDestinationUrisParameter(named_parameters);
-    if (uri && destination_uris) {
-        throw BinderException("Cannot specify both named parameters 'uri' and 'destination_uris'");
-    }
-    if (!uri && !destination_uris) {
-        throw BinderException("Exactly one of the named parameters 'uri' or 'destination_uris' must be provided");
-    }
-    params.destination_uris = uri ? vector<string>{*uri} : *destination_uris;
-    ValidateDestinationUris(params.destination_uris);
 
     return params;
 }
@@ -277,21 +268,21 @@ static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vec
     return_types.emplace_back(LogicalType::JSON());
 }
 
-static unique_ptr<FunctionData> BigQueryExportBind(ClientContext &context,
-                                                   TableFunctionBindInput &input,
-                                                   vector<LogicalType> &return_types,
-                                                   vector<string> &names) {
+static unique_ptr<FunctionData> BigQueryExtractBind(ClientContext &context,
+                                                    TableFunctionBindInput &input,
+                                                    vector<LogicalType> &return_types,
+                                                    vector<string> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
-    auto params = ParseExportParameters(input.named_parameters);
+    auto params = ParseExtractParameters(input.named_parameters);
 
-    auto bind_data = make_uniq<BigQueryExportBindData>();
+    auto bind_data = make_uniq<BigQueryExtractBindData>();
     bind_data->destination_uris = params.destination_uris;
     bind_data->destination_format = params.destination_format;
     bind_data->location = params.location ? *params.location : BigquerySettings::DefaultLocation();
     bind_data->compression = params.compression;
-    bind_data->print_header = params.print_header;
-    bind_data->field_delimiter = params.field_delimiter;
-    bind_data->use_avro_logical_types = params.use_avro_logical_types;
+    bind_data->csv_print_header = params.csv_print_header;
+    bind_data->csv_field_delimiter = params.csv_field_delimiter;
+    bind_data->avro_use_logical_types = params.avro_use_logical_types;
     bind_data->labels = params.labels;
     bind_data->timeout_ms = params.timeout_ms;
 
@@ -331,8 +322,8 @@ static unique_ptr<FunctionData> BigQueryExportBind(ClientContext &context,
     return bind_data;
 }
 
-static void BigQueryExportFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-    auto &data = data_p.bind_data->CastNoConst<BigQueryExportBindData>();
+static void BigQueryExtractFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+    auto &data = data_p.bind_data->CastNoConst<BigQueryExtractBindData>();
     if (data.finished) {
         return;
     }
@@ -342,9 +333,9 @@ static void BigQueryExportFunc(ClientContext &context, TableFunctionInput &data_
                                                  data.destination_format,
                                                  data.location,
                                                  data.compression,
-                                                 data.print_header,
-                                                 data.field_delimiter,
-                                                 data.use_avro_logical_types,
+                                                 data.csv_print_header,
+                                                 data.csv_field_delimiter,
+                                                 data.avro_use_logical_types,
                                                  data.labels,
                                                  data.timeout_ms);
 
@@ -365,6 +356,7 @@ static void BigQueryExportFunc(ClientContext &context, TableFunctionInput &data_
     if (job.statistics().has_extract()) {
         const auto &extract_stats = job.statistics().extract();
         output.SetValue(7, 0, Int64ListValue(extract_stats.destination_uri_file_counts()));
+
         if (extract_stats.has_input_bytes()) {
             output.SetValue(8, 0, Value::BIGINT(extract_stats.input_bytes().value()));
         } else {
@@ -380,17 +372,18 @@ static void BigQueryExportFunc(ClientContext &context, TableFunctionInput &data_
     data.finished = true;
 }
 
-BigQueryExportFunction::BigQueryExportFunction()
-    : TableFunction("bigquery_export", {LogicalType(LogicalTypeId::VARCHAR)}, BigQueryExportFunc, BigQueryExportBind) {
+BigQueryExtractFunction::BigQueryExtractFunction()
+    : TableFunction("bigquery_extract",
+                    {LogicalType(LogicalTypeId::VARCHAR)},
+                    BigQueryExtractFunc,
+                    BigQueryExtractBind) {
     named_parameters["source_table"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["uri"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["destination_uris"] = LogicalType::ANY;
     named_parameters["format"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["compression"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["print_header"] = LogicalType(LogicalTypeId::BOOLEAN);
-    named_parameters["header"] = LogicalType(LogicalTypeId::BOOLEAN);
-    named_parameters["field_delimiter"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["use_avro_logical_types"] = LogicalType(LogicalTypeId::BOOLEAN);
+    named_parameters["csv_print_header"] = LogicalType(LogicalTypeId::BOOLEAN);
+    named_parameters["csv_field_delimiter"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["avro_use_logical_types"] = LogicalType(LogicalTypeId::BOOLEAN);
     named_parameters["location"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["labels"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
     named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
