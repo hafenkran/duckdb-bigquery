@@ -145,6 +145,13 @@ string BigqueryCatalog::GetDBPath() {
     return config.project_id;
 };
 
+string BigqueryCatalog::GetDefaultSchema() const {
+    if (config.HasDatasetId()) {
+        return config.dataset_id;
+    }
+    return Catalog::GetDefaultSchema();
+}
+
 void BigqueryCatalog::ClearCache() {
     schemas.ClearEntries();
     {
