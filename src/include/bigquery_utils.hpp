@@ -12,6 +12,7 @@
 
 #include <arrow/api.h>
 #include <chrono>
+#include <map>
 #include <optional>
 #include <regex>
 #include <thread>
@@ -224,6 +225,7 @@ public:
                                       const vector<LogicalType> &types,
                                       DataChunk &output);
 
+    static std::map<string, string> ParseOptionalLabelsParameter(const named_parameter_map_t &named_parameters);
     static std::optional<int> ParseTimeoutMsParameter(const named_parameter_map_t &named_parameters);
 
 private:

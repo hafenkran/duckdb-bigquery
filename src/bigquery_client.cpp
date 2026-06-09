@@ -850,6 +850,75 @@ google::cloud::bigquery::v2::Job BigqueryClient::ExecuteQueryToTable(const strin
     return WaitForJobCompletion(response->job_reference(), effective_timeout_ms, "Query job");
 }
 
+google::cloud::bigquery::v2::Job BigqueryClient::ExtractTableToGcs(const BigqueryTableRef &source_table,
+                                                                   const vector<string> &destination_uris,
+                                                                   const string &destination_format,
+                                                                   const string &location,
+                                                                   const string &compression,
+                                                                   const std::optional<bool> &print_header,
+                                                                   const string &field_delimiter,
+                                                                   const std::optional<bool> &use_avro_logical_types,
+                                                                   const std::map<string, string> &labels,
+                                                                   const std::optional<int> &timeout_ms) {
+    if (source_table.project_id.empty() || source_table.dataset_id.empty() || source_table.table_id.empty()) {
+        throw BinderException("BigQuery extract source table must include project, dataset, and table IDs");
+    }
+    if (destination_uris.empty()) {
+        throw BinderException("At least one destination URI must be provided for a BigQuery extract job");
+    }
+    for (const auto &destination_uri : destination_uris) {
+        if (destination_uri.empty()) {
+            throw BinderException("BigQuery extract destination URIs cannot be empty");
+        }
+        if (!StringUtil::CIStartsWith(destination_uri, "gs://")) {
+            throw BinderException("BigQuery extract destination URI must use the gs:// scheme: %s", destination_uri);
+        }
+    }
+
+    CheckAuthentication();
+
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto response = InsertExtractJobInternal(client,
+                                             source_table,
+                                             destination_uris,
+                                             destination_format,
+                                             location,
+                                             compression,
+                                             print_header,
+                                             field_delimiter,
+                                             use_avro_logical_types,
+                                             labels);
+    if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
+
+        if (CheckSSLError(response.status())) {
+            return ExtractTableToGcs(source_table,
+                                     destination_uris,
+                                     destination_format,
+                                     location,
+                                     compression,
+                                     print_header,
+                                     field_delimiter,
+                                     use_avro_logical_types,
+                                     labels,
+                                     timeout_ms);
+        }
+
+        throw BinderException("Extract job submission failed: " + response.status().message());
+    }
+
+    if (!response->has_job_reference()) {
+        throw BinderException("Extract job submission succeeded but did not return a job reference");
+    }
+    if (response->has_status() && response->status().state() == "DONE") {
+        ThrowOnJobStatusError(response->status(), "Extract job");
+        return *response;
+    }
+    return WaitForJobCompletion(response->job_reference(), timeout_ms, "Extract job");
+}
+
 google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &table_name,
                                                                  const BigqueryTableRef &destination_table,
                                                                  const string &write_disposition,
@@ -1614,6 +1683,61 @@ google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildQueryJobReque
     return request;
 }
 
+google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildExtractJobRequest(
+    const BigqueryTableRef &source_table,
+    const vector<string> &destination_uris,
+    const string &destination_format,
+    const string &location,
+    const string &compression,
+    const std::optional<bool> &print_header,
+    const string &field_delimiter,
+    const std::optional<bool> &use_avro_logical_types,
+    const std::map<string, string> &labels) {
+    google::cloud::bigquery::v2::Job job;
+    auto *job_reference = job.mutable_job_reference();
+    job_reference->set_project_id(config.BillingProject());
+    job_reference->set_job_id(GenerateJobId("extract"));
+    if (!location.empty()) {
+        job_reference->mutable_location()->set_value(location);
+    }
+
+    auto *job_config = job.mutable_configuration();
+    if (!labels.empty()) {
+        auto *job_labels = job_config->mutable_labels();
+        for (const auto &label : labels) {
+            (*job_labels)[label.first] = label.second;
+        }
+    }
+
+    auto *extract_config = job_config->mutable_extract();
+    auto *source = extract_config->mutable_source_table();
+    source->set_project_id(source_table.project_id);
+    source->set_dataset_id(source_table.dataset_id);
+    source->set_table_id(source_table.table_id);
+
+    extract_config->set_destination_format(destination_format);
+    for (const auto &destination_uri : destination_uris) {
+        extract_config->add_destination_uris(destination_uri);
+    }
+    if (!compression.empty()) {
+        extract_config->set_compression(compression);
+    }
+    if (print_header.has_value()) {
+        extract_config->mutable_print_header()->set_value(print_header.value());
+    }
+    if (!field_delimiter.empty()) {
+        extract_config->set_field_delimiter(field_delimiter);
+    }
+    if (use_avro_logical_types.has_value()) {
+        extract_config->mutable_use_avro_logical_types()->set_value(use_avro_logical_types.value());
+    }
+
+    google::cloud::bigquery::v2::InsertJobRequest request;
+    request.set_project_id(config.BillingProject());
+    *request.mutable_job() = job;
+    return request;
+}
+
 google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::InsertLoadJobInternal(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const BigqueryTableRef &destination_table,
@@ -1654,6 +1778,29 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
     return job_client.InsertJob(request);
 }
 
+google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::InsertExtractJobInternal(
+    google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
+    const BigqueryTableRef &source_table,
+    const vector<string> &destination_uris,
+    const string &destination_format,
+    const string &location,
+    const string &compression,
+    const std::optional<bool> &print_header,
+    const string &field_delimiter,
+    const std::optional<bool> &use_avro_logical_types,
+    const std::map<string, string> &labels) {
+    auto request = BuildExtractJobRequest(source_table,
+                                          destination_uris,
+                                          destination_format,
+                                          location,
+                                          compression,
+                                          print_header,
+                                          field_delimiter,
+                                          use_avro_logical_types,
+                                          labels);
+    return job_client.InsertJob(request);
+}
+
 google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> BigqueryClient::GetQueryResultsInternal(
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const google::cloud::bigquery::v2::JobReference &job_ref,
@@ -1680,9 +1827,9 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
 google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
     const google::cloud::bigquery::v2::JobReference &job_ref,
     const std::optional<int> &timeout_ms,
-    const string &job_kind) {
+    const string &operation_name) {
     if (job_ref.job_id().empty()) {
-        throw BinderException(job_kind + " reference did not contain a job ID");
+        throw BinderException(operation_name + " reference did not contain a job ID");
     }
 
     if (timeout_ms.has_value() && timeout_ms.value() > 0) {
@@ -1692,20 +1839,20 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
                 throw InterruptException();
             }
             if (RemainingWaitTimeMs(wait_until) == 0) {
-                throw BinderException(job_kind + " execution exceeded the timeout. Job ID: " + job_ref.job_id());
+                throw BinderException(operation_name + " execution exceeded the timeout. Job ID: " + job_ref.job_id());
             }
 
-            auto job = GetLoadJobForCompletion(job_ref, wait_until, job_kind);
+            auto job = GetJobForCompletion(job_ref, wait_until, operation_name);
             if (!job.has_status() || job.status().state() == "DONE") {
                 if (job.has_status()) {
-                    ThrowOnJobStatusError(job.status(), job_kind);
+                    ThrowOnJobStatusError(job.status(), operation_name);
                 }
                 return job;
             }
 
             auto remaining_ms = RemainingWaitTimeMs(wait_until);
             if (remaining_ms == 0) {
-                throw BinderException(job_kind + " execution exceeded the timeout. Job ID: " + job_ref.job_id());
+                throw BinderException(operation_name + " execution exceeded the timeout. Job ID: " + job_ref.job_id());
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(std::min(remaining_ms, 250)));
         }
@@ -1718,7 +1865,7 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
         auto job = GetJobByReference(job_ref);
         if (!job.has_status() || job.status().state() == "DONE") {
             if (job.has_status()) {
-                ThrowOnJobStatusError(job.status(), job_kind);
+                ThrowOnJobStatusError(job.status(), operation_name);
             }
             return job;
         }
@@ -1726,16 +1873,16 @@ google::cloud::bigquery::v2::Job BigqueryClient::WaitForJobCompletion(
     }
 }
 
-google::cloud::bigquery::v2::Job BigqueryClient::GetLoadJobForCompletion(
+google::cloud::bigquery::v2::Job BigqueryClient::GetJobForCompletion(
     const google::cloud::bigquery::v2::JobReference &job_ref,
     const std::chrono::steady_clock::time_point &wait_until,
-    const string &job_kind) {
+    const string &operation_name) {
     while (true) {
         if (context && context->IsInterrupted()) {
             throw InterruptException();
         }
         if (RemainingWaitTimeMs(wait_until) == 0) {
-            throw BinderException(job_kind + " execution exceeded the timeout. Job ID: " + job_ref.job_id());
+            throw BinderException(operation_name + " execution exceeded the timeout. Job ID: " + job_ref.job_id());
         }
 
         CheckAuthentication();

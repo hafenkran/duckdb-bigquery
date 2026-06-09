@@ -113,6 +113,7 @@ Operation-specific notes:
 - `bigquery_execute` uses the query-job path. It needs `bigquery.jobs.create`; any additional table or dataset permissions depend on the SQL being executed.
 - `INSERT INTO bq...` uses the Storage Write API write-stream path. Google documents `bigquery.tables.updateData` for that API, and the statement still needs whatever read permissions its source query requires.
 - `CREATE TABLE ... AS` creates the destination table and then writes rows through the Storage Write API path. In practice this combines the usual query permissions with the documented table-write permissions: `bigquery.jobs.create`, `bigquery.tables.create`, and `bigquery.tables.updateData`.
+- `bigquery_extract` uses a BigQuery extract job. It needs `bigquery.jobs.create`, read access to the source table, and Cloud Storage permissions for BigQuery to write the exported objects.
 - `bigquery_jobs` uses the BigQuery jobs listing APIs. Listing your own jobs needs `bigquery.jobs.list`. Using `allUsers=true` needs `bigquery.jobs.listAll`, which is included in roles such as `roles/bigquery.resourceViewer`.
 
 ## Quickstart
@@ -473,6 +474,46 @@ The `bigquery_load` function supports the following named parameters:
 | `timeout_ms`         | `BIGINT`  | Optional maximum time to wait for the submitted load job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery. |
 
 Exactly one of `source_file`, `source_uris`, or `source_table` must be provided. Without `timeout_ms`, or with `timeout_ms := 0`, `bigquery_load` waits for the load job to complete. For Cloud Storage loads, the BigQuery job identity needs permission to read the objects, and the bucket location must be compatible with the destination dataset location.
+
+### `bigquery_extract` Function
+
+The `bigquery_extract` function submits a BigQuery extract job that extracts an existing BigQuery table to Cloud Storage. This path uses BigQuery's `JobConfigurationExtract` API, so it avoids transferring table data through DuckDB, but it is table-based: use it for existing tables, not arbitrary `SELECT` queries.
+
+```sql
+D CALL bigquery_extract(
+    'bq',
+    source_table := 'my_dataset.source_table',
+    destination_uris := 'gs://my_bucket/export/source_table_*.parquet',
+    location := 'EU'
+);
+┌─────────┬─────────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────┬───────────────────────────────────────────────┬─────────┬─────────────────────────────┬─────────────┬──────────────────┐
+│ success │             job_id              │   project_id   │ location │             source_table             │               destination_uris                │ format  │ destination_uri_file_counts │ input_bytes │      status      │
+│ boolean │             varchar             │    varchar     │ varchar  │               varchar                │                 varchar[]                     │ varchar │            int64[]          │    int64    │       json       │
+├─────────┼─────────────────────────────────┼────────────────┼──────────┼──────────────────────────────────────┼───────────────────────────────────────────────┼─────────┼─────────────────────────────┼─────────────┼──────────────────┤
+│ true    │ job_duckdb_extract_tnwejzbesyix │ my_gcp_project │ EU       │ my_gcp_project.my_dataset.source_table │ [gs://my_bucket/export/source_table_*.parquet] │ PARQUET │ [3]                         │    10485760 │ {"state":"DONE"} │
+└─────────┴─────────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────┴───────────────────────────────────────────────┴─────────┴─────────────────────────────┴─────────────┴──────────────────┘
+```
+
+Use `destination_uris` for a single Cloud Storage URI or a `LIST<VARCHAR>`. Destination URIs must use the `gs://` scheme. If `format` is omitted, it is inferred from the destination file extension: `.csv`, `.csv.gz`, `.json`, `.json.gz`, `.avro`, or `.parquet`. All destination URIs must imply the same format. CSV-only options are prefixed with `csv_`, AVRO-only options are prefixed with `avro_`, and `compression` is validated against the selected format before submitting the BigQuery extract job.
+
+The `bigquery_extract` function supports the following named parameters:
+
+| Parameter                 | Type      | Description                                                                 |
+| ------------------------- | --------- | --------------------------------------------------------------------------- |
+| `source_table`            | `VARCHAR` | BigQuery table to export. Accepts `dataset.table`, `project.dataset.table`, `project:dataset.table`, or `projects/.../datasets/.../tables/...`. |
+| `destination_uris`        | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` destination URIs.                         |
+| `format`                  | `VARCHAR` | Optional export format: `CSV`, `JSON`, `AVRO`, or `PARQUET`. `JSON` maps to BigQuery's newline-delimited JSON extract format. |
+| `compression`             | `VARCHAR` | Optional BigQuery export compression. Supported values depend on `format`: CSV/JSON support `NONE` and `GZIP`; AVRO supports `NONE`, `DEFLATE`, and `SNAPPY`; PARQUET supports `NONE`, `GZIP`, `SNAPPY`, and `ZSTD`. |
+| `csv_print_header`        | `BOOLEAN` | CSV only: whether to include a header row.                                  |
+| `csv_field_delimiter`     | `VARCHAR` | CSV only: field delimiter.                                                  |
+| `avro_use_logical_types`  | `BOOLEAN` | AVRO only: whether to use Avro logical types.                               |
+| `location`                | `VARCHAR` | BigQuery job location.                                                      |
+| `billing_project`         | `VARCHAR` | Project ID to bill for the extract job. Only supported for direct project-ID calls. |
+| `api_endpoint`            | `VARCHAR` | Custom BigQuery API endpoint URL. Only supported for direct project-ID calls. |
+| `labels`                  | `MAP(VARCHAR, VARCHAR)` | BigQuery job labels to attach to the extract job.                          |
+| `timeout_ms`              | `BIGINT`  | Optional maximum time to wait for the extract job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery. |
+
+`destination_uris` must be provided. This extract-job based function writes to Cloud Storage through BigQuery's extract-job API; use an empty or unique destination path for each extract.
 
 ### `bigquery_jobs` Function
 

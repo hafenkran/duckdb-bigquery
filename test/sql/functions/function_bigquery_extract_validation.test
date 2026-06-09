@@ -1,0 +1,169 @@
+# name: test/sql/functions/function_bigquery_extract_validation.test
+# description: Binder validation for the JobConfigurationExtract-based bigquery_extract(...) function
+# group: [functions]
+
+require bigquery
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	destination_uris := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET'
+);
+----
+Binder Error: Parameter 'source_table' is required
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	format := 'PARQUET'
+);
+----
+Binder Error: Parameter 'destination_uris' is required
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := [],
+	format := 'PARQUET'
+);
+----
+Binder Error: Parameter 'destination_uris' must contain at least one URI
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 's3://bucket/export/*.parquet',
+	format := 'PARQUET'
+);
+----
+Binder Error: BigQuery extract destination URI must use the gs:// scheme: s3://bucket/export/*.parquet
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET',
+	timeout_ms := -1
+);
+----
+Invalid Input Error: Timeout must be non-negative
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET',
+	labels := MAP {'duckdb_export_label': NULL}
+);
+----
+Binder Error: Null label values are not allowed in parameter 'labels'
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.parquet',
+	format := 'PARQUET',
+	csv_field_delimiter := '|'
+);
+----
+Binder Error: Parameter 'csv_field_delimiter' is only supported for CSV extracts
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.avro',
+	format := 'AVRO',
+	csv_print_header := true
+);
+----
+Binder Error: Parameter 'csv_print_header' is only supported for CSV extracts
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.csv',
+	format := 'CSV',
+	avro_use_logical_types := true
+);
+----
+Binder Error: Parameter 'avro_use_logical_types' is only supported for AVRO extracts
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.avro',
+	format := 'AVRO',
+	compression := 'GZIP'
+);
+----
+Binder Error: Compression 'GZIP' is not supported for format 'AVRO'
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.csv',
+	format := 'CSV',
+	compression := 'SNAPPY'
+);
+----
+Binder Error: Compression 'SNAPPY' is not supported for format 'CSV'
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.parquet',
+	compression := 'DEFLATE'
+);
+----
+Binder Error: Compression 'DEFLATE' is not supported for format 'PARQUET'
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*'
+);
+----
+Binder Error: Parameter 'format' is required when destination URI file extension is not one of: .csv, .csv.gz, .json, .json.gz, .avro, .parquet
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := ['gs://bucket/export/*.csv', 'gs://bucket/export/*.parquet']
+);
+----
+Binder Error: Parameter 'format' is required when destination URI file extensions imply different formats
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.json',
+	format := 'JSON',
+	compression := 'SNAPPY'
+);
+----
+Binder Error: Compression 'SNAPPY' is not supported for format 'NEWLINE_DELIMITED_JSON'
+
+statement error
+CALL bigquery_extract(
+	'test_project',
+	source_table := 'dataset.source_table',
+	destination_uris := 'gs://bucket/export/*.parquet',
+	format := 'XML'
+);
+----
+Binder Error: Invalid value for parameter 'format': XML

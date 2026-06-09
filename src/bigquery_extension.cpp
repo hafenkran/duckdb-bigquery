@@ -20,6 +20,7 @@
 #include "bigquery_clear_cache.hpp"
 #include "bigquery_client.hpp"
 #include "bigquery_execute.hpp"
+#include "bigquery_extract.hpp"
 #include "bigquery_extension.hpp"
 #include "bigquery_geography.hpp"
 #include "bigquery_jobs.hpp"
@@ -81,6 +82,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigQueryExecuteFunction bigquery_execute_function;
     loader.RegisterFunction(bigquery_execute_function);
+
+    bigquery::BigQueryExtractFunction bigquery_extract_function;
+    loader.RegisterFunction(bigquery_extract_function);
 
     bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
     loader.RegisterFunction(bigquery_list_jobs_function);
