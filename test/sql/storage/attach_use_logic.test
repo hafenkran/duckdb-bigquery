@@ -14,13 +14,15 @@ ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigqu
 statement ok
 USE bq;
 
+query I
+SELECT current_schema() = '${BQ_TEST_DATASET}';
+----
+true
+
 statement error
 SET schema='some_schema'
 ----
 Catalog Error: SET schema: No catalog + schema named "some_schema" found.
-
-statement ok
-SET schema='${BQ_TEST_DATASET}'
 
 statement ok
 DROP TABLE IF EXISTS use_logic_table;
