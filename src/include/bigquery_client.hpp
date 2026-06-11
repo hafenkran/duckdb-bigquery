@@ -139,7 +139,7 @@ public:
         const string &page_token = "");
 
     shared_ptr<BigqueryArrowReader> CreateArrowReader(const BigqueryTableRef &table_ref,
-                                                      const idx_t num_streams,
+                                                      BigqueryReadSessionStreamLimits stream_limits,
                                                       const vector<string> &column_ids = std::vector<string>(),
                                                       const string &filter_cond = "");
 

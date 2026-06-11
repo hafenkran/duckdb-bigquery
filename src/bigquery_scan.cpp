@@ -108,9 +108,9 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
         });
     }
 
-    idx_t max_read_streams = BigquerySettings::GetMaxReadStreams(context);
+    const auto stream_limits = BigquerySettings::GetReadSessionStreamLimits(context);
     auto bq_arrow_reader =
-        bind_data.bq_client->CreateArrowReader(bind_data.table_ref, max_read_streams, selected_fields, filter_string);
+        bind_data.bq_client->CreateArrowReader(bind_data.table_ref, stream_limits, selected_fields, filter_string);
 
     auto factory = make_shared_ptr<BigqueryStreamFactory>(bq_arrow_reader);
     auto factory_dependency = bind_data.GetFactoryDependency();
@@ -121,9 +121,9 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
     bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
 
     auto gstate = make_uniq<BigqueryScanGlobalState>();
-    const idx_t requested_read_streams = MaxValue<idx_t>(1, max_read_streams);
+    const idx_t duckdb_threads = MaxValue<idx_t>(1, context.db->NumberOfThreads());
     const idx_t actual_read_streams = MaxValue<idx_t>(1, bq_arrow_reader->GetStreamCount());
-    gstate->max_threads = MinValue<idx_t>(requested_read_streams, actual_read_streams);
+    gstate->max_threads = MinValue<idx_t>(duckdb_threads, actual_read_streams);
     bind_data.estimated_row_count = bq_arrow_reader->GetEstimatedRowCount();
 
     auto arrow_schema = bq_arrow_reader->GetSchema();
@@ -457,6 +457,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     projection_pushdown = true;
     filter_pushdown = true;
     filter_prune = true;
+    order_preservation_type = OrderPreservationType::NO_ORDER;
 
     to_string = BigqueryScanToString;
     cardinality = BigqueryScanCardinality;

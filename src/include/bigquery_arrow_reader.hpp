@@ -13,6 +13,7 @@
 #include "google/cloud/bigquery/storage/v1/bigquery_read_connection.h"
 #include "google/cloud/stream_range.h"
 
+#include "bigquery_read_session.hpp"
 #include "bigquery_utils.hpp"
 
 namespace duckdb {
@@ -41,7 +42,7 @@ struct BigqueryArrowReader {
 public:
     BigqueryArrowReader(const BigqueryTableRef table_ref,
                         const string billing_project_id,
-                        idx_t num_streams,
+                        BigqueryReadSessionStreamLimits stream_limits,
                         const google::cloud::Options &options,
                         const vector<string> &column_ids = std::vector<string>(),
                         const string &filter_cond = "");
@@ -61,7 +62,6 @@ private:
     BigqueryTableRef table_ref;
     string billing_project_id;
 
-    idx_t num_streams;
     google::cloud::Options options;
 
     std::shared_ptr<google::cloud::bigquery_storage_v1::BigQueryReadConnection> read_connection;

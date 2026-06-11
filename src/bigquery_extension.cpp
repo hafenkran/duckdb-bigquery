@@ -164,12 +164,17 @@ static void LoadInternal(ExtensionLoader &loader) {
                               Value(bigquery::BigquerySettings::CurlCaBundlePath()),
                               bigquery::BigquerySettings::SetCurlCaBundlePath);
     config.AddExtensionOption("bq_max_read_streams",
-                              "Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match "
-                              "the number of DuckDB threads. `preserve_insertion_order` must be false for "
-                              "parallelization to work, and BigQuery may return fewer streams than requested.",
+                              "Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to request "
+                              "the default maximum of 4 streams. BigQuery may return fewer streams than requested.",
                               LogicalType::BIGINT,
                               Value(bigquery::BigquerySettings::MaxReadStreams()),
                               bigquery::BigquerySettings::SetMaxReadStreams);
+    config.AddExtensionOption("bq_preferred_min_read_streams",
+                              "Preferred minimum number of read streams requested for BigQuery Storage Read. Set to 0 "
+                              "to derive this from DuckDB threads.",
+                              LogicalType::BIGINT,
+                              Value(bigquery::BigquerySettings::PreferredMinReadStreams()),
+                              bigquery::BigquerySettings::SetPreferredMinReadStreams);
     config.AddExtensionOption("bq_enable_inflight_request_windowing",
                               "Whether to allow multiple BigQuery Storage Write AppendRows requests to remain in "
                               "flight before waiting for acknowledgements. Usually faster, but slightly less memory "

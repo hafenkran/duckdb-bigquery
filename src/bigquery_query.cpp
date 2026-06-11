@@ -471,6 +471,7 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     projection_pushdown = true;
     filter_pushdown = true;
     filter_prune = true;
+    order_preservation_type = OrderPreservationType::NO_ORDER;
 
     named_parameters["billing_project"] = LogicalType::VARCHAR;
     named_parameters["api_endpoint"] = LogicalType::VARCHAR;

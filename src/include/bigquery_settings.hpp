@@ -4,6 +4,8 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/main/settings.hpp"
 
+#include "bigquery_read_session.hpp"
+
 #include "google/cloud/bigquery/storage/v1/arrow.pb.h"
 
 #include <chrono>
@@ -185,7 +187,7 @@ public:
     }
 
     static int &MaxReadStreams() {
-        static int BIGQUERY_MAX_READ_STREAMS = 0; // 0 means default DuckDB thread count
+        static int BIGQUERY_MAX_READ_STREAMS = 4;
         return BIGQUERY_MAX_READ_STREAMS;
     }
 
@@ -193,29 +195,50 @@ public:
         int max_streams = GetIntSettingValue("Max read streams", parameter);
         if (max_streams < 0) {
             throw InvalidInputException("Max read streams must be non-negative (0 or greater). Use 0 to automatically "
-                                        "match the number of DuckDB threads.");
-        }
-        const bool preserve_insertion_order = Settings::Get<PreserveInsertionOrderSetting>(context);
-        if (preserve_insertion_order && max_streams > 1) {
-            std::cout << "Warning: preserve_insertion_order is set to true, but max_read_streams is set to "
-                      << max_streams << ". This will effectively limit execution to a single stream." << std::endl;
+                                        "request the default stream count.");
         }
         MaxReadStreams() = max_streams;
     }
 
-    static int GetMaxReadStreams(ClientContext &context) {
-        const bool preserve_insertion_order = Settings::Get<PreserveInsertionOrderSetting>(context);
-        if (preserve_insertion_order) {
-            // when preserve_insertion_order is true, we can only use 1 stream
-            return 1;
+    static int &PreferredMinReadStreams() {
+        static int BIGQUERY_PREFERRED_MIN_READ_STREAMS = 0; // 0 means auto
+        return BIGQUERY_PREFERRED_MIN_READ_STREAMS;
+    }
+
+    static void SetPreferredMinReadStreams(ClientContext &context, SetScope scope, Value &parameter) {
+        int min_streams = GetIntSettingValue("Preferred min read streams", parameter);
+        if (min_streams < 0) {
+            throw InvalidInputException("Preferred min read streams must be non-negative (0 or greater). Use 0 to "
+                                        "automatically derive the preferred minimum from DuckDB threads.");
         }
+        PreferredMinReadStreams() = min_streams;
+    }
+
+    static BigqueryReadSessionStreamLimits GetReadSessionStreamLimits(ClientContext &context) {
+        static constexpr idx_t BIGQUERY_AUTO_MAX_READ_STREAMS = 4;
+
+        const idx_t duckdb_threads = MaxValue<idx_t>(1, context.db->NumberOfThreads());
         const int max_read_streams = MaxReadStreams();
-        if (max_read_streams == 0) {
-            // if max_read_streams is 0, we use the maximum threads from the DuckDB config
-            const auto &config = DBConfig::GetConfig(context);
-            return static_cast<int>(config.options.maximum_threads);
+        const idx_t max_stream_count =
+            max_read_streams == 0 ? BIGQUERY_AUTO_MAX_READ_STREAMS : static_cast<idx_t>(max_read_streams);
+
+        const int preferred_min_read_streams = PreferredMinReadStreams();
+        idx_t preferred_min_stream_count;
+        if (preferred_min_read_streams == 0) {
+            const idx_t duckdb_thread_target =
+                duckdb_threads >= max_stream_count / 3 ? max_stream_count : 3 * duckdb_threads;
+            preferred_min_stream_count = MinValue<idx_t>(max_stream_count, MaxValue<idx_t>(1, duckdb_thread_target));
+        } else {
+            preferred_min_stream_count = static_cast<idx_t>(preferred_min_read_streams);
+            if (preferred_min_stream_count > max_stream_count) {
+                throw InvalidInputException(
+                    "Preferred min read streams (%llu) must be less than or equal to max read streams (%llu).",
+                    static_cast<unsigned long long>(preferred_min_stream_count),
+                    static_cast<unsigned long long>(max_stream_count));
+            }
         }
-        return max_read_streams;
+
+        return BigqueryReadSessionStreamLimits{max_stream_count, preferred_min_stream_count};
     }
 
     static bool &EnableInflightRequestWindowing() {

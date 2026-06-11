@@ -203,12 +203,11 @@ void BigqueryStreamFactory::GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema
 
 BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
                                          const string billing_project_id,
-                                         idx_t num_streams,
+                                         BigqueryReadSessionStreamLimits stream_limits,
                                          const google::cloud::Options &options,
                                          const vector<string> &selected_columns,
                                          const string &filter_condition)
-    : table_ref(table_ref), billing_project_id(billing_project_id), num_streams(num_streams), options(options),
-      localhost_test_env(false) {
+    : table_ref(table_ref), billing_project_id(billing_project_id), options(options), localhost_test_env(false) {
     if (options.has<google::cloud::EndpointOption>()) {
         localhost_test_env = true;
     }
@@ -242,7 +241,13 @@ BigqueryArrowReader::BigqueryArrowReader(const BigqueryTableRef table_ref,
         read_options->set_row_restriction(filter_condition);
     }
 
-    auto new_session = read_client->CreateReadSession(parent, session, num_streams);
+    auto request = google::cloud::bigquery::storage::v1::CreateReadSessionRequest();
+    request.set_parent(parent);
+    *request.mutable_read_session() = std::move(session);
+    request.set_max_stream_count(NumericCast<int32_t>(stream_limits.max_stream_count));
+    request.set_preferred_min_stream_count(NumericCast<int32_t>(stream_limits.preferred_min_stream_count));
+
+    auto new_session = read_client->CreateReadSession(request);
     if (!new_session) {
         auto status = new_session.status();
         if (status.code() == google::cloud::StatusCode::kPermissionDenied) {
