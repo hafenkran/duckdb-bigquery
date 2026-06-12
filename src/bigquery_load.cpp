@@ -24,6 +24,8 @@
 #include "storage/bigquery_transaction.hpp"
 
 #include <cstdio>
+#include <initializer_list>
+#include <limits>
 #include <map>
 #include <optional>
 
@@ -37,11 +39,7 @@ struct BigQueryLoadBindData : public TableFunctionData {
     std::optional<string> source_file;
     vector<string> source_uris;
     std::optional<string> source_table;
-    string write_disposition;
-    string create_disposition;
-    string location;
-    std::map<string, string> labels;
-    std::optional<int> timeout_ms;
+    BigQueryLoadOptions options;
     bool remove_staged_source_file = false;
     bool finished = false;
 
@@ -56,13 +54,9 @@ struct BigQueryLoadParameters {
     std::optional<string> source_file;
     vector<string> source_uris;
     std::optional<string> source_table;
-    string write_disposition = "WRITE_TRUNCATE";
-    string create_disposition = "CREATE_IF_NEEDED";
-    std::optional<string> location;
     string billing_project;
-    string api_endpoint;
-    std::map<string, string> labels;
-    std::optional<int> timeout_ms;
+    bool source_format_explicit = false;
+    BigQueryLoadOptions options;
 };
 
 static string NormalizeEnumValue(const string &value) {
@@ -137,6 +131,200 @@ static std::optional<string> ParseOptionalAliasedStringParameter(const named_par
     return value ? value : legacy_value;
 }
 
+static std::optional<bool> ParseOptionalBoolParameter(const named_parameter_map_t &named_parameters,
+                                                      const string &parameter_name) {
+    auto entry = named_parameters.find(parameter_name);
+    if (entry == named_parameters.end() || entry->second.IsNull()) {
+        return std::nullopt;
+    }
+    return entry->second.GetValue<bool>();
+}
+
+static std::optional<int> ParseOptionalNonNegativeInt32Parameter(const named_parameter_map_t &named_parameters,
+                                                                 const string &parameter_name) {
+    auto entry = named_parameters.find(parameter_name);
+    if (entry == named_parameters.end() || entry->second.IsNull()) {
+        return std::nullopt;
+    }
+
+    auto value = entry->second.GetValue<int64_t>();
+    if (value < 0) {
+        throw InvalidInputException("Parameter '%s' must be non-negative", parameter_name);
+    }
+    if (value > std::numeric_limits<int>::max()) {
+        throw InvalidInputException("Parameter '%s' must fit in a 32-bit integer", parameter_name);
+    }
+    return static_cast<int>(value);
+}
+
+static vector<string> ParseOptionalStringListParameter(const named_parameter_map_t &named_parameters,
+                                                       const string &parameter_name,
+                                                       const bool normalize_upper = false) {
+    auto entry = named_parameters.find(parameter_name);
+    if (entry == named_parameters.end() || entry->second.IsNull()) {
+        return {};
+    }
+
+    vector<string> result;
+    if (entry->second.type().id() == LogicalTypeId::VARCHAR) {
+        auto value = entry->second.GetValue<string>();
+        result.push_back(normalize_upper ? NormalizeEnumValue(value) : value);
+        return result;
+    }
+    if (entry->second.type().id() != LogicalTypeId::LIST) {
+        throw BinderException("Parameter '%s' must be a VARCHAR or LIST<VARCHAR>", parameter_name);
+    }
+
+    for (const auto &child : ListValue::GetChildren(entry->second)) {
+        if (child.IsNull()) {
+            throw BinderException("Null entries are not allowed in parameter '%s'", parameter_name);
+        }
+        if (child.type().id() != LogicalTypeId::VARCHAR) {
+            throw BinderException("Parameter '%s' must contain only VARCHAR entries", parameter_name);
+        }
+        auto value = child.GetValue<string>();
+        result.push_back(normalize_upper ? NormalizeEnumValue(value) : value);
+    }
+    return result;
+}
+
+static bool HasAnyOption(const BigQueryLoadOptions &options, const std::initializer_list<bool> option_presence) {
+    for (auto present : option_presence) {
+        if (present) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool HasCsvOptions(const BigQueryLoadOptions &options) {
+    return HasAnyOption(options,
+                        {!options.csv_field_delimiter.empty(),
+                         options.csv_skip_leading_rows.has_value(),
+                         options.csv_quote.has_value(),
+                         options.csv_allow_quoted_newlines.has_value(),
+                         options.csv_allow_jagged_rows.has_value(),
+                         !options.csv_encoding.empty(),
+                         options.csv_null_marker.has_value(),
+                         !options.csv_null_markers.empty(),
+                         options.csv_preserve_ascii_control_characters.has_value()});
+}
+
+static bool HasTemporalOptions(const BigQueryLoadOptions &options) {
+    return HasAnyOption(options,
+                        {!options.date_format.empty(),
+                         !options.datetime_format.empty(),
+                         !options.time_format.empty(),
+                         !options.timestamp_format.empty(),
+                         !options.time_zone.empty()});
+}
+
+static string InferSourceFormatFromPath(const string &source) {
+    auto lower = StringUtil::Lower(source);
+    auto query_pos = lower.find('?');
+    if (query_pos != string::npos) {
+        lower = lower.substr(0, query_pos);
+    }
+
+    const vector<string> compression_suffixes = {".gz", ".gzip", ".bz2", ".zst", ".zstd", ".snappy", ".deflate"};
+    for (const auto &suffix : compression_suffixes) {
+        if (lower.size() > suffix.size() && lower.rfind(suffix) == lower.size() - suffix.size()) {
+            lower = lower.substr(0, lower.size() - suffix.size());
+            break;
+        }
+    }
+
+    if (lower.size() >= 4 && lower.rfind(".csv") == lower.size() - 4) {
+        return "CSV";
+    }
+    if (lower.size() >= 5 && lower.rfind(".json") == lower.size() - 5) {
+        return "NEWLINE_DELIMITED_JSON";
+    }
+    if (lower.size() >= 7 && lower.rfind(".ndjson") == lower.size() - 7) {
+        return "NEWLINE_DELIMITED_JSON";
+    }
+    if (lower.size() >= 5 && lower.rfind(".avro") == lower.size() - 5) {
+        return "AVRO";
+    }
+    if (lower.size() >= 4 && lower.rfind(".orc") == lower.size() - 4) {
+        return "ORC";
+    }
+    if (lower.size() >= 8 && lower.rfind(".parquet") == lower.size() - 8) {
+        return "PARQUET";
+    }
+    if (lower.size() >= 5 && lower.rfind(".parq") == lower.size() - 5) {
+        return "PARQUET";
+    }
+    return "";
+}
+
+static string InferSourceFormatFromSources(const vector<string> &sources) {
+    string inferred_format;
+    for (const auto &source : sources) {
+        auto source_format = InferSourceFormatFromPath(source);
+        if (source_format.empty()) {
+            return "";
+        }
+        if (inferred_format.empty()) {
+            inferred_format = source_format;
+        } else if (inferred_format != source_format) {
+            return "";
+        }
+    }
+    return inferred_format;
+}
+
+static void ValidateEnumList(const vector<string> &values,
+                             const string &parameter_name,
+                             const vector<string> &allowed_values) {
+    for (const auto &value : values) {
+        bool found = false;
+        for (const auto &allowed_value : allowed_values) {
+            if (value == allowed_value) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw BinderException("Invalid value for parameter '%s': %s", parameter_name, value);
+        }
+    }
+}
+
+static void ValidateLoadOptionCombinations(const BigQueryLoadOptions &options, const bool source_is_uris) {
+    const auto &format = options.source_format;
+    if (HasCsvOptions(options) && format != "CSV") {
+        throw BinderException("CSV-specific bigquery_load options require source_format='CSV'");
+    }
+    if (!options.json_extension.empty() && format != "NEWLINE_DELIMITED_JSON") {
+        throw BinderException("json_extension requires source_format='NEWLINE_DELIMITED_JSON'");
+    }
+    if (options.avro_use_logical_types.has_value() && format != "AVRO") {
+        throw BinderException("avro_use_logical_types requires source_format='AVRO'");
+    }
+    if ((options.parquet_enable_list_inference.has_value() || options.parquet_enum_as_string.has_value()) &&
+        format != "PARQUET") {
+        throw BinderException("Parquet-specific bigquery_load options require source_format='PARQUET'");
+    }
+    if (HasTemporalOptions(options) && format != "CSV" && format != "NEWLINE_DELIMITED_JSON") {
+        throw BinderException("Temporal parsing options require source_format='CSV' or "
+                              "source_format='NEWLINE_DELIMITED_JSON'");
+    }
+    if (!options.reference_file_schema_uri.empty() && format != "AVRO" && format != "PARQUET" && format != "ORC") {
+        throw BinderException("reference_file_schema_uri requires source_format='AVRO', 'PARQUET', or 'ORC'");
+    }
+    if (!options.decimal_target_types.empty() && format != "AVRO" && format != "PARQUET" && format != "ORC") {
+        throw BinderException("decimal_target_types requires source_format='AVRO', 'PARQUET', or 'ORC'");
+    }
+    if ((!options.hive_partitioning_mode.empty() || !options.hive_partitioning_source_uri_prefix.empty()) &&
+        !source_is_uris) {
+        throw BinderException("Hive partitioning options require source_uris");
+    }
+    if (options.csv_null_marker.has_value() && !options.csv_null_markers.empty()) {
+        throw BinderException("Cannot specify both csv_null_marker and csv_null_markers");
+    }
+}
+
 static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &named_parameters) {
     BigQueryLoadParameters params;
     params.source_file = ParseOptionalAliasedStringParameter(named_parameters, "source_file", "file");
@@ -148,21 +336,91 @@ static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &n
     if (source_uris && source_uris->empty()) {
         throw BinderException("Parameter 'source_uris' must contain at least one URI");
     }
-    params.location = ParseOptionalStringParameter(named_parameters, "location");
+    auto source_format = ParseOptionalStringParameter(named_parameters, "source_format");
+    if (source_format.has_value()) {
+        params.source_format_explicit = true;
+        params.options.source_format = NormalizeEnumValue(*source_format);
+        ValidateEnumList({params.options.source_format},
+                         "source_format",
+                         {"PARQUET", "CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "ORC"});
+    }
+
+    auto location = ParseOptionalStringParameter(named_parameters, "location");
+    params.options.location = location ? *location : string();
     auto billing_project = ParseOptionalStringParameter(named_parameters, "billing_project");
     params.billing_project = billing_project ? *billing_project : string();
-    auto api_endpoint = ParseOptionalStringParameter(named_parameters, "api_endpoint");
-    params.api_endpoint = api_endpoint ? *api_endpoint : string();
-    params.labels = BigqueryUtils::ParseOptionalLabelsParameter(named_parameters);
-    params.timeout_ms = BigqueryUtils::ParseTimeoutMsParameter(named_parameters);
-    params.write_disposition = ParseEnumParameter(named_parameters,
-                                                  "write_disposition",
-                                                  "WRITE_TRUNCATE",
-                                                  {"WRITE_TRUNCATE", "WRITE_APPEND", "WRITE_EMPTY"});
-    params.create_disposition = ParseEnumParameter(named_parameters,
-                                                   "create_disposition",
-                                                   "CREATE_IF_NEEDED",
-                                                   {"CREATE_IF_NEEDED", "CREATE_NEVER"});
+    params.options.labels = BigqueryUtils::ParseOptionalLabelsParameter(named_parameters);
+    params.options.timeout_ms = BigqueryUtils::ParseTimeoutMsParameter(named_parameters);
+    params.options.write_disposition = ParseEnumParameter(named_parameters,
+                                                          "write_disposition",
+                                                          "WRITE_TRUNCATE",
+                                                          {"WRITE_TRUNCATE", "WRITE_APPEND", "WRITE_EMPTY"});
+    params.options.create_disposition = ParseEnumParameter(named_parameters,
+                                                           "create_disposition",
+                                                           "CREATE_IF_NEEDED",
+                                                           {"CREATE_IF_NEEDED", "CREATE_NEVER"});
+    params.options.autodetect = ParseOptionalBoolParameter(named_parameters, "autodetect");
+    params.options.schema_update_options =
+        ParseOptionalStringListParameter(named_parameters, "schema_update_options", true);
+    ValidateEnumList(params.options.schema_update_options,
+                     "schema_update_options",
+                     {"ALLOW_FIELD_ADDITION", "ALLOW_FIELD_RELAXATION"});
+    params.options.max_bad_records = ParseOptionalNonNegativeInt32Parameter(named_parameters, "max_bad_records");
+    params.options.ignore_unknown_values = ParseOptionalBoolParameter(named_parameters, "ignore_unknown_values");
+
+    auto csv_field_delimiter = ParseOptionalStringParameter(named_parameters, "csv_field_delimiter");
+    params.options.csv_field_delimiter = csv_field_delimiter ? *csv_field_delimiter : string();
+    params.options.csv_skip_leading_rows =
+        ParseOptionalNonNegativeInt32Parameter(named_parameters, "csv_skip_leading_rows");
+    params.options.csv_quote = ParseOptionalStringParameter(named_parameters, "csv_quote");
+    params.options.csv_allow_quoted_newlines =
+        ParseOptionalBoolParameter(named_parameters, "csv_allow_quoted_newlines");
+    params.options.csv_allow_jagged_rows = ParseOptionalBoolParameter(named_parameters, "csv_allow_jagged_rows");
+    auto csv_encoding = ParseOptionalStringParameter(named_parameters, "csv_encoding");
+    params.options.csv_encoding = csv_encoding ? NormalizeEnumValue(*csv_encoding) : string();
+    params.options.csv_null_marker = ParseOptionalStringParameter(named_parameters, "csv_null_marker");
+    params.options.csv_null_markers = ParseOptionalStringListParameter(named_parameters, "csv_null_markers");
+    params.options.csv_preserve_ascii_control_characters =
+        ParseOptionalBoolParameter(named_parameters, "csv_preserve_ascii_control_characters");
+
+    auto date_format = ParseOptionalStringParameter(named_parameters, "date_format");
+    params.options.date_format = date_format ? *date_format : string();
+    auto datetime_format = ParseOptionalStringParameter(named_parameters, "datetime_format");
+    params.options.datetime_format = datetime_format ? *datetime_format : string();
+    auto time_format = ParseOptionalStringParameter(named_parameters, "time_format");
+    params.options.time_format = time_format ? *time_format : string();
+    auto timestamp_format = ParseOptionalStringParameter(named_parameters, "timestamp_format");
+    params.options.timestamp_format = timestamp_format ? *timestamp_format : string();
+    auto time_zone = ParseOptionalStringParameter(named_parameters, "time_zone");
+    params.options.time_zone = time_zone ? *time_zone : string();
+
+    auto json_extension = ParseOptionalStringParameter(named_parameters, "json_extension");
+    params.options.json_extension = json_extension ? NormalizeEnumValue(*json_extension) : string();
+    if (!params.options.json_extension.empty()) {
+        ValidateEnumList({params.options.json_extension}, "json_extension", {"GEOJSON"});
+    }
+    params.options.avro_use_logical_types = ParseOptionalBoolParameter(named_parameters, "avro_use_logical_types");
+    params.options.parquet_enable_list_inference =
+        ParseOptionalBoolParameter(named_parameters, "parquet_enable_list_inference");
+    params.options.parquet_enum_as_string = ParseOptionalBoolParameter(named_parameters, "parquet_enum_as_string");
+    auto reference_file_schema_uri = ParseOptionalStringParameter(named_parameters, "reference_file_schema_uri");
+    params.options.reference_file_schema_uri = reference_file_schema_uri ? *reference_file_schema_uri : string();
+    params.options.decimal_target_types =
+        ParseOptionalStringListParameter(named_parameters, "decimal_target_types", true);
+    ValidateEnumList(params.options.decimal_target_types, "decimal_target_types", {"NUMERIC", "BIGNUMERIC", "STRING"});
+
+    auto hive_partitioning_mode = ParseOptionalStringParameter(named_parameters, "hive_partitioning_mode");
+    params.options.hive_partitioning_mode =
+        hive_partitioning_mode ? NormalizeEnumValue(*hive_partitioning_mode) : string();
+    if (!params.options.hive_partitioning_mode.empty()) {
+        ValidateEnumList({params.options.hive_partitioning_mode},
+                         "hive_partitioning_mode",
+                         {"AUTO", "STRINGS", "CUSTOM"});
+    }
+    auto hive_partitioning_source_uri_prefix =
+        ParseOptionalStringParameter(named_parameters, "hive_partitioning_source_uri_prefix");
+    params.options.hive_partitioning_source_uri_prefix =
+        hive_partitioning_source_uri_prefix ? *hive_partitioning_source_uri_prefix : string();
 
     const auto source_count = static_cast<int>(params.source_file.has_value()) +
                               static_cast<int>(params.source_table.has_value()) +
@@ -185,7 +443,7 @@ static void ValidateGcsSourceUris(const vector<string> &source_uris) {
             throw BinderException("BigQuery load source URIs cannot be empty");
         }
         if (!IsGcsUri(source_uri)) {
-            throw BinderException("BigQuery Parquet load source URI must use the gs:// scheme: %s", source_uri);
+            throw BinderException("BigQuery load source URI must use the gs:// scheme: %s", source_uri);
         }
     }
 }
@@ -312,14 +570,13 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     auto params = ParseLoadParameters(input.named_parameters);
 
     auto bind_data = make_uniq<BigQueryLoadBindData>();
-    bind_data->write_disposition = params.write_disposition;
-    bind_data->create_disposition = params.create_disposition;
     bind_data->source_file = params.source_file;
     bind_data->source_uris = params.source_uris;
     bind_data->source_table = params.source_table;
-    bind_data->location = params.location ? *params.location : BigquerySettings::DefaultLocation();
-    bind_data->labels = params.labels;
-    bind_data->timeout_ms = params.timeout_ms;
+    bind_data->options = params.options;
+    if (bind_data->options.location.empty()) {
+        bind_data->options.location = BigquerySettings::DefaultLocation();
+    }
 
     auto destination_table = BigqueryUtils::ParseDatasetTableString(destination_table_string);
 
@@ -334,9 +591,6 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
             throw BinderException("'billing_project' named parameter is not supported for attached databases; "
                                   "set billing_project in ATTACH instead");
         }
-        if (!params.api_endpoint.empty()) {
-            throw BinderException("'api_endpoint' named parameter is not supported for attached databases");
-        }
 
         auto &bigquery_catalog = catalog.Cast<BigqueryCatalog>();
         auto &transaction = BigqueryTransaction::Get(context, bigquery_catalog);
@@ -347,9 +601,7 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
         bind_data->config = bigquery_catalog.config;
         bind_data->bq_client = transaction.GetBigqueryClient();
     } else {
-        bind_data->config = BigqueryConfig(dbname_or_project_id)
-                                .SetBillingProjectId(params.billing_project)
-                                .SetApiEndpoint(params.api_endpoint);
+        bind_data->config = BigqueryConfig(dbname_or_project_id).SetBillingProjectId(params.billing_project);
         bind_data->bq_client = make_shared_ptr<BigqueryClient>(context, bind_data->config);
     }
 
@@ -363,6 +615,23 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     if (!bind_data->source_uris.empty()) {
         ValidateGcsSourceUris(bind_data->source_uris);
     }
+
+    if (!params.source_format_explicit) {
+        string inferred_format;
+        if (bind_data->source_file.has_value()) {
+            inferred_format = InferSourceFormatFromPath(*bind_data->source_file);
+        } else if (!bind_data->source_uris.empty()) {
+            inferred_format = InferSourceFormatFromSources(bind_data->source_uris);
+        }
+        if (!inferred_format.empty()) {
+            bind_data->options.source_format = inferred_format;
+        }
+    }
+
+    if (bind_data->source_table.has_value() && bind_data->options.source_format != "PARQUET") {
+        throw BinderException("source_table loads are staged as Parquet and require source_format='PARQUET'");
+    }
+    ValidateLoadOptionCombinations(bind_data->options, !bind_data->source_uris.empty());
 
     if (bind_data->source_table.has_value()) {
         bind_data->source_file = MaterializeSourceTableToParquet(context, *bind_data->source_table);
@@ -382,21 +651,9 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
 
     google::cloud::bigquery::v2::Job job;
     if (data.source_file.has_value()) {
-        job = data.bq_client->LoadParquetFile(data.destination_table,
-                                              *data.source_file,
-                                              data.write_disposition,
-                                              data.create_disposition,
-                                              data.location,
-                                              data.labels,
-                                              data.timeout_ms);
+        job = data.bq_client->LoadFile(data.destination_table, *data.source_file, data.options);
     } else if (!data.source_uris.empty()) {
-        job = data.bq_client->LoadParquetUris(data.destination_table,
-                                              data.source_uris,
-                                              data.write_disposition,
-                                              data.create_disposition,
-                                              data.location,
-                                              data.labels,
-                                              data.timeout_ms);
+        job = data.bq_client->LoadUris(data.destination_table, data.source_uris, data.options);
     } else {
         throw InternalException("bigquery_load has no source to load");
     }
@@ -434,13 +691,43 @@ BigQueryLoadFunction::BigQueryLoadFunction()
     named_parameters["source_uris"] = LogicalType::ANY;
     named_parameters["source_table"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["table"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["source_format"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["write_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["create_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["location"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["api_endpoint"] = LogicalType(LogicalTypeId::VARCHAR);
     named_parameters["labels"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
     named_parameters["timeout_ms"] = LogicalType::BIGINT;
+    named_parameters["autodetect"] = LogicalType::BOOLEAN;
+    named_parameters["schema_update_options"] = LogicalType::ANY;
+    named_parameters["max_bad_records"] = LogicalType::BIGINT;
+    named_parameters["ignore_unknown_values"] = LogicalType::BOOLEAN;
+
+    named_parameters["csv_field_delimiter"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["csv_skip_leading_rows"] = LogicalType::BIGINT;
+    named_parameters["csv_quote"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["csv_allow_quoted_newlines"] = LogicalType::BOOLEAN;
+    named_parameters["csv_allow_jagged_rows"] = LogicalType::BOOLEAN;
+    named_parameters["csv_encoding"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["csv_null_marker"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["csv_null_markers"] = LogicalType::ANY;
+    named_parameters["csv_preserve_ascii_control_characters"] = LogicalType::BOOLEAN;
+
+    named_parameters["date_format"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["datetime_format"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["time_format"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["timestamp_format"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["time_zone"] = LogicalType(LogicalTypeId::VARCHAR);
+
+    named_parameters["json_extension"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["avro_use_logical_types"] = LogicalType::BOOLEAN;
+    named_parameters["parquet_enable_list_inference"] = LogicalType::BOOLEAN;
+    named_parameters["parquet_enum_as_string"] = LogicalType::BOOLEAN;
+    named_parameters["reference_file_schema_uri"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["decimal_target_types"] = LogicalType::ANY;
+
+    named_parameters["hive_partitioning_mode"] = LogicalType(LogicalTypeId::VARCHAR);
+    named_parameters["hive_partitioning_source_uri_prefix"] = LogicalType(LogicalTypeId::VARCHAR);
 }
 
 } // namespace bigquery
