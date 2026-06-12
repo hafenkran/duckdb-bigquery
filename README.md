@@ -280,12 +280,12 @@ While `bigquery_scan` offers high-speed data retrieval, it does not support read
 
 The `bigquery_scan` function supports the following named parameters:
 
-| Parameter         | Type      | Description                                                                      |
-| ----------------- | --------- | -------------------------------------------------------------------------------- |
-| `filter`          | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API.  |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).             |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                       |
+| Parameter         | Type      | Description                                                                     |
+| ----------------- | --------- | ------------------------------------------------------------------------------- |
+| `filter`          | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API. |
+| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).            |
+| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                               |
+| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                      |
 
 ### `bigquery_query` Function
 
@@ -333,14 +333,14 @@ D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.
 
 The `bigquery_query` function supports the following named parameters:
 
-| Parameter         | Type      | Description                                                                                                        |
-| ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| Parameter         | Type      | Description                                                                                                                                                                                                                                                                            |
+| ----------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `use_rest_api`    | `BOOLEAN` | When `true`, uses the BigQuery REST API with optional job creation instead of the Storage API. This provides lower latency for small result sets (under ~10MB) by returning results inline, avoiding the overhead of creating a job and reading via the Storage API. Default: `false`. |
-| `dry_run`         | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                               |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
-| `timeout_ms`      | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms`; `0` waits indefinitely. |
+| `dry_run`         | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`.                                                                                                                                                         |
+| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).                                                                                                                                                                                                                   |
+| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                                                                                                                                                                                      |
+| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                                                                                                                                                                                             |
+| `timeout_ms`      | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms`; `0` waits indefinitely.                                                                                                                                                              |
 
 > **REST API vs Storage API**: By default, `bigquery_query` uses the [BigQuery Storage Read API](https://cloud.google.com/bigquery/docs/reference/storage) to fetch results. This executes the query as a job, materializes results into a temporary table, and reads them via gRPC — optimized for large result sets but adds overhead for small queries.
 >
@@ -388,15 +388,15 @@ D CALL bigquery_execute('my_gcp_project', 'SELECT * FROM `my_gcp_project.quackin
 
 The `bigquery_execute` function supports the following named parameters:
 
-| Parameter       | Type      | Description                                                                                                        |
-| --------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `dry_run`       | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`. |
-| `api_endpoint`  | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                  |
-| `grpc_endpoint` | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                         |
-| `timeout_ms`    | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms`; `0` waits indefinitely. |
-| `destination_table` | `VARCHAR` | Materialise the query result into this table (`dataset.table` or `project.dataset.table`). Runs the query as a `jobs.insert` job writing to the table — something the default `jobs.query` path cannot do. Cannot be combined with `dry_run`. |
-| `write_disposition` | `VARCHAR` | How to write into an existing `destination_table`: `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`. Ignored without `destination_table`. |
-| `create_disposition` | `VARCHAR` | Whether to create `destination_table` if it does not exist: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`. Ignored without `destination_table`. |
+| Parameter            | Type      | Description                                                                                                                                                                                                                                   |
+| -------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dry_run`            | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`.                                                                                                                |
+| `api_endpoint`       | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                                                                                                                                             |
+| `grpc_endpoint`      | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                                                                                                                                                    |
+| `timeout_ms`         | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms`; `0` waits indefinitely.                                                                                                                     |
+| `destination_table`  | `VARCHAR` | Materialise the query result into this table (`dataset.table` or `project.dataset.table`). Runs the query as a `jobs.insert` job writing to the table — something the default `jobs.query` path cannot do. Cannot be combined with `dry_run`. |
+| `write_disposition`  | `VARCHAR` | How to write into an existing `destination_table`: `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`. Ignored without `destination_table`.                                                                                         |
+| `create_disposition` | `VARCHAR` | Whether to create `destination_table` if it does not exist: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`. Ignored without `destination_table`.                                                                                              |
 
 When `destination_table` is set, the query runs as a query job that writes its result into the table, and the returned `total_rows` / `total_bytes_processed` reflect that job (`num_dml_affected_rows` is `NULL` for non-DML queries):
 
@@ -409,13 +409,16 @@ D CALL bigquery_execute('my_gcp_project',
 
 ### `bigquery_load` Function
 
-The `bigquery_load` function submits a BigQuery load job that writes data into a destination BigQuery table. The source can be a local Parquet file (`source_file`), one or more Cloud Storage Parquet URIs (`source_uris`), or a DuckDB table/view (`source_table`).
+The `bigquery_load` function submits a BigQuery load job that writes data into a destination BigQuery table. The source can be a local file (`source_file`), one or more Cloud Storage URIs (`source_uris`), or a DuckDB table/view (`source_table`). File and URI loads support `PARQUET`, `CSV`, `NEWLINE_DELIMITED_JSON`, `AVRO`, and `ORC`; `source_table` is always staged through a temporary Parquet file.
 
 ```sql
 D SELECT * FROM bigquery_load(
     'my_gcp_project',
     'my_dataset.target_table',
-    source_file := '/path/to/data.parquet',
+    source_file := '/path/to/data.csv',
+    source_format := 'CSV',
+    autodetect := true,
+    csv_skip_leading_rows := 1,
     location := 'EU'
 );
 ┌─────────┬──────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┐
@@ -443,6 +446,7 @@ D CALL bigquery_load(
     'my_storage_project',
     'my_dataset.target_table',
     source_uris := ['gs://my_bucket/path/part-1.parquet', 'gs://my_bucket/path/part-2.parquet'],
+    source_format := 'PARQUET',
     write_disposition := 'WRITE_APPEND',
     location := 'EU',
     labels := MAP {'pipeline': 'daily_load', 'env': 'prod'},
@@ -455,23 +459,40 @@ Use `source_uris` to load one or more Cloud Storage objects directly. To attach 
 Compared to `CREATE TABLE ... AS` or `INSERT INTO ...`, `bigquery_load` uses a different write path:
 
 - `CREATE TABLE ... AS` and `INSERT INTO bq...` use the BigQuery Storage Write API and stream rows with `AppendRows`.
-- `bigquery_load` uses a BigQuery load job. With a local `source_file` it uploads a Parquet file directly; with `source_uris` it passes Cloud Storage URIs directly to BigQuery; with `source_table` it first stages the DuckDB relation as a temporary Parquet file and then submits the load job.
+- `bigquery_load` uses a BigQuery load job. With a local `source_file` it uploads the file directly; with `source_uris` it passes Cloud Storage URIs directly to BigQuery; with `source_table` it first stages the DuckDB relation as a temporary Parquet file and then submits the load job.
 
-Use `CREATE TABLE ... AS` when you want the normal streaming write path from a DuckDB query result. Use `bigquery_load` when you already have Parquet files or when you explicitly want load-job semantics such as `write_disposition` and `create_disposition`.
+Use `CREATE TABLE ... AS` when you want the normal streaming write path from a DuckDB query result. Use `bigquery_load` when you already have load-job inputs or when you explicitly want load-job semantics such as `write_disposition`, `create_disposition`, schema update options, source-format parsing options, or Hive partitioning.
 
 The `bigquery_load` function supports the following named parameters:
 
-| Parameter            | Type      | Description                                                                            |
-| -------------------- | --------- | -------------------------------------------------------------------------------------- |
-| `source_file`        | `VARCHAR` | Path to a local Parquet file to upload, or a single `gs://` Parquet URI to load directly from Cloud Storage. |
-| `source_uris`        | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` Parquet URIs to load directly from Cloud Storage. Each URI can contain one `*` wildcard after the bucket name. |
-| `source_table`       | `VARCHAR` | Name of a DuckDB table or view to load.                                                |
-| `write_disposition`  | `VARCHAR` | BigQuery write behavior: `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`. |
-| `create_disposition` | `VARCHAR` | BigQuery create behavior: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`.              |
-| `location`           | `VARCHAR` | BigQuery job location.                                                                 |
-| `billing_project`    | `VARCHAR` | Project ID to bill for the load job. Only supported for direct project-ID calls.       |
-| `labels`             | `MAP(VARCHAR, VARCHAR)` | BigQuery job labels to attach to the load job.                                         |
-| `timeout_ms`         | `BIGINT`  | Optional maximum time to wait for the submitted load job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery. |
+| Parameter               | Type                         | Description                                                                                                                                                   |
+| ----------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source_file`           | `VARCHAR`                    | Local file path to upload, or a single `gs://` URI. Legacy alias: `file`.                                                                                     |
+| `source_uris`           | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` URIs to load directly from Cloud Storage.                                                                                                 |
+| `source_table`          | `VARCHAR`                    | DuckDB table or view to stage as Parquet. Legacy alias: `table`.                                                                                              |
+| `source_format`         | `VARCHAR`                    | `PARQUET`, `CSV`, `NEWLINE_DELIMITED_JSON`, `AVRO`, or `ORC`. If omitted for files/URIs, inferred from common extensions and otherwise defaults to `PARQUET`. |
+| `autodetect`            | `BOOLEAN`                    | Forwarded to BigQuery schema autodetection.                                                                                                                   |
+| `schema_update_options` | `VARCHAR` or `LIST<VARCHAR>` | `ALLOW_FIELD_ADDITION` and/or `ALLOW_FIELD_RELAXATION`.                                                                                                       |
+| `max_bad_records`       | `BIGINT`                     | Maximum number of bad records accepted by BigQuery.                                                                                                           |
+| `ignore_unknown_values` | `BOOLEAN`                    | Whether to ignore values not represented in the table schema.                                                                                                 |
+| `write_disposition`     | `VARCHAR`                    | `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`.                                                                                                 |
+| `create_disposition`    | `VARCHAR`                    | `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`.                                                                                                               |
+| `location`              | `VARCHAR`                    | BigQuery job location.                                                                                                                                        |
+| `billing_project`       | `VARCHAR`                    | Project ID to bill for the load job. Only supported for direct project-ID calls.                                                                              |
+| `labels`                | `MAP(VARCHAR, VARCHAR)`      | BigQuery job labels to attach to the load job.                                                                                                                |
+| `timeout_ms`            | `BIGINT`                     | Optional maximum time to wait for the submitted load job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery.                  |
+
+Format-specific load options are validated before the job is submitted:
+
+| Parameter Group               | Parameters                                                                                                                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CSV only                      | `csv_field_delimiter`, `csv_skip_leading_rows`, `csv_quote`, `csv_allow_quoted_newlines`, `csv_allow_jagged_rows`, `csv_encoding`, `csv_null_marker`, `csv_null_markers`, `csv_preserve_ascii_control_characters` |
+| CSV and JSON temporal parsing | `date_format`, `datetime_format`, `time_format`, `timestamp_format`, `time_zone`                                                                                                                                  |
+| JSON only                     | `json_extension`                                                                                                                                                                                                  |
+| Avro only                     | `avro_use_logical_types`                                                                                                                                                                                          |
+| Parquet only                  | `parquet_enable_list_inference`, `parquet_enum_as_string`                                                                                                                                                         |
+| Avro, Parquet, and ORC        | `reference_file_schema_uri`, `decimal_target_types`                                                                                                                                                               |
+| Cloud Storage URI loads only  | `hive_partitioning_mode`, `hive_partitioning_source_uri_prefix`                                                                                                                                                   |
 
 Exactly one of `source_file`, `source_uris`, or `source_table` must be provided. Without `timeout_ms`, or with `timeout_ms := 0`, `bigquery_load` waits for the load job to complete. For Cloud Storage loads, the BigQuery job identity needs permission to read the objects, and the bucket location must be compatible with the destination dataset location.
 
@@ -498,20 +519,20 @@ Use `destination_uris` for a single Cloud Storage URI or a `LIST<VARCHAR>`. Dest
 
 The `bigquery_extract` function supports the following named parameters:
 
-| Parameter                 | Type      | Description                                                                 |
-| ------------------------- | --------- | --------------------------------------------------------------------------- |
-| `source_table`            | `VARCHAR` | BigQuery table to export. Accepts `dataset.table`, `project.dataset.table`, `project:dataset.table`, or `projects/.../datasets/.../tables/...`. |
-| `destination_uris`        | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` destination URIs.                         |
-| `format`                  | `VARCHAR` | Optional export format: `CSV`, `JSON`, `AVRO`, or `PARQUET`. `JSON` maps to BigQuery's newline-delimited JSON extract format. |
-| `compression`             | `VARCHAR` | Optional BigQuery export compression. Supported values depend on `format`: CSV/JSON support `NONE` and `GZIP`; AVRO supports `NONE`, `DEFLATE`, and `SNAPPY`; PARQUET supports `NONE`, `GZIP`, `SNAPPY`, and `ZSTD`. |
-| `csv_print_header`        | `BOOLEAN` | CSV only: whether to include a header row.                                  |
-| `csv_field_delimiter`     | `VARCHAR` | CSV only: field delimiter.                                                  |
-| `avro_use_logical_types`  | `BOOLEAN` | AVRO only: whether to use Avro logical types.                               |
-| `location`                | `VARCHAR` | BigQuery job location.                                                      |
-| `billing_project`         | `VARCHAR` | Project ID to bill for the extract job. Only supported for direct project-ID calls. |
-| `api_endpoint`            | `VARCHAR` | Custom BigQuery API endpoint URL. Only supported for direct project-ID calls. |
-| `labels`                  | `MAP(VARCHAR, VARCHAR)` | BigQuery job labels to attach to the extract job.                          |
-| `timeout_ms`              | `BIGINT`  | Optional maximum time to wait for the extract job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery. |
+| Parameter                | Type                         | Description                                                                                                                                                                                                          |
+| ------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source_table`           | `VARCHAR`                    | BigQuery table to export. Accepts `dataset.table`, `project.dataset.table`, `project:dataset.table`, or `projects/.../datasets/.../tables/...`.                                                                      |
+| `destination_uris`       | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` destination URIs.                                                                                                                                                                                |
+| `format`                 | `VARCHAR`                    | Optional export format: `CSV`, `JSON`, `AVRO`, or `PARQUET`. `JSON` maps to BigQuery's newline-delimited JSON extract format.                                                                                        |
+| `compression`            | `VARCHAR`                    | Optional BigQuery export compression. Supported values depend on `format`: CSV/JSON support `NONE` and `GZIP`; AVRO supports `NONE`, `DEFLATE`, and `SNAPPY`; PARQUET supports `NONE`, `GZIP`, `SNAPPY`, and `ZSTD`. |
+| `csv_print_header`       | `BOOLEAN`                    | CSV only: whether to include a header row.                                                                                                                                                                           |
+| `csv_field_delimiter`    | `VARCHAR`                    | CSV only: field delimiter.                                                                                                                                                                                           |
+| `avro_use_logical_types` | `BOOLEAN`                    | AVRO only: whether to use Avro logical types.                                                                                                                                                                        |
+| `location`               | `VARCHAR`                    | BigQuery job location.                                                                                                                                                                                               |
+| `billing_project`        | `VARCHAR`                    | Project ID to bill for the extract job. Only supported for direct project-ID calls.                                                                                                                                  |
+| `api_endpoint`           | `VARCHAR`                    | Custom BigQuery API endpoint URL. Only supported for direct project-ID calls.                                                                                                                                        |
+| `labels`                 | `MAP(VARCHAR, VARCHAR)`      | BigQuery job labels to attach to the extract job.                                                                                                                                                                    |
+| `timeout_ms`             | `BIGINT`                     | Optional maximum time to wait for the extract job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery.                                                                                |
 
 `destination_uris` must be provided. This extract-job based function writes to Cloud Storage through BigQuery's extract-job API; use an empty or unique destination path for each extract.
 
@@ -625,19 +646,19 @@ D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
 
 ### Additional Extension Settings
 
-| Setting                                   | Description                                                                                                                                                                                        | Default |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `bq_bignumeric_as_varchar`                | Compatibility setting kept for older workflows. `BIGNUMERIC` columns are exposed as `VARCHAR` by default in current versions.                                                                        | `true`  |
-| `bq_query_timeout_ms`                     | Maximum time to wait for a BigQuery query to complete, including polling. `0` waits indefinitely; a timed-out query job may continue running in BigQuery.                                         | `0`     |
-| `bq_auth_timeout_s`                       | Timeout for authentication token fetches in seconds. This bounds ADC metadata and OAuth token requests without changing normal BigQuery query timeouts.                                             | `10`    |
-| `bq_debug_show_queries`                   | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                  | `false` |
-| `bq_experimental_filter_pushdown`         | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                             | `true`  |
-| `bq_experimental_use_info_schema`         | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                         | `true`  |
-| `bq_experimental_enable_sql_parser` | [EXPERIMENTAL] - Enable BigQuery CREATE TABLE clause parsing extensions (PARTITION BY / CLUSTER BY / OPTIONS)                                                                                       | `false` |
-| `bq_curl_ca_bundle_path`                  | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                          |         |
-| `bq_max_read_streams`                     | Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work, and BigQuery may return fewer streams than requested. | `0`     |
-| `bq_enable_inflight_request_windowing`    | Whether to keep multiple BigQuery Storage Write `AppendRows` requests in flight before waiting for acknowledgements. Usually faster, but slightly less memory efficient. Set to `false` to fall back to synchronous write/read lockstep. | `true`  |
-| `bq_arrow_compression`                    | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                       | `ZSTD`  |
+| Setting                                | Description                                                                                                                                                                                                                                          | Default |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `bq_bignumeric_as_varchar`             | Compatibility setting kept for older workflows. `BIGNUMERIC` columns are exposed as `VARCHAR` by default in current versions.                                                                                                                        | `true`  |
+| `bq_query_timeout_ms`                  | Maximum time to wait for a BigQuery query to complete, including polling. `0` waits indefinitely; a timed-out query job may continue running in BigQuery.                                                                                            | `0`     |
+| `bq_auth_timeout_s`                    | Timeout for authentication token fetches in seconds. This bounds ADC metadata and OAuth token requests without changing normal BigQuery query timeouts.                                                                                              | `10`    |
+| `bq_debug_show_queries`                | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                                                                    | `false` |
+| `bq_experimental_filter_pushdown`      | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                                                                               | `true`  |
+| `bq_experimental_use_info_schema`      | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                                                                           | `true`  |
+| `bq_experimental_enable_sql_parser`    | [EXPERIMENTAL] - Enable BigQuery CREATE TABLE clause parsing extensions (PARTITION BY / CLUSTER BY / OPTIONS)                                                                                                                                        | `false` |
+| `bq_curl_ca_bundle_path`               | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                                                                            |         |
+| `bq_max_read_streams`                  | Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work, and BigQuery may return fewer streams than requested. | `0`     |
+| `bq_enable_inflight_request_windowing` | Whether to keep multiple BigQuery Storage Write `AppendRows` requests in flight before waiting for acknowledgements. Usually faster, but slightly less memory efficient. Set to `false` to fall back to synchronous write/read lockstep.             | `true`  |
+| `bq_arrow_compression`                 | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                                                                         | `ZSTD`  |
 
 ## Limitations
 
