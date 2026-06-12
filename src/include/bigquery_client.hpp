@@ -41,6 +41,46 @@ struct ListJobsParams {
 
 enum class BigqueryDmlStatementType { DML_UPDATE, DML_DELETE };
 
+struct BigQueryLoadOptions {
+    string source_format = "PARQUET";
+    string write_disposition = "WRITE_TRUNCATE";
+    string create_disposition = "CREATE_IF_NEEDED";
+    string location;
+    std::map<string, string> labels;
+    std::optional<int> timeout_ms;
+
+    std::optional<bool> autodetect;
+    vector<string> schema_update_options;
+    std::optional<int> max_bad_records;
+    std::optional<bool> ignore_unknown_values;
+
+    string csv_field_delimiter;
+    std::optional<int> csv_skip_leading_rows;
+    std::optional<string> csv_quote;
+    std::optional<bool> csv_allow_quoted_newlines;
+    std::optional<bool> csv_allow_jagged_rows;
+    string csv_encoding;
+    std::optional<string> csv_null_marker;
+    vector<string> csv_null_markers;
+    std::optional<bool> csv_preserve_ascii_control_characters;
+
+    string date_format;
+    string datetime_format;
+    string time_format;
+    string timestamp_format;
+    string time_zone;
+
+    string json_extension;
+    std::optional<bool> avro_use_logical_types;
+    std::optional<bool> parquet_enable_list_inference;
+    std::optional<bool> parquet_enum_as_string;
+    string reference_file_schema_uri;
+    vector<string> decimal_target_types;
+
+    string hive_partitioning_mode;
+    string hive_partitioning_source_uri_prefix;
+};
+
 class BigqueryClient {
 public:
     explicit BigqueryClient(ClientContext &context, const BigqueryConfig &config);
@@ -85,6 +125,12 @@ public:
     vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
     google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
     google::cloud::bigquery::v2::Job GetJobByReference(const google::cloud::bigquery::v2::JobReference &job_ref);
+    google::cloud::bigquery::v2::Job LoadFile(const BigqueryTableRef &destination_table,
+                                              const string &file_path,
+                                              const BigQueryLoadOptions &options);
+    google::cloud::bigquery::v2::Job LoadUris(const BigqueryTableRef &destination_table,
+                                              const vector<string> &source_uris,
+                                              const BigQueryLoadOptions &options);
     google::cloud::bigquery::v2::Job LoadParquetFile(const BigqueryTableRef &destination_table,
                                                      const string &file_path,
                                                      const string &write_disposition = "WRITE_TRUNCATE",
@@ -192,10 +238,7 @@ private:
                                                                        const string &location,
                                                                        const std::map<string, string> &labels);
     google::cloud::bigquery::v2::InsertJobRequest BuildLoadJobRequest(const BigqueryTableRef &destination_table,
-                                                                      const string &write_disposition,
-                                                                      const string &create_disposition,
-                                                                      const string &location,
-                                                                      const std::map<string, string> &labels);
+                                                                      const BigQueryLoadOptions &options);
     google::cloud::bigquery::v2::InsertJobRequest BuildExtractJobRequest(
         const BigqueryTableRef &source_table,
         const vector<string> &destination_uris,
@@ -210,18 +253,12 @@ private:
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const BigqueryTableRef &destination_table,
         const string &file_path,
-        const string &write_disposition,
-        const string &create_disposition,
-        const string &location,
-        const std::map<string, string> &labels);
+        const BigQueryLoadOptions &options);
     google::cloud::StatusOr<google::cloud::bigquery::v2::Job> InsertLoadJobFromUrisInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const BigqueryTableRef &destination_table,
         const vector<string> &source_uris,
-        const string &write_disposition,
-        const string &create_disposition,
-        const string &location,
-        const std::map<string, string> &labels);
+        const BigQueryLoadOptions &options);
     google::cloud::StatusOr<google::cloud::bigquery::v2::Job> InsertExtractJobInternal(
         google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
         const BigqueryTableRef &source_table,
