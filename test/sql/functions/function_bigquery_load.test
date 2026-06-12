@@ -20,6 +20,12 @@ statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_table_table;
 
 statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_csv_table;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_json_table;
+
+statement ok
 CREATE OR REPLACE TEMP TABLE local_load_source AS
 SELECT * FROM read_parquet('test/data/multiple_row_groups.parquet');
 
@@ -54,6 +60,69 @@ CALL bigquery_load(
 ----
 Invalid Input Error: Timeout must fit in a 32-bit integer
 
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/multiple_row_groups.parquet',
+	api_endpoint := 'http://localhost:9050'
+);
+----
+<REGEX>:Binder Error: .*api_endpoint.*
+
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/multiple_row_groups.parquet',
+	source_format := 'PARQUET',
+	csv_field_delimiter := ','
+);
+----
+Binder Error: CSV-specific bigquery_load options require source_format='CSV'
+
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/load_events.csv',
+	source_format := 'CSV',
+	parquet_enum_as_string := true
+);
+----
+Binder Error: Parquet-specific bigquery_load options require source_format='PARQUET'
+
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/load_events.csv',
+	source_format := 'ORC',
+	date_format := 'YYYY-MM-DD'
+);
+----
+Binder Error: Temporal parsing options require source_format='CSV' or source_format='NEWLINE_DELIMITED_JSON'
+
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_file := 'test/data/multiple_row_groups.parquet',
+	hive_partitioning_mode := 'AUTO'
+);
+----
+Binder Error: Hive partitioning options require source_uris
+
+statement error
+CALL bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_file_table',
+	source_table := 'local_load_source',
+	source_format := 'CSV'
+);
+----
+Binder Error: source_table loads are staged as Parquet and require source_format='PARQUET'
+
 statement ok
 CREATE OR REPLACE TEMP TABLE load_file_job AS
 SELECT *
@@ -85,6 +154,7 @@ query I
 SELECT count(*) = 1
 FROM bigquery_jobs('bq', maxResults=50)
 WHERE job_id = (SELECT job_id FROM load_file_job)
+	AND contains(configuration::VARCHAR, '"sourceFormat":"PARQUET"')
 	AND contains(configuration::VARCHAR, '"duckdb_label_env":"test"')
 	AND contains(configuration::VARCHAR, '"duckdb_load_label":"load_job"');
 ----
@@ -132,7 +202,80 @@ SELECT (
 true
 
 statement ok
+CREATE OR REPLACE TEMP TABLE load_csv_job AS
+SELECT *
+FROM bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_csv_table',
+	source_file := 'test/data/load_events.csv',
+	autodetect := true,
+	csv_skip_leading_rows := 1,
+	csv_field_delimiter := '|',
+	location := 'europe-west3',
+	labels := MAP {'duckdb_load_label': 'csv_load'}
+);
+
+sleep 5 seconds
+
+query I
+SELECT (
+	SELECT count(*)
+	FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_csv_table`')
+) = 2;
+----
+true
+
+query I
+SELECT count(*) = 1
+FROM bigquery_jobs('bq', maxResults=50)
+WHERE job_id = (SELECT job_id FROM load_csv_job)
+	AND contains(configuration::VARCHAR, '"sourceFormat":"CSV"')
+	AND contains(configuration::VARCHAR, '"autodetect":true')
+	AND contains(configuration::VARCHAR, '"fieldDelimiter":"|"')
+	AND contains(configuration::VARCHAR, '"duckdb_load_label":"csv_load"');
+----
+true
+
+statement ok
+CREATE OR REPLACE TEMP TABLE load_json_job AS
+SELECT *
+FROM bigquery_load(
+	'bq',
+	'${BQ_TEST_DATASET}.load_json_table',
+	source_file := 'test/data/load_events.ndjson',
+	autodetect := true,
+	location := 'europe-west3',
+	labels := MAP {'duckdb_load_label': 'json_load'}
+);
+
+sleep 5 seconds
+
+query I
+SELECT (
+	SELECT count(*)
+	FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_json_table`')
+) = 2;
+----
+true
+
+query I
+SELECT count(*) = 1
+FROM bigquery_jobs('bq', maxResults=50)
+WHERE job_id = (SELECT job_id FROM load_json_job)
+	AND contains(configuration::VARCHAR, '"sourceFormat":"NEWLINE_DELIMITED_JSON"')
+	AND contains(configuration::VARCHAR, '"autodetect":true')
+	AND contains(configuration::VARCHAR, '"duckdb_load_label":"json_load"');
+----
+true
+
+statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_file_table;
 
 statement ok
 DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_table_table;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_csv_table;
+
+statement ok
+DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_json_table;
