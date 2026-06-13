@@ -45,6 +45,12 @@ if(WIN32)
         -DVCPKG_LIBRARY_LINKAGE=${VCPKG_LIBRARY_LINKAGE}
     )
 endif()
+set(STATIC_LIBRARY_SUFFIX_ARGS "")
+if(NOT WIN32)
+    # Force static library discovery for Unix-like cross-compilation. Do not set this on Windows:
+    # static libraries use .lib there, and overriding the suffix to .a breaks CMake package lookups.
+    set(STATIC_LIBRARY_SUFFIX_ARGS -DCMAKE_FIND_LIBRARY_SUFFIXES=".a")
+endif()
 execute_process(
     COMMAND
         ${CMAKE_COMMAND}
@@ -67,7 +73,7 @@ execute_process(
         -DCMAKE_CXX_FLAGS=${MUSL_EXTRA_CXXFLAGS}
         # Force static linking for cross-compilation
         -DBUILD_SHARED_LIBS=OFF
-        -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
+        ${STATIC_LIBRARY_SUFFIX_ARGS}
         -G ${CMAKE_GENERATOR}
         -S ${CMAKE_CURRENT_SOURCE_DIR}/external
         -B ${CMAKE_BINARY_DIR}/external
