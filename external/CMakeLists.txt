@@ -34,6 +34,12 @@ if(WIN32)
         set(MSVC_RUNTIME_LIB "MultiThreaded")
     endif()
 endif()
+set(STATIC_LIBRARY_SUFFIX_ARGS "")
+if(NOT WIN32)
+    # Force static library discovery for Unix-like cross-compilation. On Windows static libraries
+    # use .lib, and forcing .a prevents dependencies such as Snappy from being found.
+    set(STATIC_LIBRARY_SUFFIX_ARGS -DCMAKE_FIND_LIBRARY_SUFFIXES=".a")
+endif()
 
 # Build Windows-specific CMAKE_ARGS
 set(GCP_CMAKE_ARGS
@@ -81,4 +87,4 @@ ExternalProject_Add(
                -DGOOGLE_CLOUD_CPP_ENABLE_GOOGLEAPIS=ON
                # Fix for macOS cross-compilation
                -DBUILD_SHARED_LIBS=OFF
-               -DCMAKE_FIND_LIBRARY_SUFFIXES=".a")
+               ${STATIC_LIBRARY_SUFFIX_ARGS})
