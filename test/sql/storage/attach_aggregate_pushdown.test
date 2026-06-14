@@ -69,7 +69,7 @@ SELECT COUNT(*), SUM(j) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i IN
 query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NULL;
 ----
-physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query I
 SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NULL;
