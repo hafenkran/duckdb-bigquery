@@ -19,6 +19,8 @@
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
 
+#include <cctype>
+
 namespace duckdb {
 namespace bigquery {
 namespace {
@@ -111,6 +113,29 @@ static string TransformFilterPath(const vector<string> &column_path, const Table
     }
 }
 
+static bool TryGetLogicalGetFilterColumnName(const LogicalGet &get, idx_t filter_column_idx, string &column_name) {
+    ColumnIndex column_index(filter_column_idx);
+    if (!column_index.HasPrimaryIndex() || column_index.HasChildren() || column_index.IsVirtualColumn() ||
+        column_index.IsRowIdColumn() || column_index.IsEmptyColumn() || filter_column_idx >= get.names.size()) {
+        return false;
+    }
+
+    column_name = get.GetColumnName(column_index);
+    return true;
+}
+
+static string TrimTrailingSemicolons(string query) {
+    while (true) {
+        while (!query.empty() && std::isspace(static_cast<unsigned char>(query.back()))) {
+            query.pop_back();
+        }
+        if (query.empty() || query.back() != ';') {
+            return query;
+        }
+        query.pop_back();
+    }
+}
+
 } // namespace
 
 std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
@@ -139,20 +164,17 @@ std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
         if (get.table_filters.filters.empty()) {
             return string();
         }
-        return TransformFilters(get.table_filters,
-                                [&](idx_t filter_idx) -> string { return get.GetColumnName(ColumnIndex(filter_idx)); });
+        string filter_sql;
+        if (!TryTransformLogicalGetFilters(get, filter_sql)) {
+            throw NotImplementedException("Unsupported BigQuery logical get filter");
+        }
+        return filter_sql;
     }
     case LogicalOperatorType::LOGICAL_EMPTY_RESULT:
         return "false";
     default:
         throw NotImplementedException("Unsupported logical operator type " + LogicalOperatorToString(child.type));
     }
-}
-
-string BigquerySQL::CreateExpression(const string &column_name,
-                                     const vector<unique_ptr<TableFilter>> &filters,
-                                     const string &op) {
-    return CreateFilterExpression(vector<string>{column_name}, filters, op);
 }
 
 string BigquerySQL::TransformFilters(const TableFilterSet &filters,
@@ -167,6 +189,50 @@ string BigquerySQL::TransformFilters(const TableFilterSet &filters,
 
 string BigquerySQL::TransformFilter(const string &column_name, const TableFilter &filter) {
     return TransformFilterPath(vector<string>{column_name}, filter);
+}
+
+bool BigquerySQL::TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql) {
+    if (get.table_filters.filters.empty()) {
+        filter_sql.clear();
+        return true;
+    }
+
+    try {
+        filter_sql = TransformFilters(get.table_filters, [&](idx_t filter_idx) -> string {
+            string column_name;
+            if (!TryGetLogicalGetFilterColumnName(get, filter_idx, column_name)) {
+                throw InternalException("Unsupported BigQuery logical get filter column");
+            }
+            return column_name;
+        });
+        return true;
+    } catch (Exception &) {
+        return false;
+    } catch (std::exception &) {
+        return false;
+    }
+}
+
+string BigquerySQL::TransformExecutionFilters(const vector<column_t> &column_ids,
+                                              const TableFilterSet &filters,
+                                              const vector<string> &names) {
+    return TransformFilters(filters, [&](idx_t filter_idx) -> string {
+        if (filter_idx >= column_ids.size()) {
+            throw InternalException("BigQuery filter column index out of range");
+        }
+        column_t logical_col = column_ids[filter_idx];
+        if (logical_col == COLUMN_IDENTIFIER_ROW_ID || logical_col < 0) {
+            throw InvalidInputException("ROWID cannot be referenced in a WHERE clause for BigQuery tables");
+        }
+        if (static_cast<idx_t>(logical_col) >= names.size()) {
+            throw InternalException("BigQuery logical filter column index out of range");
+        }
+        return names[logical_col];
+    });
+}
+
+string BigquerySQL::CreateSubquerySourceSQL(const string &query, const string &alias) {
+    return "(" + TrimTrailingSemicolons(query) + ") AS " + alias;
 }
 
 string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info) {

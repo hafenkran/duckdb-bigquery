@@ -99,13 +99,7 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
     string filter_string = bind_data.filter_condition;
     if (BigquerySettings::ExperimentalFilterPushdown() && filter_string.empty() && input.filters &&
         !input.filters->filters.empty()) {
-        filter_string = BigquerySQL::TransformFilters(*input.filters, [&](idx_t filter_idx) -> string {
-            column_t logical_col = input.column_ids[filter_idx];
-            if (logical_col == COLUMN_IDENTIFIER_ROW_ID || logical_col < 0) {
-                throw InvalidInputException("ROWID cannot be referenced in a WHERE clause for BigQuery tables");
-            }
-            return bind_data.names[logical_col];
-        });
+        filter_string = BigquerySQL::TransformExecutionFilters(input.column_ids, *input.filters, bind_data.names);
     }
 
     idx_t max_read_streams = BigquerySettings::GetMaxReadStreams(context);
