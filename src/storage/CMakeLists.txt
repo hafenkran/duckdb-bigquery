@@ -10,4 +10,5 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_insert.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_delete.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_update.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_optimizer.cpp
     PARENT_SCOPE)
