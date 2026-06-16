@@ -12,6 +12,7 @@
 #include "duckdb/planner/expression/bound_columnref_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/operator/logical_aggregate.hpp"
+#include "duckdb/planner/operator/logical_filter.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/planner/operator/logical_projection.hpp"
 
@@ -63,6 +64,16 @@ static bool TryGetScanBindingColumnName(const LogicalGet &get, idx_t binding_col
 
     column_name = get.GetColumnName(column_index);
     return true;
+}
+
+static string ConjoinFilters(const string &left, const string &right) {
+    if (left.empty()) {
+        return right;
+    }
+    if (right.empty()) {
+        return left;
+    }
+    return "(" + left + ") AND (" + right + ")";
 }
 
 static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
@@ -117,13 +128,7 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
     if (!BigquerySQL::TryTransformLogicalGetFilters(get, pushed_filter)) {
         return false;
     }
-    if (!pushed_filter.empty()) {
-        if (!source.source_filter.empty()) {
-            source.source_filter = "(" + source.source_filter + ") AND (" + pushed_filter + ")";
-        } else {
-            source.source_filter = std::move(pushed_filter);
-        }
-    }
+    source.source_filter = ConjoinFilters(source.source_filter, pushed_filter);
     return true;
 }
 
@@ -141,6 +146,35 @@ static bool TryResolveColumnName(const BigqueryAggregateSource &source, const Co
 
 static bool TryResolveSource(LogicalOperator &child, BigqueryAggregateSource &source);
 
+static bool TryResolveFilter(LogicalFilter &filter, BigqueryAggregateSource &source) {
+    if (filter.children.size() != 1) {
+        return false;
+    }
+    if (!TryResolveSource(*filter.children[0], source)) {
+        return false;
+    }
+
+    vector<string> filter_entries;
+    filter_entries.reserve(filter.expressions.size());
+    for (auto &expr : filter.expressions) {
+        string filter_sql;
+        if (!BigquerySQL::TryTransformBoundFilter(
+                *expr,
+                [&](const ColumnBinding &binding, string &column_name) -> bool {
+                    return TryResolveColumnName(source, binding, column_name);
+                },
+                filter_sql)) {
+            return false;
+        }
+        filter_entries.push_back(std::move(filter_sql));
+    }
+    if (filter_entries.empty()) {
+        return false;
+    }
+    source.source_filter = ConjoinFilters(source.source_filter, StringUtil::Join(filter_entries, " AND "));
+    return true;
+}
+
 static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregateSource &source) {
     if (projection.children.size() != 1) {
         return false;
@@ -153,12 +187,14 @@ static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregat
     projected_names.reserve(projection.expressions.size());
     for (auto &expr : projection.expressions) {
         if (expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
-            return false;
+            projected_names.emplace_back();
+            continue;
         }
         auto &colref = expr->Cast<BoundColumnRefExpression>();
         string column_name;
         if (!TryResolveColumnName(source, colref.binding, column_name)) {
-            return false;
+            projected_names.emplace_back();
+            continue;
         }
         projected_names.push_back(std::move(column_name));
     }
@@ -171,6 +207,8 @@ static bool TryResolveSource(LogicalOperator &child, BigqueryAggregateSource &so
     switch (child.type) {
     case LogicalOperatorType::LOGICAL_GET:
         return TryResolveGet(child.Cast<LogicalGet>(), source);
+    case LogicalOperatorType::LOGICAL_FILTER:
+        return TryResolveFilter(child.Cast<LogicalFilter>(), source);
     case LogicalOperatorType::LOGICAL_PROJECTION:
         return TryResolveProjection(child.Cast<LogicalProjection>(), source);
     default:
@@ -189,14 +227,6 @@ static bool TryColumnArgumentSQL(const BigqueryAggregateSource &source, Expressi
     }
     argument_sql = BigqueryUtils::WriteQuotedIdentifier(column_name);
     return true;
-}
-
-static bool IsNonNullConstant(Expression &expr) {
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
-        return false;
-    }
-    auto &constant = expr.Cast<BoundConstantExpression>();
-    return !constant.value.IsNull();
 }
 
 static bool TryAggregateSQL(const BigqueryAggregateSource &source,
@@ -225,12 +255,14 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
         if (aggregate.children.size() != 1) {
             return false;
         }
-        if (IsNonNullConstant(*aggregate.children[0])) {
+        auto &argument = *aggregate.children[0];
+        if (argument.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT &&
+            !argument.Cast<BoundConstantExpression>().value.IsNull()) {
             aggregate_sql = "COUNT(*)";
             return true;
         }
         string argument_sql;
-        if (!TryColumnArgumentSQL(source, *aggregate.children[0], argument_sql)) {
+        if (!TryColumnArgumentSQL(source, argument, argument_sql)) {
             return false;
         }
         aggregate_sql = "COUNT(" + argument_sql + ")";
@@ -336,9 +368,9 @@ static unique_ptr<LogicalOperator> CreateAggregateQueryGet(LogicalAggregate &agg
     return std::move(result);
 }
 
-static bool TryRewriteAggregate(unique_ptr<LogicalOperator> &node) {
+static void RewriteAggregate(unique_ptr<LogicalOperator> &node) {
     if (node->type != LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
-        return false;
+        return;
     }
 
     auto &aggregate = node->Cast<LogicalAggregate>();
@@ -347,11 +379,10 @@ static bool TryRewriteAggregate(unique_ptr<LogicalOperator> &node) {
     vector<LogicalType> types;
     string query;
     if (!TryBuildAggregateQuery(aggregate, source, names, types, query)) {
-        return false;
+        return;
     }
 
     node = CreateAggregateQueryGet(aggregate, source, std::move(names), std::move(types), std::move(query));
-    return true;
 }
 
 static void RewriteBigqueryAggregates(unique_ptr<LogicalOperator> &node) {
@@ -362,7 +393,7 @@ static void RewriteBigqueryAggregates(unique_ptr<LogicalOperator> &node) {
     for (auto &child : node->children) {
         RewriteBigqueryAggregates(child);
     }
-    TryRewriteAggregate(node);
+    RewriteAggregate(node);
 }
 
 } // namespace

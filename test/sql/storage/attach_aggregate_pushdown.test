@@ -69,12 +69,32 @@ SELECT COUNT(*), SUM(j) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i IN
 query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NULL;
 ----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query I
 SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NULL;
 ----
 1
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NOT NULL;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query I
+SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NOT NULL;
+----
+3
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NULL OR i = 1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query I
+SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE j IS NULL OR i = 1;
+----
+2
 
 query II
 SELECT COUNT(*), SUM(j) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i > 1 AND i <= 3;
@@ -107,6 +127,26 @@ SELECT COUNT(*) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TE
 4
 
 query II
+EXPLAIN SELECT COUNT(*) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown') WHERE j IS NULL;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query I
+SELECT COUNT(*) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown') WHERE j IS NULL;
+----
+1
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown', filter := 'i > 1') WHERE j IS NOT NULL;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query I
+SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown', filter := 'i > 1') WHERE j IS NOT NULL;
+----
+2
+
+query II
 EXPLAIN SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
@@ -118,6 +158,31 @@ physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
 EXPLAIN SELECT SUM(i + 1) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query I
+SELECT SUM(i + 1) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+14
+
+query II
+EXPLAIN SELECT MIN(i + 1) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i % 2 = 0;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE lower(s) = 'a';
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE CAST(i AS VARCHAR) = '1';
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
