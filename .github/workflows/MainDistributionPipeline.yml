@@ -50,7 +50,7 @@ jobs:
               run: |
                   python3 -m venv .format-venv
                   .format-venv/bin/python -m pip install --upgrade pip
-                  .format-venv/bin/python -m pip install --timeout 60 --retries 3 cmake-format 'black==24.*' cxxheaderparser pcpp 'clang_format==11.0.1'
+                  .format-venv/bin/python -m pip install --timeout 60 --retries 3 cmake-format pyyaml 'black==24.*' cxxheaderparser pcpp 'clang_format==11.0.1'
                   echo "$PWD/.format-venv/bin" >> "$GITHUB_PATH"
 
             - name: List Installed Packages
