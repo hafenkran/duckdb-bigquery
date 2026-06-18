@@ -990,6 +990,9 @@ jobs:
             if "%DUCKDB_PLATFORM%" == "windows_arm64" (
               call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsarm64.bat"
             )
+            REM Force CMake to use MSVC with the x64/arm64-windows-static vcpkg triplets.
+            set CC=cl
+            set CXX=cl
             REM Rename link.exe to link-git.exe to avoid conflicts with git supplied linker.
             mv "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link-git.exe"
           )
