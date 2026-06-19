@@ -329,6 +329,19 @@ static string GetLoadStagingDirectory(FileSystem &fs) {
     return fs.ExpandPath(temp_dir);
 }
 
+static google::cloud::bigquery::v2::DecimalTargetType MapDecimalTargetType(const string &target_type) {
+    if (target_type == "NUMERIC") {
+        return google::cloud::bigquery::v2::NUMERIC;
+    }
+    if (target_type == "BIGNUMERIC") {
+        return google::cloud::bigquery::v2::BIGNUMERIC;
+    }
+    if (target_type == "STRING") {
+        return google::cloud::bigquery::v2::STRING;
+    }
+    throw BinderException("Invalid decimal target type: %s", target_type);
+}
+
 } // namespace
 
 class CustomReadIdempotencyPolicy : public google::cloud::bigquery_storage_v1::BigQueryReadConnectionIdempotencyPolicy {
@@ -696,36 +709,20 @@ google::cloud::bigquery::v2::Job BigqueryClient::GetJob(const string &job_id, co
     return job;
 }
 
-google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryTableRef &destination_table,
-                                                                 const string &file_path,
-                                                                 const string &write_disposition,
-                                                                 const string &create_disposition,
-                                                                 const string &location,
-                                                                 const std::map<string, string> &labels,
-                                                                 const std::optional<int> &timeout_ms) {
+google::cloud::bigquery::v2::Job BigqueryClient::LoadFile(const BigqueryTableRef &destination_table,
+                                                          const string &file_path,
+                                                          const BigQueryLoadOptions &options) {
     CheckAuthentication();
 
     auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
         google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
 
-    auto response = InsertLoadJobInternal(client,
-                                          destination_table,
-                                          file_path,
-                                          write_disposition,
-                                          create_disposition,
-                                          location,
-                                          labels);
+    auto response = InsertLoadJobInternal(client, destination_table, file_path, options);
     if (!response.ok()) {
         ThrowOnErrorStatus(response.status());
 
         if (CheckSSLError(response.status())) {
-            return LoadParquetFile(destination_table,
-                                   file_path,
-                                   write_disposition,
-                                   create_disposition,
-                                   location,
-                                   labels,
-                                   timeout_ms);
+            return LoadFile(destination_table, file_path, options);
         }
 
         throw BinderException("Load job submission failed: " + response.status().message());
@@ -738,7 +735,65 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryT
         ThrowOnJobStatusError(response->status(), "Load job");
         return *response;
     }
-    return WaitForJobCompletion(response->job_reference(), timeout_ms);
+    return WaitForJobCompletion(response->job_reference(), options.timeout_ms);
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::LoadUris(const BigqueryTableRef &destination_table,
+                                                          const vector<string> &source_uris,
+                                                          const BigQueryLoadOptions &options) {
+    if (source_uris.empty()) {
+        throw BinderException("At least one source URI must be provided for a BigQuery load job");
+    }
+    for (const auto &source_uri : source_uris) {
+        if (source_uri.empty()) {
+            throw BinderException("BigQuery load source URIs cannot be empty");
+        }
+        if (!StringUtil::CIStartsWith(source_uri, "gs://")) {
+            throw BinderException("BigQuery load source URI must use the gs:// scheme: %s", source_uri);
+        }
+    }
+
+    CheckAuthentication();
+
+    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+
+    auto response = InsertLoadJobFromUrisInternal(client, destination_table, source_uris, options);
+    if (!response.ok()) {
+        ThrowOnErrorStatus(response.status());
+
+        if (CheckSSLError(response.status())) {
+            return LoadUris(destination_table, source_uris, options);
+        }
+
+        throw BinderException("Load job submission failed: " + response.status().message());
+    }
+
+    if (!response->has_job_reference()) {
+        throw BinderException("Load job submission succeeded but did not return a job reference");
+    }
+    if (response->has_status() && response->status().state() == "DONE") {
+        ThrowOnJobStatusError(response->status(), "Load job");
+        return *response;
+    }
+    return WaitForJobCompletion(response->job_reference(), options.timeout_ms);
+}
+
+google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetFile(const BigqueryTableRef &destination_table,
+                                                                 const string &file_path,
+                                                                 const string &write_disposition,
+                                                                 const string &create_disposition,
+                                                                 const string &location,
+                                                                 const std::map<string, string> &labels,
+                                                                 const std::optional<int> &timeout_ms) {
+    BigQueryLoadOptions options;
+    options.source_format = "PARQUET";
+    options.write_disposition = write_disposition;
+    options.create_disposition = create_disposition;
+    options.location = location;
+    options.labels = labels;
+    options.timeout_ms = timeout_ms;
+    return LoadFile(destination_table, file_path, options);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryTableRef &destination_table,
@@ -748,54 +803,14 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadParquetUris(const BigqueryT
                                                                  const string &location,
                                                                  const std::map<string, string> &labels,
                                                                  const std::optional<int> &timeout_ms) {
-    if (source_uris.empty()) {
-        throw BinderException("At least one source URI must be provided for a BigQuery load job");
-    }
-    for (const auto &source_uri : source_uris) {
-        if (source_uri.empty()) {
-            throw BinderException("BigQuery load source URIs cannot be empty");
-        }
-        if (!StringUtil::CIStartsWith(source_uri, "gs://")) {
-            throw BinderException("BigQuery Parquet load source URI must use the gs:// scheme: %s", source_uri);
-        }
-    }
-
-    CheckAuthentication();
-
-    auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
-        google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
-
-    auto response = InsertLoadJobFromUrisInternal(client,
-                                                  destination_table,
-                                                  source_uris,
-                                                  write_disposition,
-                                                  create_disposition,
-                                                  location,
-                                                  labels);
-    if (!response.ok()) {
-        ThrowOnErrorStatus(response.status());
-
-        if (CheckSSLError(response.status())) {
-            return LoadParquetUris(destination_table,
-                                   source_uris,
-                                   write_disposition,
-                                   create_disposition,
-                                   location,
-                                   labels,
-                                   timeout_ms);
-        }
-
-        throw BinderException("Load job submission failed: " + response.status().message());
-    }
-
-    if (!response->has_job_reference()) {
-        throw BinderException("Load job submission succeeded but did not return a job reference");
-    }
-    if (response->has_status() && response->status().state() == "DONE") {
-        ThrowOnJobStatusError(response->status(), "Load job");
-        return *response;
-    }
-    return WaitForJobCompletion(response->job_reference(), timeout_ms);
+    BigQueryLoadOptions options;
+    options.source_format = "PARQUET";
+    options.write_disposition = write_disposition;
+    options.create_disposition = create_disposition;
+    options.location = location;
+    options.labels = labels;
+    options.timeout_ms = timeout_ms;
+    return LoadUris(destination_table, source_uris, options);
 }
 
 google::cloud::bigquery::v2::Job BigqueryClient::ExecuteQueryToTable(const string &query,
@@ -1609,34 +1624,126 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
 
 google::cloud::bigquery::v2::InsertJobRequest BigqueryClient::BuildLoadJobRequest(
     const BigqueryTableRef &destination_table,
-    const string &write_disposition,
-    const string &create_disposition,
-    const string &location,
-    const std::map<string, string> &labels) {
+    const BigQueryLoadOptions &options) {
     google::cloud::bigquery::v2::Job job;
     auto *job_reference = job.mutable_job_reference();
     job_reference->set_project_id(config.BillingProject());
     job_reference->set_job_id(GenerateJobId("load"));
-    if (!location.empty()) {
-        job_reference->mutable_location()->set_value(location);
+    if (!options.location.empty()) {
+        job_reference->mutable_location()->set_value(options.location);
     }
 
     auto *job_config = job.mutable_configuration();
-    if (!labels.empty()) {
+    if (!options.labels.empty()) {
         auto *job_labels = job_config->mutable_labels();
-        for (const auto &label : labels) {
+        for (const auto &label : options.labels) {
             (*job_labels)[label.first] = label.second;
         }
     }
 
     auto *load_config = job_config->mutable_load();
-    load_config->set_source_format("PARQUET");
-    load_config->set_create_disposition(create_disposition);
-    load_config->set_write_disposition(write_disposition);
+    load_config->set_source_format(options.source_format);
+    load_config->set_create_disposition(options.create_disposition);
+    load_config->set_write_disposition(options.write_disposition);
     auto *destination = load_config->mutable_destination_table();
     destination->set_project_id(destination_table.project_id);
     destination->set_dataset_id(destination_table.dataset_id);
     destination->set_table_id(destination_table.table_id);
+
+    if (options.autodetect.has_value()) {
+        load_config->mutable_autodetect()->set_value(options.autodetect.value());
+    }
+    for (const auto &schema_update_option : options.schema_update_options) {
+        load_config->add_schema_update_options(schema_update_option);
+    }
+    if (options.max_bad_records.has_value()) {
+        load_config->mutable_max_bad_records()->set_value(options.max_bad_records.value());
+    }
+    if (options.ignore_unknown_values.has_value()) {
+        load_config->mutable_ignore_unknown_values()->set_value(options.ignore_unknown_values.value());
+    }
+
+    if (!options.csv_field_delimiter.empty()) {
+        load_config->set_field_delimiter(options.csv_field_delimiter);
+    }
+    if (options.csv_skip_leading_rows.has_value()) {
+        load_config->mutable_skip_leading_rows()->set_value(options.csv_skip_leading_rows.value());
+    }
+    if (options.csv_quote.has_value()) {
+        load_config->mutable_quote()->set_value(options.csv_quote.value());
+    }
+    if (options.csv_allow_quoted_newlines.has_value()) {
+        load_config->mutable_allow_quoted_newlines()->set_value(options.csv_allow_quoted_newlines.value());
+    }
+    if (options.csv_allow_jagged_rows.has_value()) {
+        load_config->mutable_allow_jagged_rows()->set_value(options.csv_allow_jagged_rows.value());
+    }
+    if (!options.csv_encoding.empty()) {
+        load_config->set_encoding(options.csv_encoding);
+    }
+    if (options.csv_null_marker.has_value()) {
+        load_config->mutable_null_marker()->set_value(options.csv_null_marker.value());
+    }
+    for (const auto &null_marker : options.csv_null_markers) {
+        load_config->add_null_markers(null_marker);
+    }
+    if (options.csv_preserve_ascii_control_characters.has_value()) {
+        load_config->mutable_preserve_ascii_control_characters()->set_value(
+            options.csv_preserve_ascii_control_characters.value());
+    }
+
+    if (!options.date_format.empty()) {
+        load_config->set_date_format(options.date_format);
+    }
+    if (!options.datetime_format.empty()) {
+        load_config->set_datetime_format(options.datetime_format);
+    }
+    if (!options.time_format.empty()) {
+        load_config->set_time_format(options.time_format);
+    }
+    if (!options.timestamp_format.empty()) {
+        load_config->set_timestamp_format(options.timestamp_format);
+    }
+    if (!options.time_zone.empty()) {
+        load_config->mutable_time_zone()->set_value(options.time_zone);
+    }
+
+    if (!options.json_extension.empty()) {
+        if (options.json_extension == "GEOJSON") {
+            load_config->set_json_extension(google::cloud::bigquery::v2::GEOJSON);
+        } else {
+            throw BinderException("Invalid JSON extension: %s", options.json_extension);
+        }
+    }
+    if (options.avro_use_logical_types.has_value()) {
+        load_config->mutable_use_avro_logical_types()->set_value(options.avro_use_logical_types.value());
+    }
+    if (!options.reference_file_schema_uri.empty()) {
+        load_config->mutable_reference_file_schema_uri()->set_value(options.reference_file_schema_uri);
+    }
+    for (const auto &target_type : options.decimal_target_types) {
+        load_config->add_decimal_target_types(MapDecimalTargetType(target_type));
+    }
+
+    if (options.parquet_enable_list_inference.has_value() || options.parquet_enum_as_string.has_value()) {
+        auto *parquet_options = load_config->mutable_parquet_options();
+        if (options.parquet_enable_list_inference.has_value()) {
+            parquet_options->mutable_enable_list_inference()->set_value(options.parquet_enable_list_inference.value());
+        }
+        if (options.parquet_enum_as_string.has_value()) {
+            parquet_options->mutable_enum_as_string()->set_value(options.parquet_enum_as_string.value());
+        }
+    }
+
+    if (!options.hive_partitioning_mode.empty() || !options.hive_partitioning_source_uri_prefix.empty()) {
+        auto *hive_options = load_config->mutable_hive_partitioning_options();
+        if (!options.hive_partitioning_mode.empty()) {
+            hive_options->set_mode(options.hive_partitioning_mode);
+        }
+        if (!options.hive_partitioning_source_uri_prefix.empty()) {
+            hive_options->set_source_uri_prefix(options.hive_partitioning_source_uri_prefix);
+        }
+    }
 
     google::cloud::bigquery::v2::InsertJobRequest request;
     request.set_project_id(config.BillingProject());
@@ -1742,10 +1849,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const BigqueryTableRef &destination_table,
     const string &file_path,
-    const string &write_disposition,
-    const string &create_disposition,
-    const string &location,
-    const std::map<string, string> &labels) {
+    const BigQueryLoadOptions &options) {
     if (!context) {
         throw InternalException("InsertLoadJobInternal requires an active DuckDB client context");
     }
@@ -1753,10 +1857,10 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
     auto &fs = FileSystem::GetFileSystem(*context);
     auto absolute_file_path = fs.ExpandPath(file_path);
     if (!fs.FileExists(absolute_file_path)) {
-        throw IOException("Parquet file not found: %s", absolute_file_path);
+        throw IOException("BigQuery load source file not found: %s", absolute_file_path);
     }
 
-    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location, labels);
+    auto request = BuildLoadJobRequest(destination_table, options);
 
     return job_client.InsertJobUpload(request, absolute_file_path);
 }
@@ -1765,11 +1869,8 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::Job> BigqueryClient::Insert
     google::cloud::bigquerycontrol_v2::JobServiceClient &job_client,
     const BigqueryTableRef &destination_table,
     const vector<string> &source_uris,
-    const string &write_disposition,
-    const string &create_disposition,
-    const string &location,
-    const std::map<string, string> &labels) {
-    auto request = BuildLoadJobRequest(destination_table, write_disposition, create_disposition, location, labels);
+    const BigQueryLoadOptions &options) {
+    auto request = BuildLoadJobRequest(destination_table, options);
     auto *load_config = request.mutable_job()->mutable_configuration()->mutable_load();
     for (const auto &source_uri : source_uris) {
         load_config->add_source_uris(source_uri);
