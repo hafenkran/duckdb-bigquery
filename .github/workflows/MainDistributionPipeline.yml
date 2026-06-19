@@ -14,12 +14,56 @@ concurrency:
 jobs:
     code-quality-check:
         name: Code Quality Check
-        uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5.3
-        with:
-            duckdb_version: v1.5.3
-            ci_tools_version: v1.5.3
-            extension_name: bigquery
-            format_checks: "format"
+        runs-on: ubuntu-22.04
+        timeout-minutes: 20
+        env:
+            CC: gcc-10
+            CXX: g++-10
+            GEN: ninja
+            PIP_DISABLE_PIP_VERSION_CHECK: "1"
+            PIP_NO_INPUT: "1"
+            PIP_PROGRESS_BAR: "off"
+        steps:
+            - uses: actions/checkout@v4
+              name: Checkout current repository
+              with:
+                  fetch-depth: 0
+                  submodules: "recursive"
+
+            - uses: actions/checkout@v4
+              name: Checkout Extension CI tools
+              with:
+                  path: "extension-ci-tools"
+                  ref: v1.5-variegata
+                  repository: duckdb/extension-ci-tools
+
+            - name: Install apt format dependencies
+              timeout-minutes: 10
+              shell: bash
+              run: |
+                  sudo apt-get -o Acquire::Retries=3 update -y
+                  sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends ninja-build clang-format-11 python3-venv
+
+            - name: Install Python format dependencies
+              timeout-minutes: 10
+              shell: bash
+              run: |
+                  python3 -m venv .format-venv
+                  .format-venv/bin/python -m pip install --upgrade pip
+                  .format-venv/bin/python -m pip install --timeout 60 --retries 3 cmake-format pyyaml 'black==24.*' cxxheaderparser pcpp 'clang_format==11.0.1'
+                  echo "$PWD/.format-venv/bin" >> "$GITHUB_PATH"
+
+            - name: List Installed Packages
+              shell: bash
+              run: python -m pip freeze
+
+            - name: Format Check
+              shell: bash
+              run: |
+                  clang-format --version
+                  clang-format --dump-config
+                  black --version
+                  make format-check
 
     duckdb-stable-build:
         name: Build extension binaries
@@ -31,8 +75,8 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.3
-            ci_tools_version: v1.5.3
+            duckdb_version: v1.5.4
+            ci_tools_version: v1.5-variegata
             gcp_environment: ci
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;"
             vcpkg_commit: "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
@@ -47,8 +91,8 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.3
-            ci_tools_version: v1.5.3
+            duckdb_version: v1.5.4
+            ci_tools_version: v1.5-variegata
             gcp_environment: ci
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;"
             deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}

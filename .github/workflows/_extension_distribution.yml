@@ -783,7 +783,6 @@ jobs:
       matrix: ${{fromJson(needs.generate_matrix.outputs.windows_matrix)}}
     env:
       # VCPKG config
-      VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_target_triplet }}
       VCPKG_HOST_TRIPLET: ${{ matrix.vcpkg_host_triplet }}
       VCPKG_OVERLAY_PORTS: ${{ github.workspace }}/extension-ci-tools/vcpkg_ports
@@ -798,8 +797,8 @@ jobs:
       # Misc
       BUILD_SHELL: ${{ inputs.build_duckdb_shell && '1' || '0' }}
       DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
-      CC: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 'gcc' || '' }}
-      CXX: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 'g++' || '' }}
+      CC: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 'gcc' || 'cl' }}
+      CXX: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 'g++' || 'cl' }}
       GEN: ninja
 
     steps:
@@ -935,11 +934,20 @@ jobs:
         run: |
           make set_duckdb_tag
 
+      - name: Setup shorter path for vcpkg
+        run: |
+          $basePath = Split-Path -Path (Split-path -Path $env:GITHUB_WORKSPACE -Parent) -Parent
+          $vcpkgRoot = "$basePath/vcpkg"
+          echo "VCPKG_WINDOWS_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
+          echo "VCPKG_TOOLCHAIN_PATH=$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11.1
         with:
           vcpkgGitCommitId: ${{ inputs.vcpkg_commit }}
           vcpkgGitURL: ${{ inputs.vcpkg_url }}
+          vcpkgDirectory: ${{ env.VCPKG_WINDOWS_ROOT }}
 
       - name: Inject extra extension config
         if: ${{ inputs.extra_extension_config }}
@@ -983,12 +991,21 @@ jobs:
           EXT_FLAGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         shell: cmd
         run: |
+          setlocal EnableDelayedExpansion
           if "%DUCKDB_PLATFORM_RTOOLS%" == "0" (
+            set "VCVARS_BAT="
             if "%DUCKDB_PLATFORM%" == "windows_amd64" (
-              call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+              set "VCVARS_BAT=vcvars64.bat"
             )
             if "%DUCKDB_PLATFORM%" == "windows_arm64" (
-              call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsarm64.bat"
+              set "VCVARS_BAT=vcvarsarm64.bat"
+            )
+            if defined VCVARS_BAT (
+              if exist "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\!VCVARS_BAT!" (
+                call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\!VCVARS_BAT!"
+              ) else (
+                call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\!VCVARS_BAT!"
+              )
             )
             REM Rename link.exe to link-git.exe to avoid conflicts with git supplied linker.
             mv "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link-git.exe"
@@ -1126,7 +1143,7 @@ jobs:
         run: |
           DUCKDB_TAG=${{ inputs.duckdb_tag }} make set_duckdb_tag
 
-      - uses: mymindstorm/setup-emsdk@v13
+      - uses: emscripten-core/setup-emsdk@v13
         with:
           version: 3.1.71
 
