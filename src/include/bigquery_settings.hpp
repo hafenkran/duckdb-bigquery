@@ -90,6 +90,15 @@ public:
         ExperimentalFilterPushdown() = BooleanValue::Get(parameter);
     }
 
+    static bool &EnableAggregatePushdown() {
+        static bool BIGQUERY_ENABLE_AGGREGATE_PUSHDOWN = true;
+        return BIGQUERY_ENABLE_AGGREGATE_PUSHDOWN;
+    }
+
+    static void SetEnableAggregatePushdown(ClientContext &context, SetScope scope, Value &parameter) {
+        EnableAggregatePushdown() = BooleanValue::Get(parameter);
+    }
+
     static string &CurlCaBundlePath() {
         static string CURL_CA_BUNDLE_PATH = "";
         return CURL_CA_BUNDLE_PATH;

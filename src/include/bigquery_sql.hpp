@@ -16,6 +16,10 @@
 #include <functional>
 
 namespace duckdb {
+struct ColumnBinding;
+class Expression;
+class LogicalGet;
+
 namespace bigquery {
 
 struct BigquerySQL {
@@ -24,9 +28,12 @@ public:
     static string TransformFilters(const TableFilterSet &filters,
                                    const std::function<string(idx_t)> &column_name_resolver);
     static string TransformFilter(const string &column_name, const TableFilter &filter);
-    static string CreateExpression(const string &column_name,
-                                   const vector<unique_ptr<TableFilter>> &filters,
-                                   const string &op);
+    static bool TryTransformBoundFilter(
+        Expression &expr,
+        const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
+        string &filter_sql);
+    static bool TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql);
+    static string CreateSubquerySourceSQL(const string &query, const string &alias);
 
     static string AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info);
     static string CreateSchemaInfoToSQL(const string &project_id, const CreateSchemaInfo &info);

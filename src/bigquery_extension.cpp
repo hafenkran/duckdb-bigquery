@@ -11,6 +11,7 @@
 #include "duckdb/main/connection_manager.hpp"
 #include "duckdb/main/secret/secret.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
+#include "duckdb/optimizer/optimizer_extension.hpp"
 #include "duckdb/planner/extension_callback.hpp"
 
 // OpenSSL linked through vcpkg
@@ -20,8 +21,8 @@
 #include "bigquery_clear_cache.hpp"
 #include "bigquery_client.hpp"
 #include "bigquery_execute.hpp"
-#include "bigquery_extract.hpp"
 #include "bigquery_extension.hpp"
+#include "bigquery_extract.hpp"
 #include "bigquery_geography.hpp"
 #include "bigquery_jobs.hpp"
 #include "bigquery_load.hpp"
@@ -31,6 +32,7 @@
 #include "bigquery_secrets.hpp"
 #include "bigquery_settings.hpp"
 #include "bigquery_storage.hpp"
+#include "storage/bigquery_optimizer.hpp"
 
 namespace duckdb {
 
@@ -116,6 +118,12 @@ static void LoadInternal(ExtensionLoader &loader) {
     auto operator_extension = make_shared_ptr<bigquery::BigqueryOperatorExtension>();
     OperatorExtension::Register(config, std::move(operator_extension));
 
+    // Register BigQuery optimizer extension, which rewrites supported aggregates to bigquery_query queries
+    OptimizerExtension bigquery_optimizer;
+    bigquery_optimizer.optimize_function = bigquery::BigqueryOptimizer::Optimize;
+    OptimizerExtension::Register(config, std::move(bigquery_optimizer));
+
+    // Register configuration options
     config.AddExtensionOption("bq_bignumeric_as_varchar",
                               "Read BigQuery BIGNUMERIC data type as VARCHAR",
                               LogicalType::BOOLEAN,
@@ -126,12 +134,12 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::VARCHAR,
                               Value(bigquery::BigquerySettings::DefaultLocation()),
                               bigquery::BigquerySettings::SetDefaultLocation);
-    config.AddExtensionOption(
-        "bq_query_timeout_ms",
-        "Maximum time to wait for BigQuery query completion in milliseconds; 0 waits until completion",
-        LogicalType::BIGINT,
-        Value(bigquery::BigquerySettings::QueryTimeoutMs()),
-        bigquery::BigquerySettings::SetQueryTimeoutMs);
+    config.AddExtensionOption("bq_query_timeout_ms",
+                              "Maximum time to wait for BigQuery query completion in milliseconds; "
+                              "0 waits until completion",
+                              LogicalType::BIGINT,
+                              Value(bigquery::BigquerySettings::QueryTimeoutMs()),
+                              bigquery::BigquerySettings::SetQueryTimeoutMs);
     config.AddExtensionOption("bq_auth_timeout_s",
                               "Timeout for BigQuery authentication token fetches in seconds",
                               LogicalType::BIGINT,
@@ -142,6 +150,11 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::ExperimentalFilterPushdown()),
                               bigquery::BigquerySettings::SetExperimentalFilterPushdown);
+    config.AddExtensionOption("bq_enable_aggregate_pushdown",
+                              "Whether to rewrite supported ungrouped BigQuery aggregates to BigQuery query jobs",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::EnableAggregatePushdown()),
+                              bigquery::BigquerySettings::SetEnableAggregatePushdown);
     config.AddExtensionOption("bq_experimental_use_info_schema",
                               "Whether to fetch table infos from BQ information schema (currently experimental). Can "
                               "be significantly faster than fetching from REST API.",
