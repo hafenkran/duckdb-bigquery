@@ -151,7 +151,7 @@ static void LoadInternal(ExtensionLoader &loader) {
                               Value(bigquery::BigquerySettings::ExperimentalFilterPushdown()),
                               bigquery::BigquerySettings::SetExperimentalFilterPushdown);
     config.AddExtensionOption("bq_enable_aggregate_pushdown",
-                              "Whether to rewrite supported ungrouped BigQuery aggregates to BigQuery query jobs",
+                              "Whether to rewrite supported ungrouped and grouped BigQuery aggregates to query jobs",
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::EnableAggregatePushdown()),
                               bigquery::BigquerySettings::SetEnableAggregatePushdown);

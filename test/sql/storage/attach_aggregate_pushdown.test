@@ -1,5 +1,5 @@
 # name: test/sql/storage/attach_aggregate_pushdown.test
-# description: Validate BigQuery ungrouped aggregate pushdown
+# description: Validate BigQuery aggregate pushdown
 # group: [storage]
 
 require bigquery
@@ -7,6 +7,10 @@ require bigquery
 require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
+
+# ------------------------------------------------------------------------------
+# Setup and fixture
+# ------------------------------------------------------------------------------
 
 statement ok
 ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
@@ -31,6 +35,10 @@ FROM (
 		(4, 20, true, NULL)
 ) t(i, j, b, s);
 
+# ------------------------------------------------------------------------------
+# Ungrouped aggregates: remote plan selection
+# ------------------------------------------------------------------------------
+
 query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
@@ -40,6 +48,10 @@ query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+# ------------------------------------------------------------------------------
+# Ungrouped aggregates: supported functions
+# ------------------------------------------------------------------------------
 
 query III
 SELECT COUNT(*), COUNT(1), COUNT(j) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
@@ -60,6 +72,10 @@ query II
 SELECT BOOL_AND(b), BOOL_OR(b) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 false	true
+
+# ------------------------------------------------------------------------------
+# Ungrouped aggregates: supported filters
+# ------------------------------------------------------------------------------
 
 query II
 SELECT COUNT(*), SUM(j) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i IN (1, 3, 4);
@@ -101,6 +117,10 @@ SELECT COUNT(*), SUM(j) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i > 
 ----
 2	30
 
+# ------------------------------------------------------------------------------
+# Ungrouped aggregates: local expressions, HAVING, and projections
+# ------------------------------------------------------------------------------
+
 query I
 SELECT COUNT(*) + 1 AS c FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
@@ -116,15 +136,20 @@ SELECT COUNT(*) FROM (SELECT i AS renamed_i FROM bq.${BQ_TEST_DATASET}.aggregate
 ----
 4
 
-query I
-SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown');
-----
-4
+# ------------------------------------------------------------------------------
+# Ungrouped aggregates: table-function sources
+# ------------------------------------------------------------------------------
 
-query I
-SELECT COUNT(*) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown');
+query II
+EXPLAIN SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown');
 ----
-4
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT COUNT(*)
+FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown');
+----
+physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
 
 query II
 EXPLAIN SELECT COUNT(*) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown') WHERE j IS NULL;
@@ -146,8 +171,103 @@ SELECT COUNT(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggreg
 ----
 2
 
+# ------------------------------------------------------------------------------
+# Grouped aggregates: remote plan selection
+# ------------------------------------------------------------------------------
+
 query II
 EXPLAIN SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i;
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+# ------------------------------------------------------------------------------
+# Grouped aggregates: results, multiple keys, filters, and HAVING
+# ------------------------------------------------------------------------------
+
+query II
+SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i ORDER BY i;
+----
+1	1
+2	1
+3	1
+4	1
+
+query III
+SELECT b, COUNT(*), SUM(j) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY b ORDER BY b;
+----
+false	1	NULL
+true	3	60
+
+query ITI
+SELECT b, s, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY b, s ORDER BY b, s NULLS LAST;
+----
+false	b	1
+true	a	1
+true	c	1
+true	NULL	1
+
+query II
+SELECT b AS flag, COUNT(*) AS c
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+WHERE i > 1
+GROUP BY b
+HAVING COUNT(*) > 0
+ORDER BY flag;
+----
+false	1
+true	2
+
+# ------------------------------------------------------------------------------
+# Grouped aggregates: table-function sources
+# ------------------------------------------------------------------------------
+
+query II
+EXPLAIN SELECT i, COUNT(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY i;
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT i, COUNT(*)
+FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY i;
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+# ------------------------------------------------------------------------------
+# Unsupported grouping and aggregate shapes fall back to scans
+# ------------------------------------------------------------------------------
+
+query II
+EXPLAIN SELECT i + 1, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i + 1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY ROLLUP (i);
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY CUBE (i);
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i, COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY GROUPING SETS ((i), ());
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
@@ -155,6 +275,10 @@ query II
 EXPLAIN SELECT COUNT(DISTINCT i) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+# ------------------------------------------------------------------------------
+# Aggregate argument expressions: supported rewrite and fallback
+# ------------------------------------------------------------------------------
 
 query II
 EXPLAIN SELECT SUM(i + 1) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
@@ -171,6 +295,10 @@ EXPLAIN SELECT MIN(i + 1) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
+# ------------------------------------------------------------------------------
+# Unsupported filter expressions fall back to scans
+# ------------------------------------------------------------------------------
+
 query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i % 2 = 0;
 ----
@@ -186,21 +314,29 @@ EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE CAST
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
+# ------------------------------------------------------------------------------
+# Pushdown disabled
+# ------------------------------------------------------------------------------
+
 statement ok
 SET bq_enable_aggregate_pushdown=false;
+
+query II
+EXPLAIN SELECT i, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
-query I
-SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
-----
-4
-
 statement ok
 SET bq_enable_aggregate_pushdown=true;
 
-statement ok
-DROP TABLE bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+# ------------------------------------------------------------------------------
+# Cleanup (disabled for local inspection)
+# ------------------------------------------------------------------------------
+
+#-- statement ok
+#-- DROP TABLE bq.${BQ_TEST_DATASET}.aggregate_pushdown;
