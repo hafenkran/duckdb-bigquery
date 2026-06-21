@@ -231,10 +231,46 @@ static bool TryColumnArgumentSQL(const BigqueryAggregateSource &source, Expressi
     return true;
 }
 
+static bool IsDistinctCountArgumentType(const LogicalType &type) {
+    switch (type.id()) {
+    case LogicalTypeId::BOOLEAN:
+    case LogicalTypeId::TINYINT:
+    case LogicalTypeId::SMALLINT:
+    case LogicalTypeId::INTEGER:
+    case LogicalTypeId::BIGINT:
+    case LogicalTypeId::HUGEINT:
+    case LogicalTypeId::UTINYINT:
+    case LogicalTypeId::USMALLINT:
+    case LogicalTypeId::UINTEGER:
+    case LogicalTypeId::UBIGINT:
+    case LogicalTypeId::UHUGEINT:
+    case LogicalTypeId::FLOAT:
+    case LogicalTypeId::DOUBLE:
+    case LogicalTypeId::DECIMAL:
+    case LogicalTypeId::VARCHAR:
+    case LogicalTypeId::BLOB:
+    case LogicalTypeId::DATE:
+    case LogicalTypeId::TIME:
+    case LogicalTypeId::TIMESTAMP:
+    case LogicalTypeId::TIMESTAMP_TZ:
+    case LogicalTypeId::TIMESTAMP_SEC:
+    case LogicalTypeId::TIMESTAMP_MS:
+    case LogicalTypeId::TIMESTAMP_NS:
+    case LogicalTypeId::INTERVAL:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool TryAggregateSQL(const BigqueryAggregateSource &source,
                             const BoundAggregateExpression &aggregate,
                             string &aggregate_sql) {
-    if (aggregate.aggr_type != AggregateType::NON_DISTINCT || aggregate.filter || aggregate.order_bys) {
+    if (aggregate.filter || aggregate.order_bys) {
+        return false;
+    }
+    const bool is_distinct = aggregate.aggr_type == AggregateType::DISTINCT;
+    if (!is_distinct && aggregate.aggr_type != AggregateType::NON_DISTINCT) {
         return false;
     }
     if (!IsRestScalarType(aggregate.return_type)) {
@@ -243,7 +279,7 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
 
     const auto function_name = StringUtil::Lower(aggregate.function.name);
     if (function_name == "count_star") {
-        if (!aggregate.children.empty()) {
+        if (is_distinct || !aggregate.children.empty()) {
             return false;
         }
         aggregate_sql = "COUNT(*)";
@@ -251,6 +287,9 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
     }
     if (function_name == "count") {
         if (aggregate.children.empty()) {
+            if (is_distinct) {
+                return false;
+            }
             aggregate_sql = "COUNT(*)";
             return true;
         }
@@ -258,6 +297,17 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
             return false;
         }
         auto &argument = *aggregate.children[0];
+        if (is_distinct) {
+            if (!IsDistinctCountArgumentType(argument.return_type)) {
+                return false;
+            }
+            string argument_sql;
+            if (!TryColumnArgumentSQL(source, argument, argument_sql)) {
+                return false;
+            }
+            aggregate_sql = "COUNT(DISTINCT " + argument_sql + ")";
+            return true;
+        }
         if (argument.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT &&
             !argument.Cast<BoundConstantExpression>().value.IsNull()) {
             aggregate_sql = "COUNT(*)";
@@ -269,6 +319,9 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
         }
         aggregate_sql = "COUNT(" + argument_sql + ")";
         return true;
+    }
+    if (is_distinct) {
+        return false;
     }
 
     string bigquery_function;
