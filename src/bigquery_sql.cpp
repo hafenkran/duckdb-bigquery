@@ -251,11 +251,13 @@ static bool IsArithmeticScalarType(const LogicalType &type) {
 
 static bool TryTransformBoundScalarExpressionInternal(
     Expression &expr,
-    const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     string &expression_sql) {
     switch (expr.GetExpressionClass()) {
-    case ExpressionClass::BOUND_COLUMN_REF:
-        return TryTransformColumnExpression(expr, column_name_resolver, expression_sql);
+    case ExpressionClass::BOUND_COLUMN_REF: {
+        auto &colref = expr.Cast<BoundColumnRefExpression>();
+        return column_sql_resolver(colref.binding, expression_sql);
+    }
     case ExpressionClass::BOUND_CONSTANT:
     case ExpressionClass::BOUND_CAST:
         if (!IsArithmeticScalarType(expr.return_type)) {
@@ -279,7 +281,7 @@ static bool TryTransformBoundScalarExpressionInternal(
                 return false;
             }
             string child_sql;
-            if (!TryTransformBoundScalarExpressionInternal(*child, column_name_resolver, child_sql)) {
+            if (!TryTransformBoundScalarExpressionInternal(*child, column_sql_resolver, child_sql)) {
                 return false;
             }
             child_entries.push_back(std::move(child_sql));
@@ -510,9 +512,9 @@ bool BigquerySQL::TryTransformBoundFilter(
 
 bool BigquerySQL::TryTransformBoundScalarExpression(
     Expression &expr,
-    const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     string &expression_sql) {
-    return TryTransformBoundScalarExpressionInternal(expr, column_name_resolver, expression_sql);
+    return TryTransformBoundScalarExpressionInternal(expr, column_sql_resolver, expression_sql);
 }
 
 bool BigquerySQL::TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql) {

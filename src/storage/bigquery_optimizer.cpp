@@ -30,6 +30,7 @@ static constexpr const char *BQ_GROUP_COLUMN_PREFIX = "__duckdb_bq_group_";
 struct BigqueryAggregateSource {
     idx_t table_index = DConstants::INVALID_INDEX;
     vector<std::optional<string>> column_names;
+    vector<std::optional<string>> column_sql;
 
     BigqueryConfig config;
     shared_ptr<BigqueryClient> bq_client;
@@ -87,6 +88,7 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
 
     source.table_index = get.table_index;
     source.column_names.clear();
+    source.column_sql.clear();
 
     if (scan_bind) {
         if (!scan_bind->bq_client) {
@@ -119,9 +121,11 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
         return false;
     }
     source.column_names.resize(column_ids.size());
+    source.column_sql.resize(column_ids.size());
     for (idx_t col_idx = 0; col_idx < column_ids.size(); col_idx++) {
         string column_name;
         if (TryGetScanBindingColumnName(get, col_idx, column_name)) {
+            source.column_sql[col_idx] = BigqueryUtils::WriteQuotedIdentifier(column_name);
             source.column_names[col_idx] = std::move(column_name);
         }
     }
@@ -143,6 +147,18 @@ static bool TryResolveColumnName(const BigqueryAggregateSource &source, const Co
         return false;
     }
     name = column_name.value();
+    return true;
+}
+
+static bool TryResolveColumnSQL(const BigqueryAggregateSource &source, const ColumnBinding &binding, string &sql) {
+    if (binding.table_index != source.table_index || binding.column_index >= source.column_sql.size()) {
+        return false;
+    }
+    const auto &column_sql = source.column_sql[binding.column_index];
+    if (!column_sql.has_value()) {
+        return false;
+    }
+    sql = column_sql.value();
     return true;
 }
 
@@ -186,22 +202,33 @@ static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregat
     }
 
     vector<std::optional<string>> projected_names;
+    vector<std::optional<string>> projected_sql;
     projected_names.reserve(projection.expressions.size());
+    projected_sql.reserve(projection.expressions.size());
     for (auto &expr : projection.expressions) {
-        if (expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
-            projected_names.emplace_back();
-            continue;
-        }
-        auto &colref = expr->Cast<BoundColumnRefExpression>();
         string column_name;
-        if (!TryResolveColumnName(source, colref.binding, column_name)) {
+        if (expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
+            !TryResolveColumnName(source, expr->Cast<BoundColumnRefExpression>().binding, column_name)) {
             projected_names.emplace_back();
-            continue;
+        } else {
+            projected_names.push_back(std::move(column_name));
         }
-        projected_names.push_back(std::move(column_name));
+
+        string expression_sql;
+        if (!BigquerySQL::TryTransformBoundScalarExpression(
+                *expr,
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveColumnSQL(source, binding, sql);
+                },
+                expression_sql)) {
+            projected_sql.emplace_back();
+        } else {
+            projected_sql.push_back(std::move(expression_sql));
+        }
     }
     source.table_index = projection.table_index;
     source.column_names = std::move(projected_names);
+    source.column_sql = std::move(projected_sql);
     return true;
 }
 
@@ -234,9 +261,7 @@ static bool TryColumnArgumentSQL(const BigqueryAggregateSource &source, Expressi
 static bool TryAggregateArgumentSQL(const BigqueryAggregateSource &source, Expression &expr, string &argument_sql) {
     return BigquerySQL::TryTransformBoundScalarExpression(
         expr,
-        [&](const ColumnBinding &binding, string &column_name) -> bool {
-            return TryResolveColumnName(source, binding, column_name);
-        },
+        [&](const ColumnBinding &binding, string &sql) -> bool { return TryResolveColumnSQL(source, binding, sql); },
         argument_sql);
 }
 

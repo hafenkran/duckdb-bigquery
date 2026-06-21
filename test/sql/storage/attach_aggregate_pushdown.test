@@ -372,6 +372,28 @@ EXPLAIN SELECT MIN(i + 1) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
 
+query II
+EXPLAIN SELECT
+	MIN((i + 1) * 2),
+	MAX(i + j),
+	SUM(i * 2),
+	AVG(i - 1),
+	COUNT(i + 1)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT
+	MIN((i + 1) * 2),
+	MAX(i + j),
+	SUM(i * 2),
+	AVG(i - 1),
+	COUNT(i + 1)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
+
 query IIIIIII
 SELECT
 	MIN(i + 1),
@@ -488,7 +510,7 @@ statement ok
 SET bq_enable_aggregate_pushdown=true;
 
 # ------------------------------------------------------------------------------
-# Cleanup (disabled for local inspection)
+# Cleanup
 # ------------------------------------------------------------------------------
 
 #-- statement ok
