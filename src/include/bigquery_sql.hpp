@@ -32,6 +32,10 @@ public:
         Expression &expr,
         const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
         string &filter_sql);
+    static bool TryTransformBoundScalarExpression(
+        Expression &expr,
+        const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
+        string &expression_sql);
     static bool TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql);
     static string CreateSubquerySourceSQL(const string &query, const string &alias);
 

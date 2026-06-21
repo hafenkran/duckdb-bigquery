@@ -231,6 +231,15 @@ static bool TryColumnArgumentSQL(const BigqueryAggregateSource &source, Expressi
     return true;
 }
 
+static bool TryAggregateArgumentSQL(const BigqueryAggregateSource &source, Expression &expr, string &argument_sql) {
+    return BigquerySQL::TryTransformBoundScalarExpression(
+        expr,
+        [&](const ColumnBinding &binding, string &column_name) -> bool {
+            return TryResolveColumnName(source, binding, column_name);
+        },
+        argument_sql);
+}
+
 static bool IsDistinctCountArgumentType(const LogicalType &type) {
     switch (type.id()) {
     case LogicalTypeId::BOOLEAN:
@@ -314,7 +323,7 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
             return true;
         }
         string argument_sql;
-        if (!TryColumnArgumentSQL(source, argument, argument_sql)) {
+        if (!TryAggregateArgumentSQL(source, argument, argument_sql)) {
             return false;
         }
         aggregate_sql = "COUNT(" + argument_sql + ")";
@@ -345,7 +354,7 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
         return false;
     }
     string argument_sql;
-    if (!TryColumnArgumentSQL(source, *aggregate.children[0], argument_sql)) {
+    if (!TryAggregateArgumentSQL(source, *aggregate.children[0], argument_sql)) {
         return false;
     }
     aggregate_sql = bigquery_function + "(" + argument_sql + ")";
