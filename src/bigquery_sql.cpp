@@ -7,6 +7,7 @@
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_operator_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_delete.hpp"
@@ -229,6 +230,74 @@ static bool TryTransformConstantExpression(Expression &expr, string &literal_sql
     return TryTransformFilterLiteral(constant.value, literal_sql);
 }
 
+static bool IsArithmeticScalarType(const LogicalType &type) {
+    switch (type.id()) {
+    case LogicalTypeId::TINYINT:
+    case LogicalTypeId::SMALLINT:
+    case LogicalTypeId::INTEGER:
+    case LogicalTypeId::BIGINT:
+    case LogicalTypeId::UTINYINT:
+    case LogicalTypeId::USMALLINT:
+    case LogicalTypeId::UINTEGER:
+    case LogicalTypeId::FLOAT:
+    case LogicalTypeId::DOUBLE:
+    case LogicalTypeId::DECIMAL:
+    case LogicalTypeId::INTEGER_LITERAL:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool TryTransformBoundScalarExpressionInternal(
+    Expression &expr,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+    string &expression_sql) {
+    switch (expr.GetExpressionClass()) {
+    case ExpressionClass::BOUND_COLUMN_REF: {
+        auto &colref = expr.Cast<BoundColumnRefExpression>();
+        return column_sql_resolver(colref.binding, expression_sql);
+    }
+    case ExpressionClass::BOUND_CONSTANT:
+    case ExpressionClass::BOUND_CAST:
+        if (!IsArithmeticScalarType(expr.return_type)) {
+            return false;
+        }
+        return TryTransformConstantExpression(expr, expression_sql);
+    case ExpressionClass::BOUND_FUNCTION: {
+        auto &function = expr.Cast<BoundFunctionExpression>();
+        const auto function_name = StringUtil::Lower(function.function.name);
+        const bool unary_minus = function_name == "-" && function.children.size() == 1;
+        const bool binary_operator =
+            (function_name == "+" || function_name == "-" || function_name == "*") && function.children.size() == 2;
+        if ((!unary_minus && !binary_operator) || !IsArithmeticScalarType(function.return_type)) {
+            return false;
+        }
+
+        vector<string> child_entries;
+        child_entries.reserve(function.children.size());
+        for (auto &child : function.children) {
+            if (!IsArithmeticScalarType(child->return_type)) {
+                return false;
+            }
+            string child_sql;
+            if (!TryTransformBoundScalarExpressionInternal(*child, column_sql_resolver, child_sql)) {
+                return false;
+            }
+            child_entries.push_back(std::move(child_sql));
+        }
+        if (unary_minus) {
+            expression_sql = "(-" + child_entries[0] + ")";
+        } else {
+            expression_sql = "(" + child_entries[0] + " " + function_name + " " + child_entries[1] + ")";
+        }
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 static bool TryTransformBoundFilterExpression(
     Expression &expr,
     const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
@@ -439,6 +508,13 @@ bool BigquerySQL::TryTransformBoundFilter(
     const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
     string &filter_sql) {
     return TryTransformBoundFilterExpression(expr, column_name_resolver, filter_sql);
+}
+
+bool BigquerySQL::TryTransformBoundScalarExpression(
+    Expression &expr,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+    string &expression_sql) {
+    return TryTransformBoundScalarExpressionInternal(expr, column_sql_resolver, expression_sql);
 }
 
 bool BigquerySQL::TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql) {
