@@ -249,6 +249,23 @@ static bool IsArithmeticScalarType(const LogicalType &type) {
     }
 }
 
+static bool IsModuloScalarType(const LogicalType &type) {
+    switch (type.id()) {
+    case LogicalTypeId::TINYINT:
+    case LogicalTypeId::SMALLINT:
+    case LogicalTypeId::INTEGER:
+    case LogicalTypeId::BIGINT:
+    case LogicalTypeId::UTINYINT:
+    case LogicalTypeId::USMALLINT:
+    case LogicalTypeId::UINTEGER:
+    case LogicalTypeId::DECIMAL:
+    case LogicalTypeId::INTEGER_LITERAL:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool TryTransformBoundScalarExpressionInternal(
     Expression &expr,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
@@ -268,26 +285,44 @@ static bool TryTransformBoundScalarExpressionInternal(
         auto &function = expr.Cast<BoundFunctionExpression>();
         const auto function_name = StringUtil::Lower(function.function.name);
         const bool unary_minus = function_name == "-" && function.children.size() == 1;
-        const bool binary_operator =
+        const bool basic_binary_operator =
             (function_name == "+" || function_name == "-" || function_name == "*") && function.children.size() == 2;
-        if ((!unary_minus && !binary_operator) || !IsArithmeticScalarType(function.return_type)) {
+        const bool division = function_name == "/" && function.children.size() == 2;
+        const bool modulo = function_name == "%" && function.children.size() == 2;
+        if ((!unary_minus && !basic_binary_operator && !division && !modulo) ||
+            !IsArithmeticScalarType(function.return_type) || (modulo && !IsModuloScalarType(function.return_type))) {
             return false;
         }
 
         vector<string> child_entries;
         child_entries.reserve(function.children.size());
         for (auto &child : function.children) {
-            if (!IsArithmeticScalarType(child->return_type)) {
+            auto child_expr = child.get();
+            if (division && child_expr->GetExpressionClass() == ExpressionClass::BOUND_CAST) {
+                auto &cast = child_expr->Cast<BoundCastExpression>();
+                if (!cast.try_cast &&
+                    (cast.return_type.id() == LogicalTypeId::FLOAT || cast.return_type.id() == LogicalTypeId::DOUBLE) &&
+                    IsArithmeticScalarType(cast.child->return_type)) {
+                    child_expr = cast.child.get();
+                }
+            }
+            if (!IsArithmeticScalarType(child_expr->return_type) ||
+                (modulo && !IsModuloScalarType(child_expr->return_type))) {
                 return false;
             }
             string child_sql;
-            if (!TryTransformBoundScalarExpressionInternal(*child, column_sql_resolver, child_sql)) {
+            if (!TryTransformBoundScalarExpressionInternal(*child_expr, column_sql_resolver, child_sql)) {
                 return false;
             }
             child_entries.push_back(std::move(child_sql));
         }
         if (unary_minus) {
             expression_sql = "(-" + child_entries[0] + ")";
+        } else if (division) {
+            expression_sql = "IEEE_DIVIDE(" + child_entries[0] + ", " + child_entries[1] + ")";
+        } else if (modulo) {
+            expression_sql = "(CASE WHEN " + child_entries[1] + " = 0 THEN NULL ELSE MOD(" + child_entries[0] + ", " +
+                             child_entries[1] + ") END)";
         } else {
             expression_sql = "(" + child_entries[0] + " " + function_name + " " + child_entries[1] + ")";
         }
