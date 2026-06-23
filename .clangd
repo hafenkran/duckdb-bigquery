@@ -1,0 +1,6 @@
+CompileFlags:
+  CompilationDatabase: build/debug
+  Add:
+    - -Iduckdb/src/include
+    - -Isrc/include
+    - -std=c++17
