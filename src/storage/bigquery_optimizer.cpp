@@ -31,6 +31,8 @@ struct BigqueryAggregateSource {
     idx_t table_index = DConstants::INVALID_INDEX;
     vector<std::optional<string>> column_names;
     vector<std::optional<string>> column_sql;
+    vector<std::optional<string>> filter_column_sql;
+    vector<std::optional<string>> filter_integral_floating_sql;
 
     BigqueryConfig config;
     shared_ptr<BigqueryClient> bq_client;
@@ -89,6 +91,8 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
     source.table_index = get.table_index;
     source.column_names.clear();
     source.column_sql.clear();
+    source.filter_column_sql.clear();
+    source.filter_integral_floating_sql.clear();
 
     if (scan_bind) {
         if (!scan_bind->bq_client) {
@@ -122,10 +126,14 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
     }
     source.column_names.resize(column_ids.size());
     source.column_sql.resize(column_ids.size());
+    source.filter_column_sql.resize(column_ids.size());
+    source.filter_integral_floating_sql.resize(column_ids.size());
     for (idx_t col_idx = 0; col_idx < column_ids.size(); col_idx++) {
         string column_name;
         if (TryGetScanBindingColumnName(get, col_idx, column_name)) {
-            source.column_sql[col_idx] = BigqueryUtils::WriteQuotedIdentifier(column_name);
+            const auto quoted_column = BigqueryUtils::WriteQuotedIdentifier(column_name);
+            source.column_sql[col_idx] = quoted_column;
+            source.filter_column_sql[col_idx] = quoted_column;
             source.column_names[col_idx] = std::move(column_name);
         }
     }
@@ -162,6 +170,35 @@ static bool TryResolveColumnSQL(const BigqueryAggregateSource &source, const Col
     return true;
 }
 
+static bool TryResolveFilterColumnSQL(const BigqueryAggregateSource &source,
+                                      const ColumnBinding &binding,
+                                      string &sql) {
+    if (binding.table_index != source.table_index || binding.column_index >= source.filter_column_sql.size()) {
+        return false;
+    }
+    const auto &column_sql = source.filter_column_sql[binding.column_index];
+    if (!column_sql.has_value()) {
+        return false;
+    }
+    sql = column_sql.value();
+    return true;
+}
+
+static bool TryResolveFilterIntegralFloatingSQL(const BigqueryAggregateSource &source,
+                                                const ColumnBinding &binding,
+                                                string &sql) {
+    if (binding.table_index != source.table_index ||
+        binding.column_index >= source.filter_integral_floating_sql.size()) {
+        return false;
+    }
+    const auto &column_sql = source.filter_integral_floating_sql[binding.column_index];
+    if (!column_sql.has_value()) {
+        return false;
+    }
+    sql = column_sql.value();
+    return true;
+}
+
 static bool TryResolveSource(LogicalOperator &child, BigqueryAggregateSource &source);
 
 static bool TryResolveFilter(LogicalFilter &filter, BigqueryAggregateSource &source) {
@@ -178,8 +215,11 @@ static bool TryResolveFilter(LogicalFilter &filter, BigqueryAggregateSource &sou
         string filter_sql;
         if (!BigquerySQL::TryTransformBoundFilter(
                 *expr,
-                [&](const ColumnBinding &binding, string &column_name) -> bool {
-                    return TryResolveColumnName(source, binding, column_name);
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveFilterColumnSQL(source, binding, sql);
+                },
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveFilterIntegralFloatingSQL(source, binding, sql);
                 },
                 filter_sql)) {
             return false;
@@ -203,8 +243,12 @@ static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregat
 
     vector<std::optional<string>> projected_names;
     vector<std::optional<string>> projected_sql;
+    vector<std::optional<string>> projected_filter_sql;
+    vector<std::optional<string>> projected_filter_integral_floating_sql;
     projected_names.reserve(projection.expressions.size());
     projected_sql.reserve(projection.expressions.size());
+    projected_filter_sql.reserve(projection.expressions.size());
+    projected_filter_integral_floating_sql.reserve(projection.expressions.size());
     for (auto &expr : projection.expressions) {
         string column_name;
         if (expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
@@ -225,10 +269,40 @@ static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregat
         } else {
             projected_sql.push_back(std::move(expression_sql));
         }
+
+        if (!BigquerySQL::TryTransformBoundFilterScalarExpression(
+                *expr,
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveFilterColumnSQL(source, binding, sql);
+                },
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveFilterIntegralFloatingSQL(source, binding, sql);
+                },
+                expression_sql)) {
+            projected_filter_sql.emplace_back();
+        } else {
+            projected_filter_sql.push_back(std::move(expression_sql));
+        }
+
+        if (!BigquerySQL::TryTransformBoundIntegralFloatingExpression(
+                *expr,
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveFilterColumnSQL(source, binding, sql);
+                },
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveFilterIntegralFloatingSQL(source, binding, sql);
+                },
+                expression_sql)) {
+            projected_filter_integral_floating_sql.emplace_back();
+        } else {
+            projected_filter_integral_floating_sql.push_back(std::move(expression_sql));
+        }
     }
     source.table_index = projection.table_index;
     source.column_names = std::move(projected_names);
     source.column_sql = std::move(projected_sql);
+    source.filter_column_sql = std::move(projected_filter_sql);
+    source.filter_integral_floating_sql = std::move(projected_filter_integral_floating_sql);
     return true;
 }
 

@@ -30,11 +30,22 @@ public:
     static string TransformFilter(const string &column_name, const TableFilter &filter);
     static bool TryTransformBoundFilter(
         Expression &expr,
-        const std::function<bool(const ColumnBinding &, string &)> &column_name_resolver,
+        const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+        const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
         string &filter_sql);
     static bool TryTransformBoundScalarExpression(
         Expression &expr,
         const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+        string &expression_sql);
+    static bool TryTransformBoundFilterScalarExpression(
+        Expression &expr,
+        const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+        const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
+        string &expression_sql);
+    static bool TryTransformBoundIntegralFloatingExpression(
+        Expression &expr,
+        const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+        const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
         string &expression_sql);
     static bool TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql);
     static string CreateSubquerySourceSQL(const string &query, const string &alias);
