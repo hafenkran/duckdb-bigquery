@@ -26,8 +26,8 @@
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
 
-#include <cmath>
 #include <cctype>
+#include <cmath>
 
 namespace duckdb {
 namespace bigquery {
@@ -54,6 +54,8 @@ static bool IsFilterLiteralType(const LogicalType &type) {
     case LogicalTypeId::USMALLINT:
     case LogicalTypeId::UINTEGER:
     case LogicalTypeId::UBIGINT:
+    case LogicalTypeId::HUGEINT:
+    case LogicalTypeId::UHUGEINT:
     case LogicalTypeId::FLOAT:
     case LogicalTypeId::DOUBLE:
     case LogicalTypeId::DECIMAL:
