@@ -161,13 +161,13 @@ jobs:
             ./extension-ci-tools/docker/${{ matrix.duckdb_arch }}
 
       - uses: actions/download-artifact@v4
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: build/${{ inputs.build_type }}
 
       - name: Restore test runner permissions
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
         run: chmod +x build/${{ inputs.build_type }}/test/unittest
 
       - name: Create env file for docker
@@ -247,13 +247,13 @@ jobs:
           repository: ${{ inputs.override_ci_tools_repository }}
 
       - uses: actions/download-artifact@v4
-        if: ${{ matrix.osx_build_arch == 'arm64' }}
+        if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: build/${{ inputs.build_type }}
 
       - name: Restore test runner permissions
-        if: ${{ matrix.osx_build_arch == 'arm64' }}
+        if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
         run: chmod +x build/${{ inputs.build_type }}/test/unittest
 
       - id: auth
@@ -322,6 +322,7 @@ jobs:
           repository: ${{ inputs.override_ci_tools_repository }}
 
       - uses: actions/download-artifact@v4
+        if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: build/${{ inputs.build_type }}
