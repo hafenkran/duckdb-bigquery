@@ -565,6 +565,21 @@ EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE lowe
 physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
 
 query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(i) = 1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(i) = 1;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(i) = 1;
+----
+physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
+
+query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE CAST(i AS VARCHAR) = '1';
 ----
 physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
@@ -583,18 +598,25 @@ physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
 # Scalar WHERE expressions: results and composition
 # ------------------------------------------------------------------------------
 
-query III
+query IIIII
 SELECT
 	(SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i % 2 = 0),
 	(SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE lower(s) = 'a'),
+	(SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(i) = 1),
+	(SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(i - 3) = 1),
 	(SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE CAST(i AS VARCHAR) = '1');
 ----
-2	1	1
+2	1	1	2	1
 
 query I
 SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE (i + 1) % 2 = 0;
 ----
 2
+
+query I
+SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(TRY_CAST(numeric_text AS INTEGER)) = 3;
+----
+1
 
 query I
 SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE i / 0 > 0;
@@ -672,6 +694,14 @@ GROUP BY b;
 physical_plan	<!REGEX>:.*GROUP_BY.*
 
 query II
+EXPLAIN SELECT b, COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+WHERE ABS(i - 3) = 1
+GROUP BY b;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
 EXPLAIN SELECT COUNT(*)
 FROM (
 	SELECT lower(s) AS normalized_s
@@ -690,10 +720,24 @@ physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query II
 EXPLAIN SELECT COUNT(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown')
+WHERE ABS(i) = 1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT COUNT(*)
 FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown')
 WHERE lower(s) = 'a';
 ----
 physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
+
+query II
+EXPLAIN SELECT COUNT(*)
+FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown')
+WHERE ABS(i) = 1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 # ------------------------------------------------------------------------------
 # Scalar WHERE expressions: numeric casts and integer-based FLOAT modulo
@@ -955,11 +999,6 @@ physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 # ------------------------------------------------------------------------------
 
 query II
-EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(i) = 1;
-----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
-
-query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE TRY_CAST([i] AS VARCHAR) = '[1]';
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
@@ -986,6 +1025,13 @@ physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
 EXPLAIN SELECT MIN(TRY_CAST(s AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT ABS(i), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY ABS(i);
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
@@ -1054,6 +1100,11 @@ physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
 EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE lower(s) = 'a';
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE ABS(i) = 1;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 

@@ -421,6 +421,8 @@ static bool TryTransformBoundScalarExpressionInternal(
     case ExpressionClass::BOUND_FUNCTION: {
         auto &function = expr.Cast<BoundFunctionExpression>();
         const auto function_name = StringUtil::Lower(function.function.name);
+
+        //
         const bool lower =
             context == ScalarExpressionContext::FILTER && function_name == "lower" && function.children.size() == 1;
         if (lower) {
@@ -428,6 +430,8 @@ static bool TryTransformBoundScalarExpressionInternal(
                 function.children[0]->return_type.id() != LogicalTypeId::VARCHAR) {
                 return false;
             }
+
+            // Transform child recursively to handle nested expressions, e.g., LOWER(UPPER(x)) or LOWER(CAST(x AS VARCHAR))
             string child_sql;
             if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
                                                            column_sql_resolver,
@@ -436,14 +440,40 @@ static bool TryTransformBoundScalarExpressionInternal(
                                                            child_sql)) {
                 return false;
             }
+
             expression_sql = "LOWER(" + child_sql + ")";
             return true;
         }
+
+        const bool abs =
+            context == ScalarExpressionContext::FILTER && function_name == "abs" && function.children.size() == 1;
+        if (abs) {
+            // Restrict ABS to arithmetic scalar types only, since BQ ABS does not support e.g. STRING or DATE types.
+            if (!IsArithmeticScalarType(function.return_type) ||
+                !IsArithmeticScalarType(function.children[0]->return_type)) {
+                return false;
+            }
+
+            // Transform child recursively to handle nested expressions, e.g., ABS(-x) or ABS(CAST(x AS INT64))
+            string child_sql;
+            if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+                                                           column_sql_resolver,
+                                                           integral_floating_sql_resolver,
+                                                           ScalarExpressionContext::FILTER,
+                                                           child_sql)) {
+                return false;
+            }
+
+            expression_sql = "ABS(" + child_sql + ")";
+            return true;
+        }
+
         const bool unary_minus = function_name == "-" && function.children.size() == 1;
         const bool basic_binary_operator =
             (function_name == "+" || function_name == "-" || function_name == "*") && function.children.size() == 2;
         const bool division = function_name == "/" && function.children.size() == 2;
         const bool modulo = function_name == "%" && function.children.size() == 2;
+
         bool integral_floating_modulo = false;
         vector<string> child_entries;
         if (modulo && context == ScalarExpressionContext::FILTER &&
