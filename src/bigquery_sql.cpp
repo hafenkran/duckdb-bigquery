@@ -390,9 +390,6 @@ static bool TryTransformBoundScalarExpressionInternal(
             return TryTransformConstantExpression(expr, expression_sql);
         }
         auto &cast = expr.Cast<BoundCastExpression>();
-        if (cast.try_cast) {
-            return false;
-        }
         string cast_type;
         if (cast.return_type.id() == LogicalTypeId::VARCHAR) {
             if (!IsFilterStringCastSourceType(cast.child->return_type)) {
@@ -417,7 +414,8 @@ static bool TryTransformBoundScalarExpressionInternal(
         if (cast.child->return_type.id() == LogicalTypeId::BOOLEAN && cast_type != "INT64") {
             child_sql = "CAST(" + child_sql + " AS INT64)";
         }
-        expression_sql = "CAST(" + child_sql + " AS " + cast_type + ")";
+        const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+        expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
         return true;
     }
     case ExpressionClass::BOUND_FUNCTION: {
