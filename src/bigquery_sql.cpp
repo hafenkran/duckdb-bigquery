@@ -26,6 +26,7 @@
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
 
+#include <cmath>
 #include <cctype>
 
 namespace duckdb {
@@ -337,6 +338,30 @@ static bool TryUnwrapIntegralFloatingCast(Expression &expr, Expression *&unwrapp
     return true;
 }
 
+static bool TryTransformIntegralFloatingModuloConstant(Expression &expr, string &constant_sql) {
+    if (expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+        return false;
+    }
+    auto &constant = expr.Cast<BoundConstantExpression>();
+    if (constant.value.IsNull()) {
+        return false;
+    }
+    if (IsIntegralScalarType(constant.value.type())) {
+        return TryTransformConstantExpression(expr, constant_sql);
+    }
+    if (constant.value.type().id() != LogicalTypeId::FLOAT && constant.value.type().id() != LogicalTypeId::DOUBLE) {
+        return false;
+    }
+
+    const auto value = constant.value.GetValue<double>();
+    static constexpr double MAX_SAFE_INTEGER = 9007199254740992.0;
+    if (!std::isfinite(value) || value != std::trunc(value) || value < -MAX_SAFE_INTEGER || value > MAX_SAFE_INTEGER) {
+        return false;
+    }
+    constant_sql = std::to_string(static_cast<int64_t>(value));
+    return true;
+}
+
 enum class ScalarExpressionContext : uint8_t { AGGREGATE, FILTER };
 
 static bool TryTransformBoundScalarExpressionInternal(
@@ -440,6 +465,10 @@ static bool TryTransformBoundScalarExpressionInternal(
                     if (!integral_floating_sql_resolver(colref.binding, child_sql)) {
                         break;
                     }
+                } else if (TryTransformIntegralFloatingModuloConstant(*child, child_sql)) {
+                    // DuckDB binds e.g. CAST(i AS DOUBLE) % 2 as a DOUBLE modulo with a 2.0 literal.
+                    // BigQuery MOD does not accept FLOAT64, so only integer-valued FLOAT/DOUBLE constants are
+                    // converted back to integer literals for this integer-origin modulo path.
                 } else {
                     break;
                 }
