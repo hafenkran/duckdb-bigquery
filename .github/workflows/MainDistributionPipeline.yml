@@ -96,8 +96,8 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.1
-            ci_tools_version: v1.5.1
+            duckdb_version: v1.5.4
+            ci_tools_version: v1.5-variegata
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw"
             vcpkg_commit: "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
             extra_toolchains: "parser_tools"

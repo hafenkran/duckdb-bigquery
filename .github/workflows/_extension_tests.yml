@@ -164,7 +164,11 @@ jobs:
         if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
-          path: .
+          path: build/${{ inputs.build_type }}
+
+      - name: Restore test runner permissions
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' }}
+        run: chmod +x build/${{ inputs.build_type }}/test/unittest
 
       - name: Create env file for docker
         if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
@@ -246,7 +250,11 @@ jobs:
         if: ${{ matrix.osx_build_arch == 'arm64' }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
-          path: .
+          path: build/${{ inputs.build_type }}
+
+      - name: Restore test runner permissions
+        if: ${{ matrix.osx_build_arch == 'arm64' }}
+        run: chmod +x build/${{ inputs.build_type }}/test/unittest
 
       - id: auth
         if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
@@ -316,7 +324,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
-          path: .
+          path: build/${{ inputs.build_type }}
 
       - id: auth
         if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
