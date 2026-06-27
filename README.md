@@ -676,27 +676,6 @@ There are some limitations that arise from the combination of DuckDB and BigQuer
 
 * **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
 
-## Install Latest Updates from Custom Repository
-
-Updates may not always be immediately available in the Community Extension repository. However, they can be obtained from a custom repository. To get the latest updates, start DuckDB with [unsigned extensions](https://duckdb.org/docs/extensions/overview.html#unsigned-extensions) setting enabled. Use the `allow_unsigned_extensions` flag for client connections, or start the CLI with `-unsigned` as follows:
-
-```bash
-# Example: CLI
-duckdb -unsigned
-
-# Example: Python
-con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
-```
-
-Then set the custom repository and install the extension:
-
-```sql
--- Set the custom repository, then install and load the DuckDB BigQuery extension
-D SET custom_extension_repository = 'http://storage.googleapis.com/hafenkran';
-D FORCE INSTALL 'bigquery';
-D LOAD 'bigquery';
-```
-
 ## Building the Project
 
 This extension uses VCPKG for dependency management. Enabling VCPKG is very simple: follow the [installation instructions](https://github.com/microsoft/vcpkg?tab=readme-ov-file#quick-start-unix) or just run the following:
