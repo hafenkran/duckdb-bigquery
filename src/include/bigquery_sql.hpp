@@ -42,6 +42,10 @@ public:
         const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
         const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
         string &expression_sql);
+    static bool TryTransformBoundGroupScalarExpression(
+        Expression &expr,
+        const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+        string &expression_sql);
     static bool TryTransformBoundIntegralFloatingExpression(
         Expression &expr,
         const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,

@@ -79,6 +79,19 @@ static bool TryTransformFilterLiteral(const Value &value, string &literal_sql) {
         literal_sql = "NULL";
         return true;
     }
+    switch (value.type().id()) {
+    case LogicalTypeId::DATE:
+        literal_sql = "DATE " + KeywordHelper::WriteQuoted(value.ToString());
+        return true;
+    case LogicalTypeId::TIME:
+        literal_sql = "TIME " + KeywordHelper::WriteQuoted(value.ToString());
+        return true;
+    case LogicalTypeId::TIMESTAMP:
+        literal_sql = "TIMESTAMP " + KeywordHelper::WriteQuoted(value.ToString());
+        return true;
+    default:
+        break;
+    }
     if (BigqueryUtils::IsValueQuotable(value) || value.type().id() == LogicalTypeId::STRING_LITERAL) {
         literal_sql = KeywordHelper::WriteQuoted(value.ToString());
     } else {
@@ -326,6 +339,31 @@ static bool TryGetFilterNumericCastType(const LogicalType &type, string &cast_ty
     }
 }
 
+static bool IsFilterTemporalCastSourceType(const LogicalType &type) {
+    if (type.id() == LogicalTypeId::SQLNULL || type.id() == LogicalTypeId::STRING_LITERAL) {
+        return true;
+    }
+    return type.id() == LogicalTypeId::VARCHAR && !BigqueryUtils::IsGeographyType(type);
+}
+
+static bool TryGetFilterTemporalCastType(const LogicalType &type, string &cast_type) {
+    switch (type.id()) {
+    case LogicalTypeId::DATE:
+        cast_type = "DATE";
+        return true;
+    case LogicalTypeId::TIME:
+        cast_type = "TIME";
+        return true;
+    case LogicalTypeId::TIMESTAMP:
+    case LogicalTypeId::TIMESTAMP_SEC:
+    case LogicalTypeId::TIMESTAMP_MS:
+        cast_type = "TIMESTAMP";
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool TryUnwrapIntegralFloatingCast(Expression &expr, Expression *&unwrapped) {
     if (expr.GetExpressionClass() != ExpressionClass::BOUND_CAST) {
         return false;
@@ -364,7 +402,8 @@ static bool TryTransformIntegralFloatingModuloConstant(Expression &expr, string 
     return true;
 }
 
-enum class ScalarExpressionContext : uint8_t { AGGREGATE, FILTER };
+// TODO(group-by-abs): Keep GROUP_BY as a separate scalar-expression context that stays narrower than FILTER.
+enum class ScalarExpressionContext : uint8_t { AGGREGATE, FILTER, GROUP_BY };
 
 static bool TryTransformBoundScalarExpressionInternal(
     Expression &expr,
@@ -378,26 +417,68 @@ static bool TryTransformBoundScalarExpressionInternal(
         return column_sql_resolver(colref.binding, expression_sql);
     }
     case ExpressionClass::BOUND_CONSTANT:
+        // TODO(group-by-abs): Keep GROUP BY constants local for now; this step only enables ABS(column).
+        if (context == ScalarExpressionContext::GROUP_BY) {
+            return false;
+        }
         if (context == ScalarExpressionContext::AGGREGATE && !IsArithmeticScalarType(expr.return_type)) {
             return false;
         }
         return TryTransformConstantExpression(expr, expression_sql);
     case ExpressionClass::BOUND_CAST: {
+        auto &cast = expr.Cast<BoundCastExpression>();
+        // TODO(group-by-abs): Keep GROUP BY casts local until cast grouping semantics are explicitly supported.
+        if (context == ScalarExpressionContext::GROUP_BY) {
+            return false;
+        }
         if (context == ScalarExpressionContext::AGGREGATE) {
+            string cast_type;
+            if (TryGetFilterTemporalCastType(cast.return_type, cast_type)) {
+                // Aggregate temporal casts stay narrow: string-like inputs only.
+                if (!IsFilterTemporalCastSourceType(cast.child->return_type)) {
+                    return false;
+                }
+
+                string child_sql;
+                if (cast.child->GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+                    if (!TryTransformConstantExpression(*cast.child, child_sql)) {
+                        return false;
+                    }
+                } else {
+                    // Keep the child in aggregate context so filter-only functions stay local.
+                    if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                                                                   column_sql_resolver,
+                                                                   integral_floating_sql_resolver,
+                                                                   ScalarExpressionContext::AGGREGATE,
+                                                                   child_sql)) {
+                        return false;
+                    }
+                }
+
+                const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
+                return true;
+            }
             if (!IsArithmeticScalarType(expr.return_type)) {
                 return false;
             }
             return TryTransformConstantExpression(expr, expression_sql);
         }
-        auto &cast = expr.Cast<BoundCastExpression>();
         string cast_type;
         if (cast.return_type.id() == LogicalTypeId::VARCHAR) {
             if (!IsFilterStringCastSourceType(cast.child->return_type)) {
                 return false;
             }
             cast_type = "STRING";
-        } else if (!TryGetFilterNumericCastType(cast.return_type, cast_type) ||
-                   !IsFilterNumericCastSourceType(cast.child->return_type)) {
+        } else if (TryGetFilterNumericCastType(cast.return_type, cast_type)) {
+            if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
+                return false;
+            }
+        } else if (TryGetFilterTemporalCastType(cast.return_type, cast_type)) {
+            if (!IsFilterTemporalCastSourceType(cast.child->return_type)) {
+                return false;
+            }
+        } else {
             if (TryTransformConstantExpression(expr, expression_sql)) {
                 return true;
             }
@@ -446,26 +527,41 @@ static bool TryTransformBoundScalarExpressionInternal(
         }
 
         const bool abs =
-            context == ScalarExpressionContext::FILTER && function_name == "abs" && function.children.size() == 1;
+            (context == ScalarExpressionContext::FILTER || context == ScalarExpressionContext::GROUP_BY) && //
+            function_name == "abs" &&                                                                       //
+            function.children.size() == 1;
         if (abs) {
+            // Filters may use recursive ABS expressions; GROUP BY currently only accepts ABS(column).
+            // Restrict GROUP BY ABS(...) to column references only to keep this grouping profile intentionally narrow.
+            if (context == ScalarExpressionContext::GROUP_BY &&
+                function.children[0]->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+                return false;
+            }
+
             // Restrict ABS to arithmetic scalar types only, since BQ ABS does not support e.g. STRING or DATE types.
             if (!IsArithmeticScalarType(function.return_type) ||
                 !IsArithmeticScalarType(function.children[0]->return_type)) {
                 return false;
             }
 
+            // TODO(group-by-abs): Recurse in the current context so GROUP BY ABS(...) stays narrower than filters.
             // Transform child recursively to handle nested expressions, e.g., ABS(-x) or ABS(CAST(x AS INT64))
             string child_sql;
             if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
-                                                           ScalarExpressionContext::FILTER,
+                                                           context,
                                                            child_sql)) {
                 return false;
             }
 
             expression_sql = "ABS(" + child_sql + ")";
             return true;
+        }
+
+        // TODO(group-by-abs): Do not enable arithmetic, casts, LOWER, or other functions for GROUP BY in this change.
+        if (context == ScalarExpressionContext::GROUP_BY) {
+            return false;
         }
 
         const bool unary_minus = function_name == "-" && function.children.size() == 1;
@@ -825,6 +921,19 @@ bool BigquerySQL::TryTransformBoundFilterScalarExpression(
                                                      column_sql_resolver,
                                                      integral_floating_sql_resolver,
                                                      ScalarExpressionContext::FILTER,
+                                                     expression_sql);
+}
+
+bool BigquerySQL::TryTransformBoundGroupScalarExpression(
+    Expression &expr,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+    string &expression_sql) {
+    // Used for GROUP BY keys and projection aliases that later become GROUP BY keys.
+    // TODO(group-by-abs): GROUP BY uses its own narrow capability profile, not FILTER.
+    return TryTransformBoundScalarExpressionInternal(expr,
+                                                     column_sql_resolver,
+                                                     {},
+                                                     ScalarExpressionContext::GROUP_BY,
                                                      expression_sql);
 }
 

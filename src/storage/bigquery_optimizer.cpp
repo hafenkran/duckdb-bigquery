@@ -33,6 +33,8 @@ struct BigqueryAggregateSource {
     vector<std::optional<string>> column_sql;
     vector<std::optional<string>> filter_column_sql;
     vector<std::optional<string>> filter_integral_floating_sql;
+    // GROUP BY has a separate fragment channel so filter-only expressions do not leak into group keys.
+    vector<std::optional<string>> group_column_sql;
 
     BigqueryConfig config;
     shared_ptr<BigqueryClient> bq_client;
@@ -93,6 +95,7 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
     source.column_sql.clear();
     source.filter_column_sql.clear();
     source.filter_integral_floating_sql.clear();
+    source.group_column_sql.clear();
 
     if (scan_bind) {
         if (!scan_bind->bq_client) {
@@ -128,12 +131,15 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
     source.column_sql.resize(column_ids.size());
     source.filter_column_sql.resize(column_ids.size());
     source.filter_integral_floating_sql.resize(column_ids.size());
+    source.group_column_sql.resize(column_ids.size());
     for (idx_t col_idx = 0; col_idx < column_ids.size(); col_idx++) {
         string column_name;
         if (TryGetScanBindingColumnName(get, col_idx, column_name)) {
             const auto quoted_column = BigqueryUtils::WriteQuotedIdentifier(column_name);
             source.column_sql[col_idx] = quoted_column;
             source.filter_column_sql[col_idx] = quoted_column;
+            // Direct source columns are valid GROUP BY fragments.
+            source.group_column_sql[col_idx] = quoted_column;
             source.column_names[col_idx] = std::move(column_name);
         }
     }
@@ -199,6 +205,19 @@ static bool TryResolveFilterIntegralFloatingSQL(const BigqueryAggregateSource &s
     return true;
 }
 
+static bool TryResolveGroupColumnSQL(const BigqueryAggregateSource &source, const ColumnBinding &binding, string &sql) {
+    // Resolve only fragments that were marked safe for GROUP BY translation.
+    if (binding.table_index != source.table_index || binding.column_index >= source.group_column_sql.size()) {
+        return false;
+    }
+    const auto &column_sql = source.group_column_sql[binding.column_index];
+    if (!column_sql.has_value()) {
+        return false;
+    }
+    sql = column_sql.value();
+    return true;
+}
+
 static bool TryResolveSource(LogicalOperator &child, BigqueryAggregateSource &source);
 
 static bool TryResolveFilter(LogicalFilter &filter, BigqueryAggregateSource &source) {
@@ -245,10 +264,14 @@ static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregat
     vector<std::optional<string>> projected_sql;
     vector<std::optional<string>> projected_filter_sql;
     vector<std::optional<string>> projected_filter_integral_floating_sql;
+    vector<std::optional<string>> projected_group_sql;
+
     projected_names.reserve(projection.expressions.size());
     projected_sql.reserve(projection.expressions.size());
     projected_filter_sql.reserve(projection.expressions.size());
     projected_filter_integral_floating_sql.reserve(projection.expressions.size());
+    projected_group_sql.reserve(projection.expressions.size());
+
     for (auto &expr : projection.expressions) {
         string column_name;
         if (expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
@@ -297,12 +320,27 @@ static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregat
         } else {
             projected_filter_integral_floating_sql.push_back(std::move(expression_sql));
         }
+
+        string group_expression_sql;
+        // Preserve supported projection expressions so GROUP BY can reference them after projection binding changes.
+        if (!BigquerySQL::TryTransformBoundGroupScalarExpression(
+                *expr,
+                [&](const ColumnBinding &binding, string &sql) -> bool {
+                    return TryResolveGroupColumnSQL(source, binding, sql);
+                },
+                group_expression_sql)) {
+            projected_group_sql.emplace_back();
+        } else {
+            projected_group_sql.push_back(std::move(group_expression_sql));
+        }
     }
+
     source.table_index = projection.table_index;
     source.column_names = std::move(projected_names);
     source.column_sql = std::move(projected_sql);
     source.filter_column_sql = std::move(projected_filter_sql);
     source.filter_integral_floating_sql = std::move(projected_filter_integral_floating_sql);
+    source.group_column_sql = std::move(projected_group_sql);
     return true;
 }
 
@@ -336,6 +374,16 @@ static bool TryAggregateArgumentSQL(const BigqueryAggregateSource &source, Expre
     return BigquerySQL::TryTransformBoundScalarExpression(
         expr,
         [&](const ColumnBinding &binding, string &sql) -> bool { return TryResolveColumnSQL(source, binding, sql); },
+        argument_sql);
+}
+
+static bool TryGroupArgumentSQL(const BigqueryAggregateSource &source, Expression &expr, string &argument_sql) {
+    // Translate aggregate group keys through the narrow GROUP BY scalar profile.
+    return BigquerySQL::TryTransformBoundGroupScalarExpression(
+        expr,
+        [&](const ColumnBinding &binding, string &sql) -> bool {
+            return TryResolveGroupColumnSQL(source, binding, sql);
+        },
         argument_sql);
 }
 
@@ -502,7 +550,8 @@ static bool TryBuildAggregateQuery(LogicalAggregate &aggregate,
             return false;
         }
         string group_sql;
-        if (!TryColumnArgumentSQL(source, *group, group_sql)) {
+        // Group keys can be direct columns or explicitly supported grouping expressions.
+        if (!TryGroupArgumentSQL(source, *group, group_sql)) {
             return false;
         }
         const auto internal_name = string(BQ_GROUP_COLUMN_PREFIX) + to_string(group_idx);
