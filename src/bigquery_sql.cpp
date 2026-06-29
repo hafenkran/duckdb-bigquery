@@ -408,7 +408,7 @@ static bool IsDirectGroupColumnSQL(const string &sql) {
 }
 
 // TODO(group-by-abs): Keep GROUP_BY as a separate scalar-expression context that stays narrower than FILTER.
-enum class ScalarExpressionContext : uint8_t { AGGREGATE, FILTER, GROUP_BY };
+enum class ScalarExpressionContext : uint8_t { AGGREGATE, FILTER, GROUP_BY, AGGREGATE_TRY_TEMPORAL_CAST_CHILD };
 
 static bool TryTransformBoundScalarExpressionInternal(
     Expression &expr,
@@ -455,6 +455,27 @@ static bool TryTransformBoundScalarExpressionInternal(
         }
         if (context == ScalarExpressionContext::AGGREGATE) {
             string cast_type;
+            if (cast.try_cast && TryGetFilterNumericCastType(cast.return_type, cast_type)) {
+                if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
+                    return false;
+                }
+
+                string child_sql;
+                if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                                                               column_sql_resolver,
+                                                               integral_floating_sql_resolver,
+                                                               ScalarExpressionContext::AGGREGATE,
+                                                               child_sql)) {
+                    return false;
+                }
+                if (cast.child->return_type.id() == LogicalTypeId::BOOLEAN && cast_type != "INT64") {
+                    child_sql = "CAST(" + child_sql + " AS INT64)";
+                }
+
+                // Numeric aggregate casts use BigQuery SAFE_CAST semantics and stay TRY_CAST-only.
+                expression_sql = "SAFE_CAST(" + child_sql + " AS " + cast_type + ")";
+                return true;
+            }
             if (TryGetFilterTemporalCastType(cast.return_type, cast_type)) {
                 // Aggregate temporal casts stay narrow: string-like inputs only.
                 if (!IsFilterTemporalCastSourceType(cast.child->return_type)) {
@@ -468,11 +489,13 @@ static bool TryTransformBoundScalarExpressionInternal(
                     }
                 } else {
                     // Keep the child in aggregate context so filter-only functions stay local.
-                    if (!TryTransformBoundScalarExpressionInternal(*cast.child,
-                                                                   column_sql_resolver,
-                                                                   integral_floating_sql_resolver,
-                                                                   ScalarExpressionContext::AGGREGATE,
-                                                                   child_sql)) {
+                    if (!TryTransformBoundScalarExpressionInternal(
+                            *cast.child,
+                            column_sql_resolver,
+                            integral_floating_sql_resolver,
+                            cast.try_cast ? ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD
+                                          : ScalarExpressionContext::AGGREGATE,
+                            child_sql)) {
                         return false;
                     }
                 }
@@ -526,8 +549,9 @@ static bool TryTransformBoundScalarExpressionInternal(
         const auto function_name = StringUtil::Lower(function.function.name);
 
         //
-        const bool lower =
-            context == ScalarExpressionContext::FILTER && function_name == "lower" && function.children.size() == 1;
+        const bool lower = (context == ScalarExpressionContext::FILTER ||
+                            context == ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD) &&
+                           function_name == "lower" && function.children.size() == 1;
         if (lower) {
             if (function.return_type.id() != LogicalTypeId::VARCHAR ||
                 function.children[0]->return_type.id() != LogicalTypeId::VARCHAR) {
@@ -536,10 +560,13 @@ static bool TryTransformBoundScalarExpressionInternal(
 
             // Transform child recursively to handle nested expressions, e.g., LOWER(UPPER(x)) or LOWER(CAST(x AS VARCHAR))
             string child_sql;
+            const auto lower_child_context = context == ScalarExpressionContext::FILTER
+                                                 ? ScalarExpressionContext::FILTER
+                                                 : ScalarExpressionContext::AGGREGATE;
             if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
-                                                           ScalarExpressionContext::FILTER,
+                                                           lower_child_context,
                                                            child_sql)) {
                 return false;
             }
