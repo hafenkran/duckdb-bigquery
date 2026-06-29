@@ -402,6 +402,11 @@ static bool TryTransformIntegralFloatingModuloConstant(Expression &expr, string 
     return true;
 }
 
+static bool IsDirectGroupColumnSQL(const string &sql) {
+    // Direct source columns are stored as quoted identifiers. Derived fragments include functions/operators.
+    return sql.size() >= 2 && sql.front() == '`' && sql.back() == '`';
+}
+
 // TODO(group-by-abs): Keep GROUP_BY as a separate scalar-expression context that stays narrower than FILTER.
 enum class ScalarExpressionContext : uint8_t { AGGREGATE, FILTER, GROUP_BY };
 
@@ -427,9 +432,26 @@ static bool TryTransformBoundScalarExpressionInternal(
         return TryTransformConstantExpression(expr, expression_sql);
     case ExpressionClass::BOUND_CAST: {
         auto &cast = expr.Cast<BoundCastExpression>();
-        // TODO(group-by-abs): Keep GROUP BY casts local until cast grouping semantics are explicitly supported.
         if (context == ScalarExpressionContext::GROUP_BY) {
-            return false;
+            if (!cast.try_cast || cast.return_type.id() != LogicalTypeId::DATE ||
+                cast.child->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
+                !IsFilterTemporalCastSourceType(cast.child->return_type)) {
+                return false;
+            }
+
+            string child_sql;
+            if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                                                           column_sql_resolver,
+                                                           integral_floating_sql_resolver,
+                                                           ScalarExpressionContext::GROUP_BY,
+                                                           child_sql) ||
+                !IsDirectGroupColumnSQL(child_sql)) {
+                return false;
+            }
+
+            // GROUP BY only supports TRY_CAST(string_column AS DATE) for now.
+            expression_sql = "SAFE_CAST(" + child_sql + " AS DATE)";
+            return true;
         }
         if (context == ScalarExpressionContext::AGGREGATE) {
             string cast_type;
@@ -556,6 +578,33 @@ static bool TryTransformBoundScalarExpressionInternal(
             }
 
             expression_sql = "ABS(" + child_sql + ")";
+            return true;
+        }
+
+        const bool group_column_plus_constant =
+            context == ScalarExpressionContext::GROUP_BY && function_name == "+" && function.children.size() == 2;
+        if (group_column_plus_constant) {
+            if (!IsArithmeticScalarType(function.return_type) ||
+                !IsArithmeticScalarType(function.children[0]->return_type) ||
+                !IsArithmeticScalarType(function.children[1]->return_type) ||
+                function.children[0]->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+                return false;
+            }
+
+            string left_sql;
+            string right_sql;
+            if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+                                                           column_sql_resolver,
+                                                           integral_floating_sql_resolver,
+                                                           ScalarExpressionContext::GROUP_BY,
+                                                           left_sql) ||
+                !IsDirectGroupColumnSQL(left_sql) ||
+                !TryTransformConstantExpression(*function.children[1], right_sql) || right_sql == "NULL") {
+                return false;
+            }
+
+            // Keep GROUP BY arithmetic exact: column + non-null numeric literal only.
+            expression_sql = "(" + left_sql + " + " + right_sql + ")";
             return true;
         }
 
