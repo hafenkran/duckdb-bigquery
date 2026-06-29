@@ -808,12 +808,12 @@ physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 query II
 EXPLAIN SELECT MIN(ABS(i)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query II
 EXPLAIN SELECT MIN(CAST(i AS DOUBLE)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 # ------------------------------------------------------------------------------
 # Scalar WHERE expressions: remote plan selection
@@ -1320,6 +1320,51 @@ EXPLAIN SELECT MIN(TRY_CAST(LOWER(s) AS DATE)) FROM bq.${BQ_TEST_DATASET}.aggreg
 ----
 physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
 
+query II
+EXPLAIN SELECT MIN(CAST(s AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT MIN(CAST(s AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT MIN(CAST(s AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
+
+query II
+EXPLAIN SELECT MIN(LOWER(s)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT MIN(LOWER(s)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT MIN(LOWER(s)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
+
+query II
+EXPLAIN SELECT MIN(TRY_CAST(ABS(i) AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT MIN(TRY_CAST(ABS(i) AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT MIN(TRY_CAST(ABS(i) AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
+
 query IIIT
 SELECT
 	(SELECT COUNT(*) FROM (SELECT MIN(TRY_CAST(s AS INTEGER)) AS v FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown) WHERE v IS NULL),
@@ -1328,6 +1373,15 @@ SELECT
 	(SELECT CAST(MIN(TRY_CAST(LOWER(date_text) AS DATE)) AS VARCHAR) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown);
 ----
 1	-3	1	2024-01-01
+
+query ITI
+SELECT
+	MIN(CAST(numeric_text AS INTEGER)),
+	MIN(LOWER(s)),
+	MIN(TRY_CAST(ABS(i) AS INTEGER))
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+-3	a	1
 
 query II
 EXPLAIN SELECT MIN(TRY_CAST(numeric_text AS INTEGER))
@@ -1338,6 +1392,16 @@ physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query II
 EXPLAIN SELECT MIN(TRY_CAST(LOWER(date_text) AS DATE))
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+WHERE i > 1;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT
+	MIN(CAST(numeric_text AS INTEGER)),
+	MIN(LOWER(s)),
+	MIN(TRY_CAST(ABS(i) AS INTEGER))
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
 WHERE i > 1;
 ----
@@ -1396,6 +1460,27 @@ GROUP BY b;
 physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query II
+EXPLAIN SELECT b, MIN(CAST(numeric_text AS INTEGER))
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY b;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT b, MIN(LOWER(s))
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY b;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT b, MIN(TRY_CAST(ABS(i) AS INTEGER))
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY b;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
 EXPLAIN SELECT COUNT(*)
 FROM (
 	SELECT TRY_CAST(i AS VARCHAR) AS i_text
@@ -1443,6 +1528,33 @@ FROM (
 physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query II
+EXPLAIN SELECT MIN(parsed_number)
+FROM (
+	SELECT CAST(numeric_text AS INTEGER) AS parsed_number
+	FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+) t;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT MIN(normalized_s)
+FROM (
+	SELECT LOWER(s) AS normalized_s
+	FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+) t;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT MIN(abs_i)
+FROM (
+	SELECT TRY_CAST(ABS(i) AS INTEGER) AS abs_i
+	FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+) t;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
 EXPLAIN SELECT COUNT(*)
 FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown')
 WHERE TRY_CAST(numeric_text AS INTEGER) < 0;
@@ -1470,6 +1582,12 @@ physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query II
 EXPLAIN SELECT MIN(TRY_CAST(LOWER(date_text) AS DATE))
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown');
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT MIN(CAST(numeric_text AS INTEGER)), MIN(LOWER(s)), MIN(TRY_CAST(ABS(i) AS INTEGER))
 FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown');
 ----
 physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
@@ -1506,6 +1624,12 @@ FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggr
 ----
 physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
+query II
+EXPLAIN SELECT MIN(CAST(numeric_text AS INTEGER)), MIN(LOWER(s)), MIN(TRY_CAST(ABS(i) AS INTEGER))
+FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown');
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
 # ------------------------------------------------------------------------------
 # Scalar WHERE expressions: unsupported shapes fall back to scans
 # ------------------------------------------------------------------------------
@@ -1536,17 +1660,17 @@ EXPLAIN SELECT COUNT(DISTINCT TRY_CAST(s AS INTEGER)) FROM bq.${BQ_TEST_DATASET}
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT MIN(CAST(s AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+EXPLAIN SELECT COUNT(DISTINCT LOWER(s)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT MIN(LOWER(s)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+EXPLAIN SELECT COUNT(DISTINCT ABS(i)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT MIN(TRY_CAST(ABS(i) AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+EXPLAIN SELECT MIN(LOWER(CAST(i AS VARCHAR))) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
@@ -1558,11 +1682,16 @@ GROUP BY TRY_CAST(s AS INTEGER);
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT MIN(normalized_s)
-FROM (
-	SELECT lower(s) AS normalized_s
-	FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-) t;
+EXPLAIN SELECT LOWER(s), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY LOWER(s);
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY CAST(s AS INTEGER);
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
@@ -1634,6 +1763,21 @@ physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
 EXPLAIN SELECT MIN(TRY_CAST(LOWER(s) AS DATE)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT MIN(CAST(s AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT MIN(LOWER(s)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT MIN(TRY_CAST(ABS(i) AS INTEGER)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 

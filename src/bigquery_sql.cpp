@@ -455,7 +455,7 @@ static bool TryTransformBoundScalarExpressionInternal(
         }
         if (context == ScalarExpressionContext::AGGREGATE) {
             string cast_type;
-            if (cast.try_cast && TryGetFilterNumericCastType(cast.return_type, cast_type)) {
+            if (TryGetFilterNumericCastType(cast.return_type, cast_type)) {
                 if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
                     return false;
                 }
@@ -472,8 +472,8 @@ static bool TryTransformBoundScalarExpressionInternal(
                     child_sql = "CAST(" + child_sql + " AS INT64)";
                 }
 
-                // Numeric aggregate casts use BigQuery SAFE_CAST semantics and stay TRY_CAST-only.
-                expression_sql = "SAFE_CAST(" + child_sql + " AS " + cast_type + ")";
+                const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
                 return true;
             }
             if (TryGetFilterTemporalCastType(cast.return_type, cast_type)) {
@@ -549,9 +549,10 @@ static bool TryTransformBoundScalarExpressionInternal(
         const auto function_name = StringUtil::Lower(function.function.name);
 
         //
-        const bool lower = (context == ScalarExpressionContext::FILTER ||
-                            context == ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD) &&
-                           function_name == "lower" && function.children.size() == 1;
+        const bool lower =
+            (context == ScalarExpressionContext::AGGREGATE || context == ScalarExpressionContext::FILTER ||
+             context == ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD) &&
+            function_name == "lower" && function.children.size() == 1;
         if (lower) {
             if (function.return_type.id() != LogicalTypeId::VARCHAR ||
                 function.children[0]->return_type.id() != LogicalTypeId::VARCHAR) {
@@ -575,10 +576,10 @@ static bool TryTransformBoundScalarExpressionInternal(
             return true;
         }
 
-        const bool abs =
-            (context == ScalarExpressionContext::FILTER || context == ScalarExpressionContext::GROUP_BY) && //
-            function_name == "abs" &&                                                                       //
-            function.children.size() == 1;
+        const bool abs = (context == ScalarExpressionContext::AGGREGATE || context == ScalarExpressionContext::FILTER ||
+                          context == ScalarExpressionContext::GROUP_BY) && //
+                         function_name == "abs" &&                         //
+                         function.children.size() == 1;
         if (abs) {
             // Filters may use recursive ABS expressions; GROUP BY currently only accepts ABS(column).
             // Restrict GROUP BY ABS(...) to column references only to keep this grouping profile intentionally narrow.
