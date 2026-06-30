@@ -42,6 +42,20 @@ static string QuoteFilterColumnPath(const vector<string> &column_path) {
     return StringUtil::Join(quoted_path, ".");
 }
 
+static string WriteBigQueryStringLiteral(const string &value) {
+    string escaped;
+    escaped.reserve(value.size() + 2);
+    escaped.push_back('"');
+    for (const auto c : value) {
+        if (c == '\\' || c == '"') {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(c);
+    }
+    escaped.push_back('"');
+    return escaped;
+}
+
 static bool IsFilterLiteralType(const LogicalType &type) {
     switch (type.id()) {
     case LogicalTypeId::SQLNULL:
@@ -92,7 +106,9 @@ static bool TryTransformFilterLiteral(const Value &value, string &literal_sql) {
     default:
         break;
     }
-    if (BigqueryUtils::IsValueQuotable(value) || value.type().id() == LogicalTypeId::STRING_LITERAL) {
+    if (value.type().id() == LogicalTypeId::VARCHAR || value.type().id() == LogicalTypeId::STRING_LITERAL) {
+        literal_sql = WriteBigQueryStringLiteral(value.ToString());
+    } else if (BigqueryUtils::IsValueQuotable(value)) {
         literal_sql = KeywordHelper::WriteQuoted(value.ToString());
     } else {
         literal_sql = value.ToString();
@@ -459,6 +475,98 @@ static bool TryTransformFilterListConstructorChildren(Expression &expr,
     return true;
 }
 
+static bool TryTransformGroupTemporalCastChild(
+    Expression &expr,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+    string &expression_sql) {
+    if (expr.GetExpressionClass() == ExpressionClass::BOUND_COLUMN_REF) {
+        if (!IsFilterTemporalCastSourceType(expr.return_type)) {
+            return false;
+        }
+        auto &colref = expr.Cast<BoundColumnRefExpression>();
+        return column_sql_resolver(colref.binding, expression_sql);
+    }
+    if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+        return false;
+    }
+
+    auto &function = expr.Cast<BoundFunctionExpression>();
+    const auto function_name = StringUtil::Lower(function.function.name);
+    if (function_name != "lower" || function.children.size() != 1 ||
+        function.return_type.id() != LogicalTypeId::VARCHAR ||
+        function.children[0]->return_type.id() != LogicalTypeId::VARCHAR) {
+        return false;
+    }
+
+    string child_sql;
+    if (!TryTransformGroupTemporalCastChild(*function.children[0], column_sql_resolver, child_sql)) {
+        return false;
+    }
+    expression_sql = "LOWER(" + child_sql + ")";
+    return true;
+}
+
+static bool TryTransformGroupArithmeticExpression(
+    Expression &expr,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+    string &expression_sql) {
+    switch (expr.GetExpressionClass()) {
+    case ExpressionClass::BOUND_COLUMN_REF: {
+        if (!IsArithmeticScalarType(expr.return_type)) {
+            return false;
+        }
+        auto &colref = expr.Cast<BoundColumnRefExpression>();
+        return column_sql_resolver(colref.binding, expression_sql);
+    }
+    case ExpressionClass::BOUND_CONSTANT:
+        if (!IsArithmeticScalarType(expr.return_type) || !TryTransformConstantExpression(expr, expression_sql) ||
+            expression_sql == "NULL") {
+            return false;
+        }
+        return true;
+    case ExpressionClass::BOUND_FUNCTION: {
+        auto &function = expr.Cast<BoundFunctionExpression>();
+        const auto function_name = StringUtil::Lower(function.function.name);
+        if (function_name == "abs" && function.children.size() == 1) {
+            if (!IsArithmeticScalarType(function.return_type) ||
+                !IsArithmeticScalarType(function.children[0]->return_type) ||
+                !TryTransformGroupArithmeticExpression(*function.children[0], column_sql_resolver, expression_sql)) {
+                return false;
+            }
+            expression_sql = "ABS(" + expression_sql + ")";
+            return true;
+        }
+
+        const bool unary_minus = function_name == "-" && function.children.size() == 1;
+        const bool basic_binary_operator =
+            (function_name == "+" || function_name == "-" || function_name == "*") && function.children.size() == 2;
+        if ((!unary_minus && !basic_binary_operator) || !IsArithmeticScalarType(function.return_type)) {
+            return false;
+        }
+
+        string left_sql;
+        if (!IsArithmeticScalarType(function.children[0]->return_type) ||
+            !TryTransformGroupArithmeticExpression(*function.children[0], column_sql_resolver, left_sql)) {
+            return false;
+        }
+        if (unary_minus) {
+            expression_sql = "(-" + left_sql + ")";
+            return true;
+        }
+
+        string right_sql;
+        if (!IsArithmeticScalarType(function.children[1]->return_type) ||
+            !TryTransformGroupArithmeticExpression(*function.children[1], column_sql_resolver, right_sql)) {
+            return false;
+        }
+        expression_sql = "(" + left_sql + " " + function_name + " " + right_sql + ")";
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 static bool TryTransformFloatingModuloConstant(Expression &expr, string &constant_sql) {
     if (expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
         return false;
@@ -594,7 +702,7 @@ static bool TryTransformFilterStructStringExpression(
             entries.push_back("', '");
         }
         entries.push_back(
-            KeywordHelper::WriteQuoted("'" + StructType::GetChildName(expr.return_type, child_idx) + "': "));
+            WriteBigQueryStringLiteral("'" + StructType::GetChildName(expr.return_type, child_idx) + "': "));
         entries.push_back(std::move(child_sql));
     }
     entries.push_back("'}'");
@@ -669,6 +777,17 @@ static bool TryTransformBoundScalarExpressionInternal(
     case ExpressionClass::BOUND_CAST: {
         auto &cast = expr.Cast<BoundCastExpression>();
         if (context == ScalarExpressionContext::GROUP_BY) {
+            {
+                string cast_type;
+                string child_sql;
+                if (TryGetFilterTemporalCastType(cast.return_type, cast_type) &&
+                    TryTransformGroupTemporalCastChild(*cast.child, column_sql_resolver, child_sql)) {
+                    const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                    expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
+                    return true;
+                }
+            }
+
             if (!cast.try_cast || cast.return_type.id() != LogicalTypeId::DATE ||
                 cast.child->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
                 !IsFilterTemporalCastSourceType(cast.child->return_type)) {
@@ -798,6 +917,10 @@ static bool TryTransformBoundScalarExpressionInternal(
     case ExpressionClass::BOUND_FUNCTION: {
         auto &function = expr.Cast<BoundFunctionExpression>();
         const auto function_name = StringUtil::Lower(function.function.name);
+
+        if (context == ScalarExpressionContext::GROUP_BY) {
+            return TryTransformGroupArithmeticExpression(expr, column_sql_resolver, expression_sql);
+        }
 
         if (context == ScalarExpressionContext::FILTER &&
             (expr.return_type.id() == LogicalTypeId::LIST || expr.return_type.id() == LogicalTypeId::ARRAY)) {
