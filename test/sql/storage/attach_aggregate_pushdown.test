@@ -251,6 +251,114 @@ EXPLAIN SELECT i + 1, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GRO
 physical_plan	<!REGEX>:.*GROUP_BY.*
 
 query II
+EXPLAIN SELECT i / 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i / 2;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT i / 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i / 2;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i / 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i / 2;
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT i % 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i % 2;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT i % 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i % 2;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i % 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i % 2;
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT LOWER(s), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY LOWER(s);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT LOWER(s), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY LOWER(s);
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT LOWER(s), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY LOWER(s);
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY CAST(s AS INTEGER);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY CAST(s AS INTEGER);
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY CAST(s AS INTEGER);
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT TRY_CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY TRY_CAST(s AS INTEGER);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT TRY_CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY TRY_CAST(s AS INTEGER);
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT TRY_CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY TRY_CAST(s AS INTEGER);
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY CAST([[i]] AS VARCHAR);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY CAST([[i]] AS VARCHAR);
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY CAST([[i]] AS VARCHAR);
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
 EXPLAIN SELECT TRY_CAST(s AS DATE), COUNT(*)
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
 GROUP BY TRY_CAST(s AS DATE);
@@ -389,6 +497,36 @@ FROM (
 GROUP BY shifted;
 ----
 physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT half_i, COUNT(*)
+FROM (
+	SELECT i / 2 AS half_i
+	FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+) t
+GROUP BY half_i;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT normalized_s, COUNT(*)
+FROM (
+	SELECT LOWER(s) AS normalized_s
+	FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+) t
+GROUP BY normalized_s;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT nested_i, COUNT(*)
+FROM (
+	SELECT CAST([[i]] AS VARCHAR) AS nested_i
+	FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+) t
+GROUP BY nested_i;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 query II
 EXPLAIN SELECT parsed_date, COUNT(*)
@@ -459,6 +597,72 @@ SELECT i + 1, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i 
 3	1
 4	1
 5	1
+
+query RI
+SELECT i / 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i / 2 ORDER BY 1;
+----
+0.5	1
+1.0	1
+1.5	1
+2.0	1
+
+query II
+SELECT i % 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i % 2 ORDER BY 1;
+----
+0	2
+1	2
+
+query TI
+SELECT LOWER(s), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY LOWER(s) ORDER BY 1 NULLS LAST;
+----
+a	1
+b	1
+c	1
+NULL	1
+
+query II
+SELECT TRY_CAST(numeric_text AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY TRY_CAST(numeric_text AS INTEGER)
+ORDER BY 1 NULLS LAST;
+----
+-3	1
+1	1
+2	1
+NULL	1
+
+query II
+SELECT CAST(numeric_text AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+WHERE numeric_text IN ('1', '2', '-3')
+GROUP BY CAST(numeric_text AS INTEGER)
+ORDER BY 1;
+----
+-3	1
+1	1
+2	1
+
+query TI
+SELECT CAST([[i]] AS VARCHAR), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY CAST([[i]] AS VARCHAR)
+ORDER BY 1;
+----
+[[1]]	1
+[[2]]	1
+[[3]]	1
+[[4]]	1
+
+query TI
+SELECT CAST([[j]] AS VARCHAR), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY CAST([[j]] AS VARCHAR)
+ORDER BY 1;
+----
+[[10]]	1
+[[20]]	1
+[[30]]	1
+[[NULL]]	1
 
 query II
 SELECT ABS(i), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY ABS(i) ORDER BY 1;
@@ -693,6 +897,27 @@ GROUP BY i - 1;
 physical_plan	<!REGEX>:.*GROUP_BY.*
 
 query II
+EXPLAIN SELECT i / 2, COUNT(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY i / 2;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT LOWER(s), COUNT(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY LOWER(s);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY CAST([[i]] AS VARCHAR);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
 EXPLAIN SELECT TRY_CAST(LOWER(date_text) AS DATE), COUNT(*)
 FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown')
 GROUP BY TRY_CAST(LOWER(date_text) AS DATE);
@@ -705,6 +930,27 @@ FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggr
 GROUP BY TRY_CAST(date_text AS TIMESTAMP);
 ----
 physical_plan	<!REGEX>:.*GROUP_BY.*
+
+query II
+EXPLAIN SELECT i % 2, COUNT(*)
+FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY i % 2;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT TRY_CAST(s AS INTEGER), COUNT(*)
+FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY TRY_CAST(s AS INTEGER);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query II
+EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*)
+FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.aggregate_pushdown')
+GROUP BY CAST([[i]] AS VARCHAR);
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
 
 # ------------------------------------------------------------------------------
 # COUNT DISTINCT: plans, results, grouping, filters, and table-function sources
@@ -773,38 +1019,28 @@ physical_plan	<!REGEX>:.*GROUP_BY.*
 # ------------------------------------------------------------------------------
 
 query II
-EXPLAIN SELECT i / 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i / 2;
+EXPLAIN SELECT f % 2.5, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY f % 2.5;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT i % 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i % 2;
-----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
-
-query II
-EXPLAIN SELECT LOWER(s), COUNT(*)
+EXPLAIN SELECT CAST(s AS DOUBLE) % f, COUNT(*)
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-GROUP BY LOWER(s);
+GROUP BY CAST(s AS DOUBLE) % f;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT CAST(s AS INTEGER), COUNT(*)
+EXPLAIN SELECT CAST(i AS VARCHAR), COUNT(*)
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-GROUP BY CAST(s AS INTEGER);
+GROUP BY CAST(i AS VARCHAR);
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT TRY_CAST(s AS INTEGER), COUNT(*)
+EXPLAIN SELECT LOWER(CAST(i AS VARCHAR)), COUNT(*)
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-GROUP BY TRY_CAST(s AS INTEGER);
-----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
-
-query II
-EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY CAST([[i]] AS VARCHAR);
+GROUP BY LOWER(CAST(i AS VARCHAR));
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
@@ -2035,11 +2271,6 @@ EXPLAIN SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown WHERE CAST
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY CAST([[i]] AS VARCHAR);
-----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
-
-query II
 EXPLAIN SELECT MIN(CAST([[i]] AS VARCHAR)) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
@@ -2070,30 +2301,16 @@ EXPLAIN SELECT MIN(LOWER(CAST(i AS VARCHAR))) FROM bq.${BQ_TEST_DATASET}.aggrega
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT TRY_CAST(s AS INTEGER), COUNT(*)
+EXPLAIN SELECT f % 2.5, COUNT(*)
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-GROUP BY TRY_CAST(s AS INTEGER);
+GROUP BY f % 2.5;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
 query II
-EXPLAIN SELECT LOWER(s), COUNT(*)
+EXPLAIN SELECT CAST(i AS VARCHAR), COUNT(*)
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-GROUP BY LOWER(s);
-----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
-
-query II
-EXPLAIN SELECT CAST(s AS INTEGER), COUNT(*)
-FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-GROUP BY CAST(s AS INTEGER);
-----
-physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
-
-query II
-EXPLAIN SELECT CAST([i] AS VARCHAR), COUNT(*)
-FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
-GROUP BY CAST([i] AS VARCHAR);
+GROUP BY CAST(i AS VARCHAR);
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
@@ -2144,6 +2361,42 @@ query II
 EXPLAIN SELECT i - 1, i * 2, i + j, 1 + i, i + 1 + 2, COUNT(*)
 FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
 GROUP BY i - 1, i * 2, i + j, 1 + i, i + 1 + 2;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i / 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i / 2;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT i % 2, COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY i % 2;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT LOWER(s), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY LOWER(s);
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY CAST(s AS INTEGER);
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT TRY_CAST(s AS INTEGER), COUNT(*)
+FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown
+GROUP BY TRY_CAST(s AS INTEGER);
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT CAST([[i]] AS VARCHAR), COUNT(*) FROM bq.${BQ_TEST_DATASET}.aggregate_pushdown GROUP BY CAST([[i]] AS VARCHAR);
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
 
