@@ -643,6 +643,7 @@ static bool TryTransformFloatingModuloOperand(
     Expression &expr,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
+    ScalarExpressionContext context,
     string &operand_sql) {
     if (TryTransformFloatingModuloConstant(expr, operand_sql)) {
         return true;
@@ -653,7 +654,7 @@ static bool TryTransformFloatingModuloOperand(
     return TryTransformBoundScalarExpressionInternal(expr,
                                                      column_sql_resolver,
                                                      integral_floating_sql_resolver,
-                                                     ScalarExpressionContext::FILTER,
+                                                     context,
                                                      operand_sql);
 }
 
@@ -904,6 +905,36 @@ static bool TryTransformBoundScalarExpressionInternal(
         }
         if (context == ScalarExpressionContext::AGGREGATE) {
             string cast_type;
+            if (cast.return_type.id() == LogicalTypeId::VARCHAR) {
+                if (TryTransformFilterListStringExpression(*cast.child,
+                                                           column_sql_resolver,
+                                                           integral_floating_sql_resolver,
+                                                           ScalarExpressionContext::AGGREGATE,
+                                                           expression_sql)) {
+                    return true;
+                }
+                if (TryTransformFilterStructStringExpression(*cast.child,
+                                                             column_sql_resolver,
+                                                             integral_floating_sql_resolver,
+                                                             ScalarExpressionContext::AGGREGATE,
+                                                             expression_sql)) {
+                    return true;
+                }
+                if (!IsFilterStringCastSourceType(cast.child->return_type)) {
+                    return false;
+                }
+
+                string child_sql;
+                if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                                                               column_sql_resolver,
+                                                               integral_floating_sql_resolver,
+                                                               ScalarExpressionContext::AGGREGATE,
+                                                               child_sql)) {
+                    return false;
+                }
+                expression_sql = "CAST(" + child_sql + " AS STRING)";
+                return true;
+            }
             if (TryGetFilterNumericCastType(cast.return_type, cast_type)) {
                 if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
                     return false;
@@ -1138,23 +1169,25 @@ static bool TryTransformBoundScalarExpressionInternal(
         bool integral_floating_modulo = false;
         bool floating_modulo = false;
         vector<string> child_entries;
-        if (modulo && context == ScalarExpressionContext::FILTER &&
+        if (modulo && (context == ScalarExpressionContext::FILTER || context == ScalarExpressionContext::AGGREGATE) &&
             (function.return_type.id() == LogicalTypeId::FLOAT || function.return_type.id() == LogicalTypeId::DOUBLE)) {
             string left_sql;
             string right_sql;
             if (TryTransformFloatingModuloOperand(*function.children[0],
                                                   column_sql_resolver,
                                                   integral_floating_sql_resolver,
+                                                  context,
                                                   left_sql) &&
                 TryTransformFloatingModuloOperand(*function.children[1],
                                                   column_sql_resolver,
                                                   integral_floating_sql_resolver,
+                                                  context,
                                                   right_sql)) {
                 child_entries.push_back(std::move(left_sql));
                 child_entries.push_back(std::move(right_sql));
                 integral_floating_modulo = true;
                 floating_modulo = true;
-            } else {
+            } else if (context == ScalarExpressionContext::FILTER) {
                 child_entries.clear();
                 for (auto &child : function.children) {
                     string child_sql;
