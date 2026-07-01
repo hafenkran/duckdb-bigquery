@@ -447,6 +447,13 @@ static bool TryTransformFilterStructStringExpression(
     ScalarExpressionContext context,
     string &expression_sql);
 
+static string FloatingModuloSQL(const string &left_sql, const string &right_sql);
+
+static bool TryTransformGroupFloatingModuloOperand(
+    Expression &expr,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+    string &operand_sql);
+
 static bool IsFilterListStringElementType(const LogicalType &type) {
     if (type.id() == LogicalTypeId::SQLNULL || type.id() == LogicalTypeId::STRING_LITERAL) {
         return true;
@@ -544,37 +551,53 @@ static bool TryTransformGroupArithmeticExpression(
             (function_name == "+" || function_name == "-" || function_name == "*") && function.children.size() == 2;
         const bool division = function_name == "/" && function.children.size() == 2;
         const bool modulo = function_name == "%" && function.children.size() == 2;
+        const bool floating_modulo = modulo && (function.return_type.id() == LogicalTypeId::FLOAT ||
+                                                function.return_type.id() == LogicalTypeId::DOUBLE);
         if ((!unary_minus && !basic_binary_operator && !division && !modulo) ||
-            !IsArithmeticScalarType(function.return_type) || (modulo && !IsModuloScalarType(function.return_type))) {
+            !IsArithmeticScalarType(function.return_type) ||
+            (modulo && !IsModuloScalarType(function.return_type) && !floating_modulo)) {
             return false;
         }
 
         vector<string> child_entries;
         child_entries.reserve(function.children.size());
-        for (auto &child : function.children) {
-            auto child_expr = child.get();
-            if (division && child_expr->GetExpressionClass() == ExpressionClass::BOUND_CAST) {
-                auto &cast = child_expr->Cast<BoundCastExpression>();
-                if (!cast.try_cast &&
-                    (cast.return_type.id() == LogicalTypeId::FLOAT || cast.return_type.id() == LogicalTypeId::DOUBLE) &&
-                    IsArithmeticScalarType(cast.child->return_type)) {
-                    child_expr = cast.child.get();
+        if (floating_modulo) {
+            for (auto &child : function.children) {
+                string child_sql;
+                if (!TryTransformGroupFloatingModuloOperand(*child, column_sql_resolver, child_sql)) {
+                    return false;
                 }
+                child_entries.push_back(std::move(child_sql));
             }
-            if (!IsArithmeticScalarType(child_expr->return_type) ||
-                (modulo && !IsModuloScalarType(child_expr->return_type))) {
-                return false;
+        } else {
+            for (auto &child : function.children) {
+                auto child_expr = child.get();
+                if (division && child_expr->GetExpressionClass() == ExpressionClass::BOUND_CAST) {
+                    auto &cast = child_expr->Cast<BoundCastExpression>();
+                    if (!cast.try_cast &&
+                        (cast.return_type.id() == LogicalTypeId::FLOAT ||
+                         cast.return_type.id() == LogicalTypeId::DOUBLE) &&
+                        IsArithmeticScalarType(cast.child->return_type)) {
+                        child_expr = cast.child.get();
+                    }
+                }
+                if (!IsArithmeticScalarType(child_expr->return_type) ||
+                    (modulo && !IsModuloScalarType(child_expr->return_type))) {
+                    return false;
+                }
+                string child_sql;
+                if (!TryTransformGroupArithmeticExpression(*child_expr, column_sql_resolver, child_sql)) {
+                    return false;
+                }
+                child_entries.push_back(std::move(child_sql));
             }
-            string child_sql;
-            if (!TryTransformGroupArithmeticExpression(*child_expr, column_sql_resolver, child_sql)) {
-                return false;
-            }
-            child_entries.push_back(std::move(child_sql));
         }
         if (unary_minus) {
             expression_sql = "(-" + child_entries[0] + ")";
         } else if (division) {
             expression_sql = "IEEE_DIVIDE(" + child_entries[0] + ", " + child_entries[1] + ")";
+        } else if (floating_modulo) {
+            expression_sql = FloatingModuloSQL(child_entries[0], child_entries[1]);
         } else if (modulo) {
             expression_sql = "(CASE WHEN " + child_entries[1] + " = 0 THEN NULL ELSE MOD(" + child_entries[0] + ", " +
                              child_entries[1] + ") END)";
@@ -656,6 +679,27 @@ static bool TryTransformFloatingModuloOperand(
                                                      integral_floating_sql_resolver,
                                                      context,
                                                      operand_sql);
+}
+
+static string FloatingModuloSQL(const string &left_sql, const string &right_sql) {
+    return "(CASE WHEN " + right_sql + " = 0 THEN IEEE_DIVIDE(0, 0) ELSE (" + left_sql + " - " + right_sql +
+           " * TRUNC(IEEE_DIVIDE(" + left_sql + ", " + right_sql + "))) END)";
+}
+
+static bool TryTransformGroupFloatingModuloOperand(
+    Expression &expr,
+    const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
+    string &operand_sql) {
+    if (TryTransformFloatingModuloConstant(expr, operand_sql)) {
+        return true;
+    }
+    if (expr.GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
+        (expr.return_type.id() != LogicalTypeId::FLOAT && expr.return_type.id() != LogicalTypeId::DOUBLE)) {
+        return false;
+    }
+
+    auto &colref = expr.Cast<BoundColumnRefExpression>();
+    return column_sql_resolver(colref.binding, operand_sql);
 }
 
 static bool TryTransformIntegralFloatingModuloOperand(
@@ -846,11 +890,28 @@ static bool TryTransformBoundScalarExpressionInternal(
                                                            expression_sql)) {
                     return true;
                 }
-                return TryTransformFilterStructStringExpression(*cast.child,
-                                                                column_sql_resolver,
-                                                                integral_floating_sql_resolver,
-                                                                ScalarExpressionContext::GROUP_BY,
-                                                                expression_sql);
+                if (TryTransformFilterStructStringExpression(*cast.child,
+                                                             column_sql_resolver,
+                                                             integral_floating_sql_resolver,
+                                                             ScalarExpressionContext::GROUP_BY,
+                                                             expression_sql)) {
+                    return true;
+                }
+                if (!IsFilterStringCastSourceType(cast.child->return_type)) {
+                    return false;
+                }
+
+                string child_sql;
+                if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                                                               column_sql_resolver,
+                                                               integral_floating_sql_resolver,
+                                                               ScalarExpressionContext::GROUP_BY,
+                                                               child_sql)) {
+                    return false;
+                }
+                const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                expression_sql = string(cast_function) + "(" + child_sql + " AS STRING)";
+                return true;
             }
             if (TryGetFilterNumericCastType(cast.return_type, cast_type)) {
                 if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
@@ -1068,6 +1129,28 @@ static bool TryTransformBoundScalarExpressionInternal(
         }
 
         //
+        const bool sin =
+            (context == ScalarExpressionContext::AGGREGATE || context == ScalarExpressionContext::FILTER) &&
+            function_name == "sin" && function.children.size() == 1;
+        if (sin) {
+            if (!IsArithmeticScalarType(function.return_type) ||
+                !IsArithmeticScalarType(function.children[0]->return_type)) {
+                return false;
+            }
+
+            string child_sql;
+            if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+                                                           column_sql_resolver,
+                                                           integral_floating_sql_resolver,
+                                                           context,
+                                                           child_sql)) {
+                return false;
+            }
+
+            expression_sql = "SIN(" + child_sql + ")";
+            return true;
+        }
+
         const bool lower =
             (context == ScalarExpressionContext::AGGREGATE || context == ScalarExpressionContext::FILTER ||
              context == ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD) &&
@@ -1249,9 +1332,7 @@ static bool TryTransformBoundScalarExpressionInternal(
             expression_sql = "IEEE_DIVIDE(" + child_entries[0] + ", " + child_entries[1] + ")";
         } else if (modulo) {
             if (floating_modulo) {
-                expression_sql = "(CASE WHEN " + child_entries[1] + " = 0 THEN IEEE_DIVIDE(0, 0) ELSE (" +
-                                 child_entries[0] + " - " + child_entries[1] + " * TRUNC(IEEE_DIVIDE(" +
-                                 child_entries[0] + ", " + child_entries[1] + "))) END)";
+                expression_sql = FloatingModuloSQL(child_entries[0], child_entries[1]);
             } else {
                 expression_sql = "(CASE WHEN " + child_entries[1] + " = 0 THEN NULL ELSE MOD(" + child_entries[0] +
                                  ", " + child_entries[1] + ") END)";
