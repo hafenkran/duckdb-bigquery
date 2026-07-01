@@ -357,19 +357,6 @@ static bool TryResolveSource(LogicalOperator &child, BigqueryAggregateSource &so
     }
 }
 
-static bool TryColumnArgumentSQL(const BigqueryAggregateSource &source, Expression &expr, string &argument_sql) {
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
-        return false;
-    }
-    auto &colref = expr.Cast<BoundColumnRefExpression>();
-    string column_name;
-    if (!TryResolveColumnName(source, colref.binding, column_name)) {
-        return false;
-    }
-    argument_sql = BigqueryUtils::WriteQuotedIdentifier(column_name);
-    return true;
-}
-
 static bool TryAggregateArgumentSQL(const BigqueryAggregateSource &source, Expression &expr, string &argument_sql) {
     return BigquerySQL::TryTransformBoundScalarExpression(
         expr,
@@ -457,8 +444,11 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
             if (!IsDistinctCountArgumentType(argument.return_type)) {
                 return false;
             }
+            if (argument.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+                return false;
+            }
             string argument_sql;
-            if (!TryColumnArgumentSQL(source, argument, argument_sql)) {
+            if (!TryAggregateArgumentSQL(source, argument, argument_sql)) {
                 return false;
             }
             aggregate_sql = "COUNT(DISTINCT " + argument_sql + ")";
