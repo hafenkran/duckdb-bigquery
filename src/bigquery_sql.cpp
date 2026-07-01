@@ -639,12 +639,12 @@ static bool TryTransformFloatingModuloConstant(Expression &expr, string &constan
     return TryTransformConstantExpression(expr, constant_sql);
 }
 
-static bool TryTransformFloatingModuloDivisor(
+static bool TryTransformFloatingModuloOperand(
     Expression &expr,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
-    string &divisor_sql) {
-    if (TryTransformFloatingModuloConstant(expr, divisor_sql)) {
+    string &operand_sql) {
+    if (TryTransformFloatingModuloConstant(expr, operand_sql)) {
         return true;
     }
     if (expr.return_type.id() != LogicalTypeId::FLOAT && expr.return_type.id() != LogicalTypeId::DOUBLE) {
@@ -654,7 +654,7 @@ static bool TryTransformFloatingModuloDivisor(
                                                      column_sql_resolver,
                                                      integral_floating_sql_resolver,
                                                      ScalarExpressionContext::FILTER,
-                                                     divisor_sql);
+                                                     operand_sql);
 }
 
 static bool TryTransformIntegralFloatingModuloOperand(
@@ -1142,11 +1142,11 @@ static bool TryTransformBoundScalarExpressionInternal(
             (function.return_type.id() == LogicalTypeId::FLOAT || function.return_type.id() == LogicalTypeId::DOUBLE)) {
             string left_sql;
             string right_sql;
-            if (TryTransformIntegralFloatingModuloOperand(*function.children[0],
-                                                          column_sql_resolver,
-                                                          integral_floating_sql_resolver,
-                                                          left_sql) &&
-                TryTransformFloatingModuloDivisor(*function.children[1],
+            if (TryTransformFloatingModuloOperand(*function.children[0],
+                                                  column_sql_resolver,
+                                                  integral_floating_sql_resolver,
+                                                  left_sql) &&
+                TryTransformFloatingModuloOperand(*function.children[1],
                                                   column_sql_resolver,
                                                   integral_floating_sql_resolver,
                                                   right_sql)) {
