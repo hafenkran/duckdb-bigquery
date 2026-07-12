@@ -374,7 +374,7 @@ static bool TryGroupArgumentSQL(const BigqueryAggregateSource &source, Expressio
         argument_sql);
 }
 
-static bool IsDistinctCountArgumentType(const LogicalType &type) {
+static bool IsDistinctAggregateArgumentType(const LogicalType &type) {
     switch (type.id()) {
     case LogicalTypeId::BOOLEAN:
     case LogicalTypeId::TINYINT:
@@ -404,6 +404,39 @@ static bool IsDistinctCountArgumentType(const LogicalType &type) {
     default:
         return false;
     }
+}
+
+static bool IsNakedDistinctConstant(Expression &expr) {
+    return expr.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT;
+}
+
+static bool IsStringAggFunction(const string &function_name) {
+    return function_name == "string_agg" || function_name == "group_concat" || function_name == "listagg";
+}
+
+static bool TryStringAggSQL(const BigqueryAggregateSource &source,
+                            const BoundAggregateExpression &aggregate,
+                            const string &function_name,
+                            bool is_distinct,
+                            string &aggregate_sql) {
+    // DuckDB erases explicit STRING_AGG delimiters into bind data, so only the default delimiter is safe here.
+    if (!IsStringAggFunction(function_name) || !is_distinct || aggregate.children.size() != 1 ||
+        !aggregate.function.original_arguments.empty()) {
+        return false;
+    }
+
+    auto &argument = *aggregate.children[0];
+    if (argument.return_type.id() != LogicalTypeId::VARCHAR || BigqueryUtils::IsGeographyType(argument.return_type) ||
+        IsNakedDistinctConstant(argument)) {
+        return false;
+    }
+
+    string argument_sql;
+    if (!TryAggregateArgumentSQL(source, argument, argument_sql)) {
+        return false;
+    }
+    aggregate_sql = "STRING_AGG(DISTINCT " + argument_sql + ")";
+    return true;
 }
 
 static bool TryAggregateSQL(const BigqueryAggregateSource &source,
@@ -441,10 +474,10 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
         }
         auto &argument = *aggregate.children[0];
         if (is_distinct) {
-            if (!IsDistinctCountArgumentType(argument.return_type)) {
+            if (!IsDistinctAggregateArgumentType(argument.return_type)) {
                 return false;
             }
-            if (argument.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+            if (IsNakedDistinctConstant(argument)) {
                 return false;
             }
             string argument_sql;
@@ -466,8 +499,8 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
         aggregate_sql = "COUNT(" + argument_sql + ")";
         return true;
     }
-    if (is_distinct) {
-        return false;
+    if (TryStringAggSQL(source, aggregate, function_name, is_distinct, aggregate_sql)) {
+        return true;
     }
 
     string bigquery_function;
@@ -490,11 +523,17 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
     if (aggregate.children.size() != 1) {
         return false;
     }
+    auto &argument = *aggregate.children[0];
+    if (is_distinct) {
+        if (!IsDistinctAggregateArgumentType(argument.return_type) || IsNakedDistinctConstant(argument)) {
+            return false;
+        }
+    }
     string argument_sql;
-    if (!TryAggregateArgumentSQL(source, *aggregate.children[0], argument_sql)) {
+    if (!TryAggregateArgumentSQL(source, argument, argument_sql)) {
         return false;
     }
-    aggregate_sql = bigquery_function + "(" + argument_sql + ")";
+    aggregate_sql = bigquery_function + "(" + (is_distinct ? "DISTINCT " : "") + argument_sql + ")";
     return true;
 }
 
