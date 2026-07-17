@@ -18,6 +18,7 @@ ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigqu
 statement ok
 PRAGMA explain_output='physical_only';
 
+# Aggregate pushdown is experimental and opt-in for this test file.
 statement ok
 SET bq_enable_aggregate_pushdown=true;
 

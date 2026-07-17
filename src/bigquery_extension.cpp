@@ -151,7 +151,10 @@ static void LoadInternal(ExtensionLoader &loader) {
                               Value(bigquery::BigquerySettings::ExperimentalFilterPushdown()),
                               bigquery::BigquerySettings::SetExperimentalFilterPushdown);
     config.AddExtensionOption("bq_enable_aggregate_pushdown",
-                              "Whether to rewrite supported ungrouped and grouped BigQuery aggregates to query jobs",
+                              "EXPERIMENTAL: rewrite supported BigQuery aggregate queries to query jobs. Unsupported "
+                              "shapes fall back before a remote query is started. Runtime errors from started BigQuery "
+                              "jobs are not retried locally, and GoogleSQL cast/string/float semantics may differ from "
+                              "DuckDB.",
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::EnableAggregatePushdown()),
                               bigquery::BigquerySettings::SetEnableAggregatePushdown);
