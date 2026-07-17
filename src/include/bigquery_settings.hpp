@@ -91,7 +91,7 @@ public:
     }
 
     static bool &EnableAggregatePushdown() {
-        static bool BIGQUERY_ENABLE_AGGREGATE_PUSHDOWN = true;
+        static bool BIGQUERY_ENABLE_AGGREGATE_PUSHDOWN = false;
         return BIGQUERY_ENABLE_AGGREGATE_PUSHDOWN;
     }
 

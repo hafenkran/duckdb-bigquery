@@ -653,13 +653,55 @@ D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
 | `bq_auth_timeout_s`                    | Timeout for authentication token fetches in seconds. This bounds ADC metadata and OAuth token requests without changing normal BigQuery query timeouts.                                                                                              | `10`    |
 | `bq_debug_show_queries`                | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                                                                    | `false` |
 | `bq_experimental_filter_pushdown`      | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                                                                               | `true`  |
-| `bq_enable_aggregate_pushdown`         | Whether to rewrite supported ungrouped and grouped BigQuery aggregates, including `COUNT(DISTINCT column)` and arithmetic arguments, to BigQuery query jobs instead of scanning all source rows through the Storage Read API.                         | `true`  |
+| `bq_enable_aggregate_pushdown`         | [EXPERIMENTAL] - Rewrite supported BigQuery aggregate queries to BigQuery query jobs instead of scanning all source rows through the Storage Read API. Unsupported shapes fall back before a remote query is started. Runtime errors from started BigQuery jobs are not retried locally, and GoogleSQL cast/string/float semantics may differ from DuckDB. | `false` |
 | `bq_experimental_use_info_schema`      | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                                                                           | `true`  |
 | `bq_experimental_enable_sql_parser`    | [EXPERIMENTAL] - Enable BigQuery CREATE TABLE clause parsing extensions (PARTITION BY / CLUSTER BY / OPTIONS)                                                                                                                                        | `false` |
 | `bq_curl_ca_bundle_path`               | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                                                                            |         |
 | `bq_max_read_streams`                  | Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work, and BigQuery may return fewer streams than requested. | `0`     |
 | `bq_enable_inflight_request_windowing` | Whether to keep multiple BigQuery Storage Write `AppendRows` requests in flight before waiting for acknowledgements. Usually faster, but slightly less memory efficient. Set to `false` to fall back to synchronous write/read lockstep.             | `true`  |
 | `bq_arrow_compression`                 | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                                                                         | `ZSTD`  |
+
+### Experimental Aggregate Pushdown
+
+`bq_enable_aggregate_pushdown` is experimental and disabled by default. When enabled, supported aggregate queries over BigQuery sources can be rewritten to BigQuery query jobs instead of reading all source rows through the Storage Read API.
+
+Important behavior:
+
+* Unsupported query shapes fall back to the local DuckDB plan before a remote BigQuery query is started.
+* Runtime errors from a started BigQuery job are not retried locally.
+* GoogleSQL cast, string formatting, floating-point, `NaN`, and `Infinity` semantics may differ from DuckDB.
+* The feature currently covers selected aggregate functions, compatible `DISTINCT` aggregates, compatible aggregate arguments, compatible `WHERE` filters, and compatible `GROUP BY` expressions.
+* It does not currently push down joins, `HAVING`, top-level `ORDER BY`, top-level `LIMIT`, or general BigQuery subplans.
+
+Use `EXPLAIN` to check whether a query shape is pushed down. A successfully pushed aggregate uses a `BIGQUERY_QUERY` operator and the plan shows the GoogleSQL query that will be executed remotely:
+
+```sql
+D SET bq_enable_aggregate_pushdown=true;
+D PRAGMA explain_output='physical_only';
+
+D EXPLAIN SELECT i, COUNT(*)
+  FROM bq.my_dataset.aggregate_pushdown
+  GROUP BY i;
+
+┌───────────────────────────┐
+│       BIGQUERY_QUERY      │
+│    ────────────────────   │
+│           Query:          │
+│  SELECT `i` AS            │
+│  __duckdb_bq_group_0,     │
+│  COUNT(*) AS              │
+│  __duckdb_bq_aggr_0 FROM  │
+│  `my-project.my_dataset   │
+│  .aggregate_pushdown`     │
+│  GROUP BY `i`             │
+│                           │
+│         Type: REST        │
+│                           │
+│           ~1 row          │
+└───────────────────────────┘
+```
+
+If the plan still contains `BIGQUERY_SCAN`, `UNGROUPED_AGGREGATE`, or `GROUP_BY`, that query shape was not pushed down and DuckDB will execute the remaining aggregate logic locally. Standard aggregate queries using `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, compatible `DISTINCT` aggregates, simple `WHERE` filters, and simple `GROUP BY` expressions are expected to be covered first.
 
 ## Limitations
 
