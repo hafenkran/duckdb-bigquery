@@ -51,7 +51,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
             if (catalog.GetCatalogType() != "bigquery") {
                 throw BinderException("Database " + dbname_or_project_id + " is not a BigQuery database");
             }
-            if (!params.api_endpoint.empty() || !params.grpc_endpoint.empty()) {
+            if (!params.billing_project.empty() || !params.api_endpoint.empty() || !params.grpc_endpoint.empty()) {
                 throw BinderException("Named parameters are not supported for attached databases");
             }
 
@@ -62,6 +62,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
             result->bq_client = transaction.GetBigqueryClient();
         } else {
             auto bq_config = BigqueryConfig(dbname_or_project_id)
+                                 .SetBillingProjectId(params.billing_project)
                                  .SetApiEndpoint(params.api_endpoint)
                                  .SetGrpcEndpoint(params.grpc_endpoint);
             auto bq_client = make_shared_ptr<BigqueryClient>(context, bq_config);
