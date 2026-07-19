@@ -2,7 +2,7 @@
 
 This community extension allows [DuckDB](https://duckdb.org) to query data from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST API. It enables users to access, manage, and manipulate their BigQuery datasets/tables directly from DuckDB using standard SQL queries. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel. See [Important Notes](#important-notes-on-using-google-bigquery) for disclaimers and usage information.
 
-> This extension supports the following builds: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`, and `windows_amd64`. The builds `linux_amd64_musl`, `wasm_mvp`, `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
+> This extension supports the following builds: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`, and `windows_amd64`. The builds `wasm_mvp`, `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
 
 ## Preliminaries
 
