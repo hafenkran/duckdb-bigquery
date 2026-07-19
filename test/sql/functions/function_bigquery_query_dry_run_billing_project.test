@@ -1,0 +1,45 @@
+# name: test/sql/functions/function_bigquery_query_dry_run_billing_project.test
+# description: Test billing project handling for bigquery_query dry runs
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+# A direct project-ID call must create the dry-run job in billing_project, not in the public storage project.
+query III
+SELECT *
+FROM bigquery_query(
+	'bigquery-public-data',
+	'SELECT * FROM `bigquery-public-data.geo_us_boundaries.cnecta`',
+	dry_run := true,
+	billing_project := '${BQ_TEST_PROJECT}'
+);
+----
+<REGEX>:\d+	<REGEX>:[01]	<REGEX>:.+
+
+statement ok
+ATTACH 'project=bigquery-public-data dataset=geo_us_boundaries billing_project=${BQ_TEST_PROJECT}' AS bq_public (TYPE bigquery, READ_ONLY);
+
+# An attached database must reuse the billing project configured in ATTACH.
+query III
+SELECT *
+FROM bigquery_query(
+	'bq_public',
+	'SELECT * FROM `bigquery-public-data.geo_us_boundaries.cnecta`',
+	dry_run := true
+);
+----
+<REGEX>:\d+	<REGEX>:[01]	<REGEX>:.+
+
+# Connection parameters cannot override an attached database configuration.
+statement error
+SELECT *
+FROM bigquery_query(
+	'bq_public',
+	'SELECT 42 AS answer',
+	dry_run := true,
+	billing_project := '${BQ_TEST_PROJECT}'
+);
+----
+<REGEX>:Binder Error: Named parameters are not supported for attached databases.*
