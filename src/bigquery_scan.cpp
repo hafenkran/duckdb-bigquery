@@ -52,9 +52,21 @@ unique_ptr<FunctionData> BigqueryScanFunction::BigqueryScanBind(ClientContext &c
                                .SetGrpcEndpoint(params.grpc_endpoint);
     bind_data->bq_client = make_shared_ptr<BigqueryClient>(context, bind_data->bq_config);
 
-    ColumnList columns;
-    vector<unique_ptr<Constraint>> constraints;
-    bind_data->bq_client->GetTableInfo(table_ref.dataset_id, table_ref.table_id, columns, constraints);
+    BigqueryTableInfo table_info(table_ref);
+    bind_data->bq_client->GetTableInfo(table_ref.dataset_id, table_ref.table_id, table_info);
+    bind_data->relation = table_info.relation;
+    if (bind_data->relation.ReadMode() == BigqueryReadMode::QUERY_JOB) {
+        throw BinderException("bigquery_scan cannot read BigQuery relation \"%s\" of type %s directly. Use "
+                              "bigquery_query(...) or attach the BigQuery catalog.",
+                              bind_data->TableString(),
+                              bind_data->relation.TypeName());
+    }
+    if (bind_data->relation.ReadMode() == BigqueryReadMode::UNSUPPORTED) {
+        throw BinderException("bigquery_scan cannot read BigQuery relation \"%s\" of unsupported type %s",
+                              bind_data->TableString(),
+                              bind_data->relation.TypeName());
+    }
+    auto &columns = table_info.create_info->columns;
 
     auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
     auto status = arrow::ExportSchema(*std::move(arrow_schema_ptr), &bind_data->schema_root.arrow_schema);
@@ -415,6 +427,8 @@ static InsertionOrderPreservingMap<string> BigqueryScanToString(TableFunctionToS
     InsertionOrderPreservingMap<string> result;
     auto &bind_data = input.bind_data->Cast<BigqueryScanBindData>();
     result["Table"] = bind_data.TableString();
+    result["Relation Type"] = bind_data.relation.TypeName();
+    result["Read Mode"] = bind_data.relation.ReadModeName();
     return result;
 }
 

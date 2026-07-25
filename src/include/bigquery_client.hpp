@@ -10,6 +10,7 @@
 #include "bigquery_arrow_reader.hpp"
 #include "bigquery_proto_writer.hpp"
 #include "bigquery_settings.hpp"
+#include "bigquery_table_info.hpp"
 #include "bigquery_utils.hpp"
 
 #include "duckdb.hpp"
@@ -27,8 +28,6 @@
 
 namespace duckdb {
 namespace bigquery {
-
-struct BigqueryTableInfo;
 
 struct ListJobsParams {
     std::optional<std::string> job_id;
@@ -111,15 +110,6 @@ public:
                                    map<string, BigqueryTableInfo> &table_infos);
     void GetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info);
     bool TryGetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info);
-
-    void GetTableInfo(const string &dataset_id,
-                      const string &table_id,
-                      ColumnList &res_columns,
-                      vector<unique_ptr<Constraint>> &res_constraints);
-    bool TryGetTableInfo(const string &dataset_id,
-                         const string &table_id,
-                         ColumnList &res_columns,
-                         vector<unique_ptr<Constraint>> &res_constraints);
     void GetTableInfoForQuery(const string &query,
                               const vector<Value> &query_parameters,
                               ColumnList &res_columns,

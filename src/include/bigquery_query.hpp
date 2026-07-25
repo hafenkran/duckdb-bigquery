@@ -26,6 +26,7 @@ struct BigqueryQueryRestBindData : public TableFunctionData {
     string query;
     vector<Value> query_parameters;
     std::optional<int> timeout_ms;
+    string query_job_location;
 
     vector<string> names;
     vector<LogicalType> types;

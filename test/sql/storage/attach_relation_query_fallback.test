@@ -1,0 +1,175 @@
+# name: test/sql/storage/attach_relation_query_fallback.test
+# description: Validate attached BigQuery relations select their metadata-driven read mode
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP MATERIALIZED VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_materialized_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP SNAPSHOT TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_snapshot`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_clone`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_base`');
+
+sleep 2 seconds
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_base` AS
+    SELECT 1 AS id, "Berlin" AS city UNION ALL
+    SELECT 2 AS id, "Paris" AS city UNION ALL
+    SELECT 3 AS id, "New York" AS city
+');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE VIEW `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_view` AS
+    SELECT id, city
+    FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_base`
+    WHERE id <= 2
+');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE MATERIALIZED VIEW `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_materialized_view` AS
+    SELECT city, COUNT(*) AS city_count
+    FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_base`
+    GROUP BY city
+');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_clone`
+    CLONE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_base`
+');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE SNAPSHOT TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_snapshot`
+    CLONE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_base`
+');
+
+sleep 2 seconds
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq_relation_fallback (TYPE bigquery);
+
+statement ok
+PRAGMA explain_output='physical_only';
+
+query IT
+SELECT id, city FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_view ORDER BY id;
+----
+1	Berlin
+2	Paris
+
+query I
+SELECT id FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_view WHERE city = 'Berlin';
+----
+1
+
+query I
+SELECT SUM(city_count) FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_materialized_view;
+----
+3
+
+query I
+SELECT COUNT(*) FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_clone;
+----
+3
+
+query I
+SELECT COUNT(*) FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_snapshot;
+----
+3
+
+query II
+EXPLAIN SELECT city FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_base;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*Relation Type.*TABLE.*Read Mode.*Storage Read.*
+
+query II
+EXPLAIN SELECT city FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_view;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*Relation Type.*VIEW.*Read Mode.*Query Job.*
+
+query II
+EXPLAIN SELECT city FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_materialized_view;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*Relation Type.*MATERIALIZED_VIEW.*Read Mode.*Query Job.*
+
+query II
+EXPLAIN SELECT city FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_clone;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*Relation Type.*CLONE.*Read Mode.*Storage Read.*
+
+query II
+EXPLAIN SELECT city FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_snapshot;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*Relation Type.*SNAPSHOT.*Read Mode.*Storage Read.*
+
+statement error
+SELECT * FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_view');
+----
+<REGEX>:Binder Error: bigquery_scan cannot read BigQuery relation .+ of type VIEW directly.+
+
+statement error
+UPDATE bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_view SET city = 'Rome' WHERE id = 1;
+----
+<REGEX>:Binder Error: Cannot update BigQuery relation .+ of type VIEW.+
+
+statement error
+DELETE FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_materialized_view WHERE city = 'Berlin';
+----
+<REGEX>:Binder Error: Cannot delete from BigQuery relation .+ of type MATERIALIZED_VIEW.+
+
+statement error
+INSERT INTO bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_snapshot VALUES (4, 'Rome');
+----
+<REGEX>:Binder Error: Cannot insert into BigQuery relation .+ of type SNAPSHOT.+
+
+statement ok
+SET bq_enable_aggregate_pushdown=true;
+
+query II
+EXPLAIN SELECT COUNT(*) FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_view;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*COUNT\(\*\).*
+
+query I
+SELECT COUNT(*) FROM bq_relation_fallback.${BQ_TEST_DATASET}.relation_fallback_view;
+----
+2
+
+statement ok
+SET bq_enable_aggregate_pushdown=false;
+
+statement ok
+DETACH bq_relation_fallback;
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP MATERIALIZED VIEW IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_materialized_view`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP SNAPSHOT TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_snapshot`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_clone`');
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.relation_fallback_base`');

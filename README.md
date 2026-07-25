@@ -107,7 +107,8 @@ Project-level and dataset/table/view grants both matter.
 
 Operation-specific notes:
 
-- `ATTACH` and `bigquery_scan` use the BigQuery Storage Read API. Google documents `bigquery.readsessions.create` on the project plus `bigquery.readsessions.getData` and `bigquery.readsessions.update` on the table or higher. You also need read access to the referenced tables or views.
+- `ATTACH` uses the BigQuery Storage Read API directly for standard tables, clones, and snapshots. Attached logical views, materialized views, and external tables automatically use a query job and then read its temporary result through the Storage Read API. Query-backed relations therefore additionally require `bigquery.jobs.create` and can incur query-processing costs.
+- `bigquery_scan` is Storage-Read-only. Google documents `bigquery.readsessions.create` on the project plus `bigquery.readsessions.getData` and `bigquery.readsessions.update` on the table or higher.
 - `bigquery_query` on the default path runs a query job and then fetches results through the Storage Read API. Google documents `bigquery.jobs.create` for the query job, `bigquery.tables.getData` on referenced tables and views, and the Storage Read API read-session permissions above.
 - `bigquery_query(..., use_rest_api=true)` avoids the Storage Read API fetch path. It still needs the permissions required by the query itself. For long-running or large-result requests, BigQuery can still create a job, so `bigquery.jobs.create` may still be required.
 - `bigquery_execute` uses the query-job path. It needs `bigquery.jobs.create`; any additional table or dataset permissions depend on the SQL being executed.
@@ -218,6 +219,9 @@ INSERT INTO bq.some_dataset.tbl VALUES (42, "my quacking string");
 -- Retrieves rows from the table
 SELECT some_string FROM bq.some_dataset.tbl;
 
+-- Views, materialized views, and external tables are routed through a query job automatically
+SELECT * FROM bq.some_dataset.some_view;
+
 -- Drop a BigQury table in some dataset
 DROP TABLE IF EXISTS bq.some_dataset.tbl;
 
@@ -276,7 +280,9 @@ D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl', filter
 
 The filter syntax follows the same rules as the `row_restriction` field in BigQuery's Storage Read API.                                          |
 
-While `bigquery_scan` offers high-speed data retrieval, it does not support reading from views or external tables due to limitations of the Storage Read API. For those cases, consider using the `bigquery_query` function, which allows more complex querying capabilities.
+`bigquery_scan` intentionally remains limited to relations that the Storage Read API can read directly. For logical
+views, materialized views, and external tables, either attach the BigQuery catalog and query the relation normally or
+use `bigquery_query` for explicit control over the submitted GoogleSQL.
 
 The `bigquery_scan` function supports the following named parameters:
 
@@ -707,7 +713,12 @@ If the plan still contains `BIGQUERY_SCAN`, `UNGROUPED_AGGREGATE`, or `GROUP_BY`
 
 There are some limitations that arise from the combination of DuckDB and BigQuery. These include:
 
-* **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported. To mitigate these limitations, you can use the `bigquery_query` function to execute the query directly in BigQuery.
+* **Query-backed attached relations**: The Storage Read API cannot directly read logical or materialized views and does
+  not support ordinary external tables (see the [Storage Read limitations](https://cloud.google.com/bigquery/docs/reference/storage#limitations)).
+  Attached reads of these relation types therefore execute `SELECT *` as a BigQuery query job and scan the temporary
+  result table. This requires `bigquery.jobs.create`, can incur query-processing costs, and materializes the full
+  relation before DuckDB projection and filter pushdown are applied to the result. For cost-sensitive reads, use
+  `bigquery_query` with an explicit projection and predicate.
 
 * **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
 

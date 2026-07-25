@@ -70,7 +70,7 @@ PhysicalOperator &BigqueryCatalog::PlanUpdate(ClientContext &context,
         throw NotImplementedException("RETURNING clause not supported.");
     }
     auto &table_entry = op.table.Cast<BigqueryTableEntry>();
-    if (!table_entry.SupportsMutation()) {
+    if (!table_entry.SupportsUpdateDelete()) {
         throw BinderException("Cannot update BigQuery relation \"%s.%s\" of type %s",
                               table_entry.schema.name,
                               table_entry.name,

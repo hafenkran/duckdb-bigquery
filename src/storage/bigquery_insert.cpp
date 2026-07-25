@@ -90,13 +90,6 @@ unique_ptr<GlobalSinkState> BigqueryInsert::GetGlobalSinkState(ClientContext &co
     } else {
         insert_table = &table.get_mutable()->Cast<BigqueryTableEntry>();
     }
-    if (!insert_table->SupportsMutation()) {
-        throw BinderException("Cannot insert into BigQuery relation \"%s.%s\" of type %s",
-                              insert_table->schema.name,
-                              insert_table->name,
-                              insert_table->RelationTypeName());
-    }
-
     auto &transaction = BigqueryTransaction::Get(context, insert_table->catalog);
     auto bq_client = transaction.GetBigqueryClient();
     auto result = make_uniq<BigqueryInsertGlobalState>(context);
@@ -203,7 +196,7 @@ PhysicalOperator &BigqueryCatalog::PlanInsert(ClientContext &context,
         throw BinderException("ON CONFLCIT clause not supported.");
     }
     auto &table_entry = op.table.Cast<BigqueryTableEntry>();
-    if (!table_entry.SupportsMutation()) {
+    if (!table_entry.SupportsInsert()) {
         throw BinderException("Cannot insert into BigQuery relation \"%s.%s\" of type %s",
                               table_entry.schema.name,
                               table_entry.name,

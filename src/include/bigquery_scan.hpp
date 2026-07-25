@@ -34,7 +34,9 @@ struct BigqueryScanBindData : public ArrowScanFunctionData {
     string query;
     vector<Value> query_parameters;
     std::optional<int> query_timeout_ms;
+    string query_job_location;
     string filter_condition;
+    BigqueryRelationMetadata relation;
 
     BigqueryConfig bq_config;
     shared_ptr<BigqueryClient> bq_client;

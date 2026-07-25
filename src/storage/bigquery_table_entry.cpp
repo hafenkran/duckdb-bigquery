@@ -4,6 +4,7 @@
 #include "duckdb/storage/table_storage_info.hpp"
 
 #include "bigquery_scan.hpp"
+#include "bigquery_query.hpp"
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_schema_entry.hpp"
 #include "storage/bigquery_table_entry.hpp"
@@ -20,11 +21,11 @@ namespace duckdb {
 namespace bigquery {
 
 BigqueryTableEntry::BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info)
-    : TableCatalogEntry(catalog, schema, info) {
+    : TableCatalogEntry(catalog, schema, info), relation(BigqueryRelationMetadata::StandardTable()) {
 }
 
 BigqueryTableEntry::BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, BigqueryTableInfo &info)
-    : TableCatalogEntry(catalog, schema, *info.create_info) {
+    : TableCatalogEntry(catalog, schema, *info.create_info), relation(info.relation) {
 }
 
 unique_ptr<BaseStatistics> BigqueryTableEntry::GetStatistics(ClientContext &context, column_t column_id) {
@@ -38,6 +39,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
 
     auto result = make_uniq<BigqueryScanBindData>();
     result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
+    result->relation = relation;
     result->bq_client = bigquery_transaction->GetBigqueryClient();
     result->bq_catalog = &bigquery_catalog;
     result->bq_table_entry = *this;
@@ -107,7 +109,25 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
 
     bind_data = std::move(result);
 
-    auto function = BigqueryScanFunction();
+    TableFunction function;
+    switch (ReadMode()) {
+    case BigqueryReadMode::STORAGE_READ:
+        function = BigqueryScanFunction();
+        break;
+    case BigqueryReadMode::QUERY_JOB: {
+        auto &scan_bind = bind_data->CastNoConst<BigqueryScanBindData>();
+        scan_bind.query = "SELECT * FROM " + BigqueryUtils::WriteQuotedIdentifier(scan_bind.TableString());
+        scan_bind.query_job_location = dynamic_cast<BigquerySchemaEntry &>(schema).GetBigqueryLocation();
+        function = BigqueryQueryFunction();
+        break;
+    }
+    case BigqueryReadMode::UNSUPPORTED:
+    default:
+        auto &scan_bind = bind_data->CastNoConst<BigqueryScanBindData>();
+        throw BinderException("Cannot read BigQuery relation \"%s\" of unsupported type %s",
+                              scan_bind.TableString(),
+                              RelationTypeName());
+    }
     Value filter_pushdown;
     if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
         function.filter_pushdown = BooleanValue::Get(filter_pushdown);

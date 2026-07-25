@@ -42,6 +42,7 @@ struct BigqueryAggregateSource {
     string source_filter;
     vector<Value> query_parameters;
     std::optional<int> timeout_ms;
+    string query_job_location;
 };
 
 static bool IsRestScalarType(const LogicalType &type) {
@@ -105,6 +106,7 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
         source.bq_client = scan_bind->bq_client;
         source.query_parameters = scan_bind->query_parameters;
         source.timeout_ms = scan_bind->query_timeout_ms;
+        source.query_job_location = scan_bind->query_job_location;
         source.source_filter = scan_bind->filter_condition;
         if (scan_bind->RequiresQueryExec()) {
             source.source_sql = BigquerySQL::CreateSubquerySourceSQL(scan_bind->query, BQ_AGGREGATE_SOURCE_ALIAS);
@@ -119,6 +121,7 @@ static bool TryResolveGet(LogicalGet &get, BigqueryAggregateSource &source) {
         source.bq_client = rest_bind->bq_client;
         source.query_parameters = rest_bind->query_parameters;
         source.timeout_ms = rest_bind->timeout_ms;
+        source.query_job_location = rest_bind->query_job_location;
         source.source_filter.clear();
         source.source_sql = BigquerySQL::CreateSubquerySourceSQL(rest_bind->query, BQ_AGGREGATE_SOURCE_ALIAS);
     }
@@ -630,6 +633,7 @@ static unique_ptr<LogicalOperator> CreateAggregateQueryGet(LogicalAggregate &agg
     bind_data->query = std::move(query);
     bind_data->query_parameters = std::move(source.query_parameters);
     bind_data->timeout_ms = source.timeout_ms;
+    bind_data->query_job_location = std::move(source.query_job_location);
     bind_data->names = names;
     bind_data->types = types;
     bind_data->estimated_row_count = estimated_row_count;

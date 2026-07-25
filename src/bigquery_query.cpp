@@ -219,7 +219,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
 
         // Execute the query (with JOB_CREATION_OPTIONAL)
         auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query,
-                                                                "",
+                                                                bind_data.query_job_location,
                                                                 false,
                                                                 bind_data.query_parameters,
                                                                 /*optional_job_creation=*/true,
@@ -250,7 +250,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
     auto &bind_data = input.bind_data->CastNoConst<BigqueryScanBindData>();
 
     auto query_response = bind_data.bq_client->ExecuteQuery(bind_data.query,
-                                                            "",
+                                                            bind_data.query_job_location,
                                                             false,
                                                             bind_data.query_parameters,
                                                             /*optional_job_creation=*/false,
@@ -393,6 +393,10 @@ static InsertionOrderPreservingMap<string> BigqueryQueryToString(TableFunctionTo
     const auto &bind_data = input.bind_data->Cast<BigqueryScanBindData>();
     result["Query"] = bind_data.query;
     result["Table"] = bind_data.TableString();
+    if (bind_data.relation.Type() != BigqueryRelationType::UNKNOWN) {
+        result["Relation Type"] = bind_data.relation.TypeName();
+        result["Read Mode"] = bind_data.relation.ReadModeName();
+    }
     return result;
 }
 

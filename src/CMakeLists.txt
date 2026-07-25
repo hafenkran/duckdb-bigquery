@@ -8,6 +8,7 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_clear_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_scan.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_query.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_table_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_execute.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_extract.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bigquery_load.cpp

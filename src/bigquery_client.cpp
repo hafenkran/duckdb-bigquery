@@ -1191,51 +1191,11 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
     }
 }
 
-void BigqueryClient::GetTableInfo(const string &dataset_id,
-                                  const string &table_id,
-                                  ColumnList &res_columns,
-                                  vector<unique_ptr<Constraint>> &res_constraints) {
-    if (!TryGetTableInfo(dataset_id, table_id, res_columns, res_constraints)) {
-        auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
-        throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
-    }
-}
-
 void BigqueryClient::GetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info) {
     if (!TryGetTableInfo(dataset_id, table_id, table_info)) {
         auto table_ref = BigqueryUtils::FormatTableString(config.project_id, dataset_id, table_id);
         throw BinderException("GetTableInfo - table \"%s\" not found", table_ref);
     }
-}
-
-bool BigqueryClient::TryGetTableInfo(const string &dataset_id,
-                                     const string &table_id,
-                                     ColumnList &res_columns,
-                                     vector<unique_ptr<Constraint>> &res_constraints) {
-    CheckAuthentication();
-
-    auto client = make_shared_ptr<google::cloud::bigquerycontrol_v2::TableServiceClient>(
-        google::cloud::bigquerycontrol_v2::MakeTableServiceConnectionRest(OptionsAPI()));
-
-    auto request = google::cloud::bigquery::v2::GetTableRequest();
-    request.set_project_id(config.project_id);
-    request.set_dataset_id(dataset_id);
-    request.set_table_id(table_id);
-
-    auto response = client->GetTable(request);
-    if (!response.ok()) {
-        if (CheckSSLError(response.status())) {
-            return TryGetTableInfo(dataset_id, table_id, res_columns, res_constraints);
-        }
-        if (response.status().code() == google::cloud::StatusCode::kNotFound) {
-            return false;
-        }
-        throw InternalException(response.status().message());
-    }
-
-    auto table = response.value();
-    MapTableSchema(table.schema(), res_columns, res_constraints);
-    return true;
 }
 
 bool BigqueryClient::TryGetTableInfo(const string &dataset_id, const string &table_id, BigqueryTableInfo &table_info) {
@@ -1261,13 +1221,8 @@ bool BigqueryClient::TryGetTableInfo(const string &dataset_id, const string &tab
     }
 
     auto table = response.value();
-    table_info.relation_type_name = table.type();
-    table_info.relation_type = BigqueryRelationTypeFromRestResource(table_info.relation_type_name);
-    if (table_info.relation_type_name.empty()) {
-        table_info.relation_type_name = BigqueryRelationTypeToString(table_info.relation_type);
-    }
-    table_info.is_insertable_into = table_info.relation_type == BigqueryRelationType::STANDARD_TABLE ||
-                                    table_info.relation_type == BigqueryRelationType::CLONE;
+    table_info.relation =
+        BigqueryRelationMetadata::FromRest(table.type(), table.has_snapshot_definition(), table.has_clone_definition());
     MapTableSchema(table.schema(), table_info.create_info->columns, table_info.create_info->constraints);
     return true;
 }
@@ -1318,12 +1273,6 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
 
     if (entry == nullptr) {
         throw InternalException("Error while initializing proto writer: entry is null");
-    }
-    if (!entry->SupportsMutation()) {
-        throw BinderException("Cannot write to BigQuery relation \"%s.%s\" of type %s",
-                              entry->schema.name,
-                              entry->name,
-                              entry->RelationTypeName());
     }
     auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
     if (bq_catalog.GetProjectID() != config.project_id) {
@@ -2112,10 +2061,9 @@ void BigqueryClient::MapInformationSchemaRows(
 
         if (table_infos.find(table_string) == table_infos.end()) {
             auto info = BigqueryTableInfo(project_id, dataset_name, table_name);
-            info.relation_type = BigqueryRelationTypeFromInformationSchema(relation_type_name);
-            info.relation_type_name =
-                relation_type_name.empty() ? BigqueryRelationTypeToString(info.relation_type) : relation_type_name;
-            info.is_insertable_into = is_insertable_into == "YES";
+            info.relation =
+                BigqueryRelationMetadata::FromInformationSchema(relation_type_name,
+                                                                StringUtil::Upper(is_insertable_into) == "YES");
             table_infos[table_string] = std::move(info);
         }
 
