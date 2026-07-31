@@ -211,7 +211,7 @@ jobs:
 
   macos:
     name: MacOS tests
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     needs: generate_matrix
     if: ${{ needs.generate_matrix.outputs.osx_matrix != '{}' && needs.generate_matrix.outputs.osx_matrix != '' }}
     strategy:
