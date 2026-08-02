@@ -1,0 +1,94 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - CHANGELOG.md
+      - LICENSE
+      - docs-requirements.txt
+      - mkdocs.yml
+      - scripts/check_docs.py
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - "docs/**"
+      - CHANGELOG.md
+      - LICENSE
+      - docs-requirements.txt
+      - mkdocs.yml
+      - scripts/check_docs.py
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docs-requirements.txt
+
+      - name: Install documentation dependencies
+        run: python -m pip install -r docs-requirements.txt
+
+      - name: Check documentation conventions
+        run: python scripts/check_docs.py
+
+      - name: Check workflow syntax
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Build documentation
+        run: mkdocs build --strict
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: >-
+            --root-dir "${{ github.workspace }}"
+            --max-retries 3
+            --retry-wait-time 2
+            --timeout 30
+            "docs/**/*.md"
+            "CHANGELOG.md"
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/docs-site
+
+  deploy:
+    name: Deploy documentation
+    if: github.event_name != 'pull_request'
+    needs: build
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy GitHub Pages site
+        id: deployment
+        uses: actions/deploy-pages@v5
