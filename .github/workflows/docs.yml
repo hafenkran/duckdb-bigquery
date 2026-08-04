@@ -48,7 +48,7 @@ jobs:
         run: python scripts/check_docs.py
 
       - name: Check workflow syntax
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/docs.yml
 
       - name: Build documentation
         run: mkdocs build --strict
