@@ -10,15 +10,15 @@
 This community extension allows [DuckDB](https://duckdb.org) to query data
 from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST APIs.
 You can explore, query, create, and modify BigQuery tables and datasets
-directly from DuckDB using standard SQL queries. Inspired by official DuckDB
+directly from DuckDB using standard SQL queries. Dedicated functions cover direct table scans, GoogleSQL queries,
+load and extract jobs, and job inspection.
+
+Inspired by official DuckDB
 storage extensions like
 [MySQL](https://duckdb.org/docs/current/core_extensions/mysql),
 [PostgreSQL](https://github.com/duckdb/duckdb-postgres), and
 [SQLite](https://github.com/duckdb/duckdb-sqlite), this extension offers a
-similar feel. Dedicated functions cover direct table scans, GoogleSQL queries,
-load and extract jobs, and job inspection.
-
-See [Important Notes](#important-notes) for disclaimers and usage information.
+similar feel.
 
 !!! warning "Disclaimer: Independent community project"
 
@@ -51,6 +51,8 @@ To make your first connection, follow
 [Install, Attach, and Query](getting-started/install-attach-and-query.md).
 
 ## Important Notes
+
+
 
 When using this software with Google BigQuery, please ensure your usage complies with the [Google API Terms of Service](https://developers.google.com/terms). Be mindful of the usage limits and quotas, and adhere to Google's Fair Use Policy.
 
