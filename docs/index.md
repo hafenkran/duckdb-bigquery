@@ -1,5 +1,12 @@
 # DuckDB BigQuery Extension
 
+<p align="center">
+  <a href="https://duckdb.org/community_extensions/extensions/bigquery"><img alt="DuckDB Community Extension" src="https://img.shields.io/badge/DuckDB-Community%20Extension-FFF000?logo=duckdb&amp;logoColor=000"></a>
+  <a href="https://github.com/hafenkran/duckdb-bigquery/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/hafenkran/duckdb-bigquery?label=Latest%20Release"></a>
+  <a href="https://github.com/hafenkran/duckdb-bigquery/actions/workflows/MainDistributionPipeline.yml"><img alt="Build and Test" src="https://img.shields.io/github/actions/workflow/status/hafenkran/duckdb-bigquery/MainDistributionPipeline.yml?branch=main&amp;label=Build"></a>
+  <a href="https://github.com/hafenkran/duckdb-bigquery/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/hafenkran/duckdb-bigquery?label=License"></a>
+</p>
+
 This community extension allows [DuckDB](https://duckdb.org) to query data
 from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST APIs.
 You can explore, query, create, and modify BigQuery tables and datasets
@@ -42,16 +49,6 @@ See [Important Notes](#important-notes) for disclaimers and usage information.
 
 To make your first connection, follow
 [Install, Attach, and Query](getting-started/install-attach-and-query.md).
-
-## Example Conventions
-
-Examples use `my-gcp-project` and `my-billing-project` as Google Cloud project
-IDs. Names such as `my_dataset`, `quacking_dataset`, and `barking_dataset` are
-BigQuery datasets. After an attachment, `bq` is the local DuckDB catalog name,
-so `bq.my_dataset.my_table` refers to a BigQuery table through that catalog.
-
-Replace project IDs, dataset names, table names, bucket names, and file paths
-with resources available to your credentials before running an example.
 
 ## Important Notes
 

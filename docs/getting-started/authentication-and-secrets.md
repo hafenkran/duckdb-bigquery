@@ -41,9 +41,6 @@ credentials, not the Google Cloud CLI's user-session credentials. See the
 [`gcloud` documentation](https://cloud.google.com/sdk/gcloud) for additional
 CLI configuration.
 
-User account ADC is convenient for local development. It is generally not the
-right credential source for unattended production workloads.
-
 ## Option 2: Service Account ADC { #service-account-adc }
 
 You can authenticate with a service account by creating the account in Google
@@ -58,9 +55,6 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 set "GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\service-account.json"
 ```
 
-Service-account keys are long-lived credentials. Keep the file outside the
-repository, restrict access to it, and rotate it according to your
-organization's security policy.
 
 ### Attached Service Account
 
