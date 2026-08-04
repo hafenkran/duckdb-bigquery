@@ -38,7 +38,7 @@ Alternatively, you can authenticate using a service account. First, create a ser
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/my/service-account-credentials.json"
 
 # On Windows
-set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.json"
+set "GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\my\service-account-credentials.json"
 ```
 
 On Dataproc, Compute Engine, GKE, and Cloud Run, no service-account key file is required when the runtime has an

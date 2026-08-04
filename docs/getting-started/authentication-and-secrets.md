@@ -5,14 +5,17 @@ extension supports [Google Application Default Credentials
 (ADC)](https://cloud.google.com/docs/authentication/application-default-credentials)
 and project-scoped credentials managed by DuckDB. Common setup paths are:
 
-1. **[User Account ADC](#user-account-adc)** — Create local Application
-   Default Credentials with `gcloud auth application-default login`.
-2. **[Service Account ADC](#service-account-adc)** — Use a credential file
-   through `GOOGLE_APPLICATION_CREDENTIALS`, or use the service account
-   attached to a Google-hosted runtime.
-3. **[DuckDB Secrets](#duckdb-secrets)** — Best for multi-tenant or server use,
-   with project-scoped credentials, per-connection isolation, and easy
-   rotation.
+- **[User Account ADC](#user-account-adc)**<br>
+  Create local Application Default Credentials with
+  `gcloud auth application-default login`.
+
+- **[Service Account ADC](#service-account-adc)**<br>
+  Use a credential file through `GOOGLE_APPLICATION_CREDENTIALS`, or use the
+  service account attached to a Google-hosted runtime.
+
+- **[DuckDB Secrets](#duckdb-secrets)**<br>
+  Manage project-scoped credentials with per-connection isolation and easy
+  rotation, particularly for multi-tenant or server use.
 
 DuckDB secrets take priority when their scope matches the target project. If no
 secret matches, the Google client library resolves ADC, including
@@ -47,17 +50,13 @@ You can authenticate with a service account by creating the account in Google
 Cloud, assigning the necessary roles, and downloading its JSON key file. Set
 `GOOGLE_APPLICATION_CREDENTIALS` to the file path before starting DuckDB:
 
-=== "Linux and macOS"
+```bash title="Command line"
+# Linux and macOS
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 
-    ```bash title="Command line"
-    export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
-    ```
-
-=== "Windows"
-
-    ```batch title="Command line"
-    set GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\service-account.json
-    ```
+# Windows Command Prompt
+set "GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\service-account.json"
+```
 
 Service-account keys are long-lived credentials. Keep the file outside the
 repository, restrict access to it, and rotate it according to your

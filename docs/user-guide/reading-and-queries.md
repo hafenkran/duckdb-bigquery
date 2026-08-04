@@ -2,13 +2,17 @@
 
 The extension provides three ways to read data from BigQuery:
 
-- [`bigquery_scan`](#bigquery-scan): Direct, one-off reads from native BigQuery
-  tables through the BigQuery Storage Read API.
-- [`bigquery_query`](#bigquery-query): Custom GoogleSQL queries executed by
-  BigQuery, including queries over views, materialized views, and external
-  tables.
-- [Attached project](#select-from-an-attached-project): Reusable BigQuery
-  catalogs whose native tables can be queried with regular DuckDB SQL.
+- **[`bigquery_scan`](#bigquery-scan)**<br>
+  Read one native BigQuery table directly through the BigQuery Storage Read
+  API without creating a catalog.
+
+- **[`bigquery_query`](#bigquery-query)**<br>
+  Run custom GoogleSQL in BigQuery, including queries over views, materialized
+  views, and external tables.
+
+- **[Attached project](#select-from-an-attached-project)**<br>
+  Reuse a BigQuery catalog whose native tables can be queried with regular
+  DuckDB SQL.
 
 `bigquery_scan` and attached table reads share the same Storage Read execution
 model. `bigquery_query` submits a query to BigQuery and returns its result rows.
@@ -28,10 +32,7 @@ creating a persistent catalog:
 
 ```sql
 -- Read selected columns from one native BigQuery table.
-SELECT
-      a,
-      b,
-      c
+SELECT a, b, c
   FROM bigquery_scan('my-gcp-project.my_dataset.function_scan_test')
   ORDER BY a;
 ┌───────┬───────┬─────────┐
@@ -51,9 +52,7 @@ trusted Storage Read `filter` string:
 
 ```sql
 -- Apply an explicit Storage Read row restriction.
-SELECT
-      a,
-      c
+SELECT a, c
   FROM bigquery_scan(
       'my-gcp-project.my_dataset.function_scan_test',
       filter := 'b = 4'
@@ -258,10 +257,7 @@ ATTACH 'project=my-gcp-project dataset=my_dataset'
   AS bq (TYPE bigquery, READ_ONLY);
 
 -- Query a native table through the attached catalog.
-SELECT
-      c,
-      a,
-      b
+SELECT c, a, b
   FROM bq.my_dataset.function_scan_test
   ORDER BY a;
 ┌─────────┬───────┬───────┐
