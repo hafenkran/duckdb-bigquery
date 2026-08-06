@@ -1,5 +1,13 @@
 # DuckDB BigQuery Extension
 
+<p align="center">
+  <a href="https://duckdb.org/community_extensions/extensions/bigquery"><img alt="DuckDB Community Extension" src="https://img.shields.io/badge/DuckDB-Community%20Extension-FFF000?logo=duckdb&amp;logoColor=000"></a>
+  <a href="https://github.com/hafenkran/duckdb-bigquery/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/hafenkran/duckdb-bigquery?label=Latest%20Release"></a>
+  <a href="https://github.com/hafenkran/duckdb-bigquery/actions/workflows/MainDistributionPipeline.yml"><img alt="Build and Test" src="https://img.shields.io/github/actions/workflow/status/hafenkran/duckdb-bigquery/MainDistributionPipeline.yml?branch=main&amp;label=Build"></a>
+  <a href="https://github.com/hafenkran/duckdb-bigquery/actions/workflows/docs.yml"><img alt="Documentation" src="https://img.shields.io/github/actions/workflow/status/hafenkran/duckdb-bigquery/docs.yml?branch=main&amp;label=Documentation"></a>
+  <a href="https://github.com/hafenkran/duckdb-bigquery/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/hafenkran/duckdb-bigquery?label=License"></a>
+</p>
+
 This community extension allows [DuckDB](https://duckdb.org) to query data from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST API. It enables users to access, manage, and manipulate their BigQuery datasets/tables directly from DuckDB using standard SQL queries. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel. See [Important Notes](#important-notes-on-using-google-bigquery) for disclaimers and usage information.
 
 > This extension supports the following builds: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`, and `windows_amd64`. The builds `wasm_mvp`, `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
@@ -38,7 +46,7 @@ Alternatively, you can authenticate using a service account. First, create a ser
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/my/service-account-credentials.json"
 
 # On Windows
-set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\my\service-account-credentials.json"
+set "GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\my\service-account-credentials.json"
 ```
 
 On Dataproc, Compute Engine, GKE, and Cloud Run, no service-account key file is required when the runtime has an

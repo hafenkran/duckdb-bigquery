@@ -1,0 +1,105 @@
+site_name: DuckDB BigQuery Extension
+site_url: https://hafenkran.github.io/duckdb-bigquery/
+site_description: Query, read, and write Google BigQuery data from DuckDB
+site_author: duckdb-bigquery contributors
+repo_name: hafenkran/duckdb-bigquery
+repo_url: https://github.com/hafenkran/duckdb-bigquery
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: build/docs-site
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/link
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off
+        name: Switch to system preference
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.footer
+    - navigation.expand
+    - navigation.indexes
+    - navigation.tracking
+    - content.code.copy
+    - content.action.edit
+    - content.tooltips
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"/_]+'
+
+markdown_extensions:
+  - attr_list
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - docs
+      check_paths: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Install, Attach, and Query: getting-started/install-attach-and-query.md
+      - Authentication & Secrets: getting-started/authentication-and-secrets.md
+      - Required Permissions: getting-started/required-permissions.md
+  - User Guide:
+      - Attaching Projects: user-guide/attach.md
+      - "Managing Tables & Datasets": user-guide/managing-tables-and-schemas.md
+      - Reading & Queries: user-guide/reading-and-queries.md
+      - "Writing & Modifying Data": user-guide/writing.md
+      - Extract & Load: user-guide/extract-and-load.md
+      - "Executing & Monitoring Jobs": user-guide/jobs-and-transfers.md
+      - Working with Geometries: user-guide/geometry-support.md
+      - Additional Settings: user-guide/configuration.md
+  - Concepts:
+      - concepts/index.md
+      - Architecture: concepts/architecture.md
+      - Data Type Mapping: concepts/data-types.md
+  - Function Reference:
+      - function-reference/index.md
+      - bigquery_scan: function-reference/bigquery-scan.md
+      - bigquery_query: function-reference/bigquery-query.md
+      - bigquery_execute: function-reference/bigquery-execute.md
+      - bigquery_load: function-reference/bigquery-load.md
+      - bigquery_extract: function-reference/bigquery-extract.md
+      - bigquery_jobs: function-reference/bigquery-jobs.md
+      - bigquery_attach: function-reference/bigquery-attach.md
+      - bigquery_clear_cache: function-reference/bigquery-clear-cache.md
+      - bigquery_normalize_geography: function-reference/bigquery-normalize-geography.md
+  - Troubleshooting: troubleshooting.md
+  - Changelog: changelog.md
+  - License: license.md
