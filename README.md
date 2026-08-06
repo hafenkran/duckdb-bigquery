@@ -99,6 +99,21 @@ inspection, see the
 including `bigquery_scan`, `bigquery_query`, `bigquery_execute`,
 `bigquery_load`, `bigquery_extract`, and `bigquery_jobs`.
 
+## Windows Certificate Revocation
+
+On Windows builds using Schannel, certificate verification can fail if the CRL
+or OCSP distribution point cannot be reached. To tolerate only missing or
+offline revocation endpoints for cURL-based BigQuery REST and authentication
+requests, enable:
+
+```sql
+SET bq_curl_ssl_revoke_best_effort = true;
+```
+
+This setting does not disable certificate verification and does not accept a
+certificate that Windows can identify as revoked. It does not affect the gRPC
+transport used by the BigQuery Storage APIs.
+
 ## Building from Source
 
 The extension uses VCPKG for dependency management. The following example
