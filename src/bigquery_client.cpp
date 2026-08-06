@@ -42,11 +42,13 @@
 #include "google/cloud/internal/curl_options.h"
 #include "google/cloud/internal/rest_options.h"
 #include "google/cloud/internal/unified_rest_credentials.h"
+#include "google/cloud/rest_options.h"
 
 #include "arrow/api.h"
 #include "arrow/io/api.h"
 #include "arrow/ipc/api.h"
 #include "arrow/ipc/writer.h"
+#include <curl/curl.h>
 #include "grpcpp/grpcpp.h"
 
 #include <chrono>
@@ -60,6 +62,18 @@ namespace duckdb {
 namespace bigquery {
 namespace {
 
+static void ApplyCurlTransportOptions(google::cloud::Options &options) {
+    auto ca_path = BigquerySettings::CurlCaBundlePath();
+    if (!ca_path.empty()) {
+        options.set<google::cloud::CARootsFilePathOption>(ca_path);
+    }
+
+    if (BigquerySettings::CurlSslRevokeBestEffort()) {
+        options.set<google::cloud::experimental::CurlSslOptionsOption>(
+            static_cast<long>(CURLSSLOPT_REVOKE_BEST_EFFORT));
+    }
+}
+
 static google::cloud::Options BigqueryAuthOptions() {
     auto options = google::cloud::Options{};
     auto auth_timeout = BigquerySettings::GetAuthTimeoutSeconds();
@@ -70,10 +84,7 @@ static google::cloud::Options BigqueryAuthOptions() {
         options.set<google::cloud::rest_internal::DownloadStallMinimumRateOption>(1);
     }
 
-    auto ca_path = BigquerySettings::CurlCaBundlePath();
-    if (!ca_path.empty()) {
-        options.set<google::cloud::CARootsFilePathOption>(ca_path);
-    }
+    ApplyCurlTransportOptions(options);
     return options;
 }
 
@@ -417,11 +428,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
         }
     }
 
-    // Set CA bundle path if provided
-    auto ca_path = BigquerySettings::CurlCaBundlePath();
-    if (!ca_path.empty()) {
-        options.set<google::cloud::CARootsFilePathOption>(ca_path);
-    }
+    ApplyCurlTransportOptions(options);
 
     // Set default credentials if no secret credentials were set
     if (!credentials_set) {
