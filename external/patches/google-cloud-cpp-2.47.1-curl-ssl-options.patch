@@ -1,0 +1,207 @@
+diff --git a/google/cloud/rest_options.h b/google/cloud/rest_options.h
+index 38a9e09d..0a9b9387 100644
+--- a/google/cloud/rest_options.h
++++ b/google/cloud/rest_options.h
+@@ -66,6 +66,17 @@ struct SslCtxCallbackOption {
+   using Type = SslCtxCallback;
+ };
+
++/**
++ * Set the CURLOPT_SSL_OPTIONS bitmask on libcurl handles.
++ *
++ * Values are backend-specific combinations of CURLSSLOPT_* constants. This is
++ * an advanced option and should only be used when the corresponding libcurl
++ * backend behavior is understood.
++ */
++struct CurlSslOptionsOption {
++  using Type = long;
++};
++
+ }  // namespace experimental
+
+ /**
+@@ -105,7 +116,8 @@ struct Interface {
+ using RestOptionList =
+     ::google::cloud::OptionList<QuotaUserOption, RestTracingOptionsOption,
+                                 ServerTimeoutOption, UserIpOption, Interface,
+-                                experimental::SslCtxCallbackOption>;
++                                experimental::SslCtxCallbackOption,
++                                experimental::CurlSslOptionsOption>;
+
+ GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_END
+ }  // namespace cloud
+diff --git a/google/cloud/internal/curl_handle_factory.h b/google/cloud/internal/curl_handle_factory.h
+index d6b49beb..428ce7a2 100644
+--- a/google/cloud/internal/curl_handle_factory.h
++++ b/google/cloud/internal/curl_handle_factory.h
+@@ -64,6 +64,8 @@ class CurlHandleFactory {
+   // Only virtual for testing purposes.
+   virtual void SetCurlStringOption(CURL* handle, CURLoption option_tag,
+                                    char const* value);
++  virtual void SetCurlLongOption(CURL* handle, CURLoption option_tag,
++                                 long value);
+ };
+
+ std::shared_ptr<CurlHandleFactory> GetDefaultCurlHandleFactory(
+@@ -111,6 +113,7 @@ class DefaultCurlHandleFactory : public CurlHandleFactory {
+   absl::optional<std::string> capath_;
+   std::vector<absl::string_view> ca_certs_;
+   experimental::SslCtxCallback ssl_ctx_callback_;
++  absl::optional<long> curl_ssl_options_;
+ };
+
+ /**
+@@ -166,6 +169,7 @@ class PooledCurlHandleFactory : public CurlHandleFactory {
+   absl::optional<std::string> capath_;
+   std::vector<absl::string_view> ca_certs_;
+   experimental::SslCtxCallback ssl_ctx_callback_;
++  absl::optional<long> curl_ssl_options_;
+
+   mutable std::mutex handles_mu_;
+   std::deque<CurlPtr> handles_;
+diff --git a/google/cloud/internal/curl_handle_factory.cc b/google/cloud/internal/curl_handle_factory.cc
+index fd501423..9ff5b200 100644
+--- a/google/cloud/internal/curl_handle_factory.cc
++++ b/google/cloud/internal/curl_handle_factory.cc
+@@ -118,6 +118,11 @@ void CurlHandleFactory::SetCurlStringOption(CURL* handle, CURLoption option_tag,
+   curl_easy_setopt(handle, option_tag, value);
+ }
+
++void CurlHandleFactory::SetCurlLongOption(CURL* handle, CURLoption option_tag,
++                                          long value) {
++  curl_easy_setopt(handle, option_tag, value);
++}
++
+ std::shared_ptr<CurlHandleFactory> GetDefaultCurlHandleFactory() {
+   static auto const* const kFactory =
+       new auto(std::make_shared<DefaultCurlHandleFactory>());
+@@ -127,7 +132,8 @@ std::shared_ptr<CurlHandleFactory> GetDefaultCurlHandleFactory() {
+ std::shared_ptr<CurlHandleFactory> GetDefaultCurlHandleFactory(
+     Options const& options) {
+   if (!options.get<CARootsFilePathOption>().empty() ||
+-      !options.get<experimental::CAInMemoryOption>().empty()) {
++      !options.get<experimental::CAInMemoryOption>().empty() ||
++      options.has<experimental::CurlSslOptionsOption>()) {
+     return std::make_shared<DefaultCurlHandleFactory>(options);
+   }
+
+@@ -135,6 +141,10 @@ std::shared_ptr<CurlHandleFactory> GetDefaultCurlHandleFactory(
+ }
+
+ DefaultCurlHandleFactory::DefaultCurlHandleFactory(Options const& o) {
++  if (o.has<experimental::CurlSslOptionsOption>()) {
++    curl_ssl_options_ = o.get<experimental::CurlSslOptionsOption>();
++  }
++
+   if (o.has<experimental::SslCtxCallbackOption>()) {
+     ssl_ctx_callback_ = o.get<experimental::SslCtxCallbackOption>();
+     return;
+@@ -182,6 +192,10 @@ void DefaultCurlHandleFactory::CleanupMultiHandle(CurlMulti m,
+ }
+
+ void DefaultCurlHandleFactory::SetCurlOptions(CURL* handle) {
++  if (curl_ssl_options_) {
++    SetCurlLongOption(handle, CURLOPT_SSL_OPTIONS, *curl_ssl_options_);
++  }
++
+   if (ssl_ctx_callback_) {
+     SetCurlStringOption(handle, CURLOPT_CAINFO, nullptr);
+     SetCurlStringOption(handle, CURLOPT_CAPATH, nullptr);
+@@ -227,6 +241,10 @@ void DefaultCurlHandleFactory::SetCurlOptions(CURL* handle) {
+ PooledCurlHandleFactory::PooledCurlHandleFactory(std::size_t maximum_size,
+                                                  Options const& o)
+     : maximum_size_(maximum_size) {
++  if (o.has<experimental::CurlSslOptionsOption>()) {
++    curl_ssl_options_ = o.get<experimental::CurlSslOptionsOption>();
++  }
++
+   if (o.has<experimental::SslCtxCallbackOption>()) {
+     ssl_ctx_callback_ = o.get<experimental::SslCtxCallbackOption>();
+     return;
+@@ -353,6 +371,10 @@ void PooledCurlHandleFactory::CleanupMultiHandle(CurlMulti m,
+ }
+
+ void PooledCurlHandleFactory::SetCurlOptions(CURL* handle) {
++  if (curl_ssl_options_) {
++    SetCurlLongOption(handle, CURLOPT_SSL_OPTIONS, *curl_ssl_options_);
++  }
++
+   if (ssl_ctx_callback_) {
+     SetCurlStringOption(handle, CURLOPT_CAINFO, nullptr);
+     SetCurlStringOption(handle, CURLOPT_CAPATH, nullptr);
+diff --git a/google/cloud/internal/curl_handle_factory_test.cc b/google/cloud/internal/curl_handle_factory_test.cc
+index 6f37a844..29fbf1a9 100644
+--- a/google/cloud/internal/curl_handle_factory_test.cc
++++ b/google/cloud/internal/curl_handle_factory_test.cc
+@@ -41,9 +41,15 @@ class OverriddenDefaultCurlHandleFactory : public DefaultCurlHandleFactory {
+     set_options_[option_tag] = value;
+     DefaultCurlHandleFactory::SetCurlStringOption(handle, option_tag, value);
+   }
++  void SetCurlLongOption(CURL* handle, CURLoption option_tag,
++                         long value) override {
++    set_long_options_[option_tag] = value;
++    DefaultCurlHandleFactory::SetCurlLongOption(handle, option_tag, value);
++  }
+
+  public:
+   std::map<int, std::string> set_options_;
++  std::map<int, long> set_long_options_;
+ };
+
+ // Version of DefaultCurlHandleFactory that keeps track of what calls have been
+@@ -62,9 +68,15 @@ class OverriddenPooledCurlHandleFactory : public PooledCurlHandleFactory {
+     set_options_[option_tag] = value;
+     PooledCurlHandleFactory::SetCurlStringOption(handle, option_tag, value);
+   }
++  void SetCurlLongOption(CURL* handle, CURLoption option_tag,
++                         long value) override {
++    set_long_options_[option_tag] = value;
++    PooledCurlHandleFactory::SetCurlLongOption(handle, option_tag, value);
++  }
+
+  public:
+   std::map<int, std::string> set_options_;
++  std::map<int, long> set_long_options_;
+ };
+
+ TEST(CurlHandleFactoryTest,
+@@ -85,6 +97,16 @@ TEST(CurlHandleFactoryTest, DefaultFactoryChannelOptionsCallsSetOptions) {
+   EXPECT_THAT(object_under_test.set_options_, ElementsAre(expected));
+ }
+
++TEST(CurlHandleFactoryTest, DefaultFactorySslOptionsCallsSetOptions) {
++  auto options = Options{}.set<experimental::CurlSslOptionsOption>(4L);
++  OverriddenDefaultCurlHandleFactory object_under_test(options);
++
++  auto const expected = std::make_pair(CURLOPT_SSL_OPTIONS, 4L);
++
++  object_under_test.CreateHandle();
++  EXPECT_THAT(object_under_test.set_long_options_, ElementsAre(expected));
++}
++
+ TEST(CurlHandleFactoryTest, PooledFactoryNoChannelOptionsDoesntCallSetOptions) {
+   OverriddenPooledCurlHandleFactory object_under_test(2);
+
+@@ -110,6 +132,22 @@ TEST(CurlHandleFactoryTest, PooledFactoryChannelOptionsCallsSetOptions) {
+   EXPECT_THAT(object_under_test.set_options_, ElementsAre(expected));
+ }
+
++TEST(CurlHandleFactoryTest, PooledFactorySslOptionsCallsSetOptions) {
++  auto options = Options{}.set<experimental::CurlSslOptionsOption>(4L);
++  OverriddenPooledCurlHandleFactory object_under_test(2, options);
++
++  auto const expected = std::make_pair(CURLOPT_SSL_OPTIONS, 4L);
++
++  {
++    object_under_test.CreateHandle();
++    EXPECT_THAT(object_under_test.set_long_options_, ElementsAre(expected));
++  }
++  object_under_test.set_long_options_.clear();
++
++  object_under_test.CreateHandle();
++  EXPECT_THAT(object_under_test.set_long_options_, ElementsAre(expected));
++}
++
+ TEST(CurlHandleFactoryTest, Bug14132Regression) {
+   auto constexpr kPoolSize = 32;
+   PooledCurlHandleFactory pool(kPoolSize);

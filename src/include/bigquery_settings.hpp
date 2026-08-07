@@ -115,6 +115,15 @@ public:
         CurlCaBundlePath() = path;
     }
 
+    static bool &CurlSslRevokeBestEffort() {
+        static bool CURL_SSL_REVOKE_BEST_EFFORT = false;
+        return CURL_SSL_REVOKE_BEST_EFFORT;
+    }
+
+    static void SetCurlSslRevokeBestEffort(ClientContext &context, SetScope scope, Value &parameter) {
+        CurlSslRevokeBestEffort() = BooleanValue::Get(parameter);
+    }
+
     static void TryDetectCurlCaBundlePath() {
         string path = DetectCAPath();
         if (path.empty()) {

@@ -665,9 +665,23 @@ D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
 | `bq_experimental_use_info_schema`      | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                                                                           | `true`  |
 | `bq_experimental_enable_sql_parser`    | [EXPERIMENTAL] - Enable BigQuery CREATE TABLE clause parsing extensions (PARTITION BY / CLUSTER BY / OPTIONS)                                                                                                                                        | `false` |
 | `bq_curl_ca_bundle_path`               | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                                                                            |         |
+| `bq_curl_ssl_revoke_best_effort`       | On Windows with Schannel, allow cURL requests to continue when certificate revocation distribution points are missing or offline. Known revoked certificates are still rejected.                                                                    | `false` |
 | `bq_max_read_streams`                  | Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work, and BigQuery may return fewer streams than requested. | `0`     |
 | `bq_enable_inflight_request_windowing` | Whether to keep multiple BigQuery Storage Write `AppendRows` requests in flight before waiting for acknowledgements. Usually faster, but slightly less memory efficient. Set to `false` to fall back to synchronous write/read lockstep.             | `true`  |
 | `bq_arrow_compression`                 | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                                                                         | `ZSTD`  |
+
+On Windows builds using Schannel, certificate verification can fail if the CRL
+or OCSP distribution point cannot be reached. To tolerate only missing or
+offline revocation endpoints for cURL-based BigQuery REST and authentication
+requests, enable:
+
+```sql
+SET bq_curl_ssl_revoke_best_effort = true;
+```
+
+This setting does not disable certificate verification and does not accept a
+certificate that Windows can identify as revoked. It does not affect the gRPC
+transport used by the BigQuery Storage APIs.
 
 ### Experimental Aggregate Pushdown
 
