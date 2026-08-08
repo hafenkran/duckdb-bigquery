@@ -1,22 +1,25 @@
-# Troubleshooting
+# Troubleshooting & Limitations
 
-Use this page for operational failures and current extension limitations.
-For tuning and the complete settings reference, see
-[Additional Settings](user-guide/configuration.md).
+The extension connects systems with different execution models, SQL semantics,
+type systems, and release cycles. Use the troubleshooting guidance for
+unexpected failures, then review the known limitations and alternatives.
 
-## Permission Failures
+## Troubleshooting
 
-If [authentication](getting-started/authentication-and-secrets.md) succeeds but a later API
-request fails, the active identity usually lacks dataset, table, job, Storage
-Read, or Storage Write permissions.
+### Permission Failures
+
+If [authentication](getting-started/authentication-and-secrets.md) succeeds but
+a later API request fails, the active identity usually lacks dataset, table,
+job, Storage Read, or Storage Write permissions.
 
 Check:
 
 1. which storage and billing projects are configured;
 2. whether the identity can use the billing project;
-3. the operation-specific [IAM permissions](getting-started/required-permissions.md).
+3. the operation-specific
+   [IAM permissions](getting-started/required-permissions.md).
 
-## TLS and Certificates
+### TLS and Certificates
 
 Set a readable CA bundle for cURL-based REST clients:
 
@@ -25,16 +28,29 @@ Set a readable CA bundle for cURL-based REST clients:
 SET bq_curl_ca_bundle_path = '/path/to/ca-bundle.pem';
 ```
 
-On Windows, gRPC may additionally need
-`GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` before DuckDB starts. Follow the Google
-Cloud C++ client's
-[Windows TLS setup](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows)
-and keep the root bundle current. Do not disable certificate verification.
+See
+[`bq_curl_ca_bundle_path`](user-guide/configuration.md#type-and-diagnostic-settings)
+for the setting details. Keep the root bundle current and do not disable
+certificate verification.
 
-See [`bq_curl_ca_bundle_path`](user-guide/configuration.md#type-and-diagnostic-settings)
-for the setting details.
+### Windows gRPC Configuration
 
-## Common Problems
+On Windows, gRPC requires an additional environment variable to configure the
+trust store for SSL certificates. Download the root certificates and configure
+the variable as described in the Google Cloud C++ client's
+[official documentation](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows):
+
+```batch title="Command Prompt"
+@powershell -NoProfile -ExecutionPolicy unrestricted -Command ^
+    (new-object System.Net.WebClient).Downloadfile( ^
+        'https://pki.google.com/roots.pem', 'roots.pem')
+set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=%cd%\roots.pem
+```
+
+This downloads `roots.pem` into the current directory and sets
+`GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` to that file for the current Command Prompt
+session. Start DuckDB from the same session so gRPC can use the configured trust
+store.
 
 ### A View or External Table Does Not Scan
 
@@ -67,7 +83,8 @@ SET bq_max_read_streams = 0;
 ```
 
 BigQuery can return fewer streams than requested. See
-[Storage Read Settings](user-guide/configuration.md#storage-read-settings) for details.
+[Storage Read Settings](user-guide/configuration.md#storage-read-settings) for
+details.
 
 ### A Function Rejects Billing Options
 
@@ -79,8 +96,8 @@ are rejected. `bigquery_execute` has no `billing_project` parameter.
 
 Timeouts stop local waiting but do not guarantee cancellation. Inspect the job
 with `bigquery_jobs` or the Google Cloud console. See
-[Executing & Monitoring Jobs](user-guide/jobs-and-transfers.md#timeouts-and-costs) for job timeout
-semantics.
+[Executing & Monitoring Jobs](user-guide/jobs-and-transfers.md#timeouts-and-costs)
+for job timeout semantics.
 
 ### Inspect Generated GoogleSQL
 
@@ -94,21 +111,61 @@ could contain sensitive values. See
 [Type and Diagnostic Settings](user-guide/configuration.md#type-and-diagnostic-settings)
 for details.
 
-## Known Limitations
+## Limitations
 
-| Area | Current limitation | Alternative or details |
-| --- | --- | --- |
-| Platforms | Community builds do not support WebAssembly or Windows MinGW | Use one of the platforms listed on [Home](index.md#what-you-can-do) |
-| Native scans | Views and ordinary external tables cannot be scanned directly | Use [`bigquery_query`](user-guide/reading-and-queries.md#bigquery-query) |
-| REST results | BigQuery rejects result arrays containing `NULL` elements and may still create a job in optional job-creation mode | See [`bigquery_query`](user-guide/reading-and-queries.md#bigquery-query) |
-| Type reads | `BIGNUMERIC` is exposed as exact `VARCHAR` | See [Data Type Mapping](concepts/data-types.md#bignumeric-and-arrays) |
-| Type writes | Several very wide, unsigned, and timestamp types are unsupported; nested arrays are rejected | See [Data Type Mapping](concepts/data-types.md) |
-| Attached SQL | Only documented DDL and row-mutation forms are supported | See [Managing Tables & Datasets](user-guide/managing-tables-and-schemas.md) and [Writing & Modifying Data](user-guide/writing.md) |
-| Table clauses | `PARTITION BY`, `CLUSTER BY`, and `OPTIONS` require the experimental parser | See [table options](user-guide/managing-tables-and-schemas.md#create-a-table-with-options) and [partitioning and clustering](user-guide/managing-tables-and-schemas.md#partition-and-cluster-a-table) |
-| Timeouts | Stopping the local wait does not cancel a remote job | See [Executing & Monitoring Jobs](user-guide/jobs-and-transfers.md#timeouts-and-costs) |
-| Metadata | Attached metadata is cached and remote changes can propagate slowly | See [Refresh Metadata](user-guide/attach.md#refresh-metadata-and-detach) |
-| Transactions | Remote API operations are not part of a multi-statement cross-system transaction | Keep execution boundaries explicit |
+- **DuckDB version support**<br>
+  Current development targets DuckDB 1.5.x. The latest extension changes are
+  not currently backported to older DuckDB release branches.
 
-GoogleSQL and DuckDB can differ in casting, floating-point, string, and
-timestamp semantics. Make the execution boundary explicit when exact semantics
-matter.
+- **Community build platforms**<br>
+  Community builds are available for `linux_amd64`, `linux_arm64`, `osx_amd64`,
+  `osx_arm64`, and `windows_amd64`. WebAssembly and Windows MinGW builds are not
+  supported.
+
+- **[Native table scans](user-guide/reading-and-queries.md#bigquery-scan)**<br>
+  Storage Read cannot directly scan logical views, materialized views, or
+  ordinary external tables. Use `bigquery_query` to execute their logic in
+  BigQuery.
+
+- **[REST query results](user-guide/reading-and-queries.md#bigquery-query)**<br>
+  The optional `use_rest_api := true` path is intended for small, simple
+  results. BigQuery rejects result arrays containing `NULL` elements, and
+  optional job creation can still create a query job.
+
+- **[BIGNUMERIC](concepts/data-types.md#bignumeric-and-arrays)**<br>
+  BigQuery `BIGNUMERIC` exceeds DuckDB's maximum decimal precision and is read
+  as exact `VARCHAR`.
+
+- **[Write types and nested arrays](concepts/data-types.md)**<br>
+  Several wide, unsigned, and timestamp types cannot be written to BigQuery.
+  BigQuery also rejects arrays of arrays.
+
+- **[Table constraints](user-guide/managing-tables-and-schemas.md#create-a-table)**<br>
+  Attached table creation supports column defaults and `NOT NULL`, but not
+  primary keys, foreign keys, `UNIQUE`, `CHECK`, or indexes.
+
+- **[Attached DDL and DML](user-guide/writing.md#limitations-and-safety)**<br>
+  Attached catalogs support only the documented statement forms. Unsupported
+  clauses, incompatible columns, and filters that cannot be translated safely
+  are rejected.
+
+- **[BigQuery-specific CREATE clauses](user-guide/configuration.md#bigquery-specific-create-clauses)**<br>
+  `OPTIONS`, `PARTITION BY`, and `CLUSTER BY` require the additional
+  experimental parser setting.
+
+- **[Metadata caching and propagation](user-guide/attach.md#refresh-metadata)**<br>
+  Attached metadata is cached, and BigQuery changes can take a short time to
+  propagate. Refresh the cache when a long-lived connection exposes stale
+  metadata.
+
+- **[Job timeouts](user-guide/jobs-and-transfers.md#timeouts-and-costs)**<br>
+  A local timeout stops waiting but does not guarantee remote cancellation. A
+  BigQuery job can continue running and incurring charges.
+
+- **[Transaction boundaries](concepts/architecture.md#attached-catalog-and-planning)**<br>
+  Completed BigQuery DDL, DML, and Storage Write operations are not part of a
+  multi-statement transaction that DuckDB can roll back.
+
+- **[DuckDB and GoogleSQL semantics](user-guide/reading-and-queries.md#experimental-aggregate-pushdown)**<br>
+  Casts, floating-point values, strings, and timestamps can behave differently
+  depending on whether DuckDB or BigQuery executes the operation.

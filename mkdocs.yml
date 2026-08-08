@@ -100,6 +100,6 @@ nav:
       - bigquery_attach: function-reference/bigquery-attach.md
       - bigquery_clear_cache: function-reference/bigquery-clear-cache.md
       - bigquery_normalize_geography: function-reference/bigquery-normalize-geography.md
-  - Troubleshooting: troubleshooting.md
+  - "Troubleshooting & Limitations": troubleshooting.md
   - Changelog: changelog.md
   - License: license.md
