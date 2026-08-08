@@ -20,15 +20,7 @@ storage extensions like
 [SQLite](https://github.com/duckdb/duckdb-sqlite), this extension offers a
 similar feel.
 
-!!! warning "Disclaimer: Independent community project"
-
-    This project is independently maintained and is not affiliated with,
-    endorsed by, or officially supported by Google LLC or DuckDB Labs.
-    BigQuery and DuckDB are trademarks of their respective owners. The
-    extension is provided without warranties; users are responsible for their
-    use, compliance, and incurred charges.
-
-## What You Can Do
+With the extension, you can:
 
 - Attach a project or dataset as a DuckDB catalog and explore it with `SHOW`
   and `DESCRIBE`.
@@ -41,18 +33,28 @@ similar feel.
 - Read and write BigQuery `GEOGRAPHY` as DuckDB
   [`GEOMETRY('OGC:CRS84')`](user-guide/geometry-support.md).
 
-!!! info "Supported builds"
+!!! info "Version and platform compatibility"
 
     Community builds are available for `linux_amd64`, `linux_arm64`,
-    `osx_amd64`, `osx_arm64`, and `windows_amd64`.
-    The builds `wasm_mvp`, `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
+    `osx_amd64`, `osx_arm64`, and `windows_amd64`. The builds `wasm_mvp`,
+    `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
+
+    Current development targets **DuckDB 1.5**. The latest extension changes are
+    available only in builds for **DuckDB 1.5** and are not backported
+    to older DuckDB release branches.
 
 To make your first connection, follow
 [Install, Attach, and Query](getting-started/install-attach-and-query.md).
 
 ## Important Notes
 
+!!! warning "Disclaimer: Independent community project"
 
+    This project is independently maintained and is not affiliated with,
+    endorsed by, or officially supported by Google LLC or DuckDB Labs.
+    BigQuery and DuckDB are trademarks of their respective owners. The
+    extension is provided without warranties; users are responsible for their
+    use, compliance, and incurred charges.
 
 When using this software with Google BigQuery, please ensure your usage complies with the [Google API Terms of Service](https://developers.google.com/terms). Be mindful of the usage limits and quotas, and adhere to Google's Fair Use Policy.
 

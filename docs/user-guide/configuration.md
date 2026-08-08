@@ -32,7 +32,7 @@ SELECT
 ```
 
 For operational errors and known limitations, see
-[Troubleshooting](../troubleshooting.md).
+[Troubleshooting & Limitations](../troubleshooting.md).
 
 ## Settings
 
