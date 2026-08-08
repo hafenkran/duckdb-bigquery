@@ -8,157 +8,77 @@
   <a href="https://github.com/hafenkran/duckdb-bigquery/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/hafenkran/duckdb-bigquery?label=License"></a>
 </p>
 
-This community extension allows [DuckDB](https://duckdb.org) to query data from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST API. It enables users to access, manage, and manipulate their BigQuery datasets/tables directly from DuckDB using standard SQL queries. Inspired by official DuckDB RDBMS extensions like [MySQL](https://duckdb.org/docs/extensions/mysql.html), [PostgreSQL](https://github.com/duckdb/postgres_scanner), and [SQLite](https://github.com/duckdb/sqlite_scanner), this extension offers a similar feel. See [Important Notes](#important-notes-on-using-google-bigquery) for disclaimers and usage information.
+This community extension allows [DuckDB](https://duckdb.org) to query data
+from Google BigQuery using a mix of BigQuery Storage (Read/Write) and REST APIs.
+You can explore, query, create, and modify BigQuery tables and datasets
+directly from DuckDB using standard SQL queries. Dedicated functions cover
+direct table scans, GoogleSQL queries, load and extract jobs, and job
+inspection.
 
-> This extension supports the following builds: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`, and `windows_amd64`. The builds `wasm_mvp`, `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
+Inspired by official DuckDB storage extensions like
+[MySQL](https://duckdb.org/docs/current/core_extensions/mysql),
+[PostgreSQL](https://github.com/duckdb/duckdb-postgres), and
+[SQLite](https://github.com/duckdb/duckdb-sqlite), this extension offers a
+similar feel.
 
-## Preliminaries
+With the extension, you can:
 
-You must configure authentication before using the BigQuery extension. DuckDB BigQuery secrets take priority when their
-scope matches the target project. Otherwise, the extension uses Google Application Default Credentials (ADC), including
-`GOOGLE_APPLICATION_CREDENTIALS`, gcloud ADC files, and attached service accounts on Google-hosted runtimes such as
-Dataproc or Compute Engine. Common setup paths are:
+- Attach a project or dataset as a DuckDB catalog and explore it with `SHOW`
+  and `DESCRIBE`.
+- Read native tables through the BigQuery Storage Read API with projection and
+  filter pushdown.
+- Run GoogleSQL and read views, materialized views, and external tables.
+- Create and alter datasets, tables, and views with DuckDB SQL.
+- Insert, update, and delete data, or write DuckDB query results to BigQuery.
+- Submit and inspect query, load, and extract jobs.
+- Read and write BigQuery `GEOGRAPHY` as DuckDB `GEOMETRY`.
 
-1. **DuckDB Secrets** ([Option 3](#authentication-option-3-using-duckdb-secrets)) - Best for multi-tenant or server use; per-connection isolation and easy rotation.
-2. **Service Account ADC** ([Option 2](#authentication-option-2-configure-adc-with-service-account-keys)) - `GOOGLE_APPLICATION_CREDENTIALS` or an attached Google Cloud service account.
-3. **User Account** ([Option 1](#authentication-option-1-configure-adc-with-your-google-account)) - Application Default Credentials created by gcloud auth application-default login.
+Read the full **[documentation](https://hafenkran.github.io/duckdb-bigquery/)** for more details.
 
-Secrets are explicit and connection-scoped; ADC is resolved by the Google client library after no matching secret is
-found. See [Required Permissions](#required-permissions) for the BigQuery roles and permissions commonly needed by the
-extension.
-
-### Authentication Option 1: Configure ADC with your Google Account
-
-To authenticate using your Google Account, first install the [Google Cloud CLI (gcloud)](https://cloud.google.com/sdk/gcloud). Download the latest version from the [Google Cloud CLI installation page](https://cloud.google.com/sdk/docs/install) and follow the instructions to select and authenticate your Google Cloud project for using BigQuery.
-
-After installation, run the following command to authenticate and follow the steps along:
-
-```bash
-gcloud auth application-default login
-```
-
-### Authentication Option 2: Configure ADC with Service Account Keys
-
-Alternatively, you can authenticate using a service account. First, create a service account in the Google Cloud Console, assign the necessary roles, and download the JSON key file. Next, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the file path. For example:
-
-```bash
-# On Linux or macOS
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/my/service-account-credentials.json"
-
-# On Windows
-set "GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\my\service-account-credentials.json"
-```
-
-On Dataproc, Compute Engine, GKE, and Cloud Run, no service-account key file is required when the runtime has an
-attached service account. ADC can fetch tokens from the metadata server; make sure that service account has the required IAM permissions and access scopes.
-
-### Authentication Option 3: Using DuckDB Secrets (experimental)
-
-As a third option, you can authenticate using [DuckDB Secrets](https://duckdb.org/docs/configuration/secrets_manager.html), which provide a way to manage credentials within your DuckDB session. First, create a secret with one supported authentication method. The `SCOPE` parameter specifies which BigQuery project the secret applies to using the format `bq://project_id`.
-
-> **Note**: DuckDB Secrets are particularly useful for multi-tenant scenarios, where you need to authenticate with different credentials for different BigQuery projects within the same DuckDB session. Simply create multiple secrets with different `SCOPE` parameters, and each will be automatically applied to its respective project.
-
-The following authentication parameters are currently supported:
-
-- **`ACCESS_TOKEN`** - Temporary OAuth2 access token (obtainable via `gcloud auth print-access-token`)
-- **`SERVICE_ACCOUNT_PATH`** - Path to a service account key file on your filesystem
-- **`SERVICE_ACCOUNT_JSON`** - Inline JSON content of a service account key
-- **`EXTERNAL_ACCOUNT_PATH`** - Path to an external account credentials file (for Workload Identity Federation)
-- **`EXTERNAL_ACCOUNT_JSON`** - Inline JSON content of external account credentials (for Workload Identity Federation)
-- **`REFRESH_TOKEN` + `CLIENT_ID` + `CLIENT_SECRET`** - OAuth authorized user credentials; `TOKEN_URI` is optional and defaults to Google's OAuth token endpoint
-
-For example:
-
-```sql
--- Create a secret using a service account key file path
-CREATE PERSISTENT SECRET bigquery_secret (
-    TYPE BIGQUERY,
-    SCOPE 'bq://my_gcp_project',
-    SERVICE_ACCOUNT_PATH '/path/to/service-account-key.json'
-);
-```
-
-To update an existing secret when credentials change or expire, use `CREATE OR REPLACE SECRET`. Once created, the secret will be automatically used when you interact with the specified project.
-
-### Windows gRPC Configuration
-
-On Windows, gRPC requires an additional environment variable to configure the trust store for SSL certificates. Download and configure it using (see [official documentation](https://github.com/googleapis/google-cloud-cpp/blob/f2bd9a9af590f58317a216627ae9e2399c245bab/google/cloud/storage/quickstart/README.md#windows)):
-
-```bash
-@powershell -NoProfile -ExecutionPolicy unrestricted -Command ^
-    (new-object System.Net.WebClient).Downloadfile( ^
-        'https://pki.google.com/roots.pem', 'roots.pem')
-set GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=%cd%\roots.pem
-```
-
-This downloads the `roots.pem` file and sets the `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` environment variable to its location.
-
-## Required Permissions
-
-The exact IAM setup depends on which extension path you use. In practice, you usually need a mix of:
-
-- project-level job permissions such as `bigquery.jobs.create`, `bigquery.jobs.list`, or `bigquery.jobs.listAll`
-- project-level Storage Read API permissions such as `bigquery.readsessions.create`
-- dataset/table/view permissions such as `bigquery.tables.getData`, `bigquery.tables.updateData`, `bigquery.tables.create`, and `bigquery.tables.update`
-
-Common predefined roles:
-
-- Project level:
-  - `roles/bigquery.jobUser` for `bigquery.jobs.create`
-  - `roles/bigquery.readSessionUser` for `bigquery.readsessions.create`, `bigquery.readsessions.getData`, and `bigquery.readsessions.update`
-  - `roles/bigquery.user` as a broader project-level role that includes `bigquery.jobs.create`, `bigquery.jobs.list`, and `bigquery.readsessions.*`
-- Dataset/table/view level:
-  - `roles/bigquery.dataViewer` for read access, including `bigquery.tables.getData`
-  - `roles/bigquery.dataEditor` for write access, including `bigquery.tables.updateData`
-
-Project-level and dataset/table/view grants both matter.
-
-Operation-specific notes:
-
-- `ATTACH` and `bigquery_scan` use the BigQuery Storage Read API. Google documents `bigquery.readsessions.create` on the project plus `bigquery.readsessions.getData` and `bigquery.readsessions.update` on the table or higher. You also need read access to the referenced tables or views.
-- `bigquery_query` on the default path runs a query job and then fetches results through the Storage Read API. Google documents `bigquery.jobs.create` for the query job, `bigquery.tables.getData` on referenced tables and views, and the Storage Read API read-session permissions above.
-- `bigquery_query(..., use_rest_api=true)` avoids the Storage Read API fetch path. It still needs the permissions required by the query itself. For long-running or large-result requests, BigQuery can still create a job, so `bigquery.jobs.create` may still be required.
-- `bigquery_execute` uses the query-job path. It needs `bigquery.jobs.create`; any additional table or dataset permissions depend on the SQL being executed.
-- `INSERT INTO bq...` uses the Storage Write API write-stream path. Google documents `bigquery.tables.updateData` for that API, and the statement still needs whatever read permissions its source query requires.
-- `CREATE TABLE ... AS` creates the destination table and then writes rows through the Storage Write API path. In practice this combines the usual query permissions with the documented table-write permissions: `bigquery.jobs.create`, `bigquery.tables.create`, and `bigquery.tables.updateData`.
-- `bigquery_extract` uses a BigQuery extract job. It needs `bigquery.jobs.create`, read access to the source table, and Cloud Storage permissions for BigQuery to write the exported objects.
-- `bigquery_jobs` uses the BigQuery jobs listing APIs. Listing your own jobs needs `bigquery.jobs.list`. Using `allUsers=true` needs `bigquery.jobs.listAll`, which is included in roles such as `roles/bigquery.resourceViewer`.
+> Community builds are available for `linux_amd64`, `linux_arm64`, `osx_amd64`,
+> `osx_arm64`, and `windows_amd64`. The builds `wasm_mvp`, `wasm_eh`,
+> `wasm_threads`, and `windows_amd64_mingw` are not supported.
+>
+> Current development targets **DuckDB 1.5**. The latest extension changes are
+> available only in builds for **DuckDB 1.5** and are not backported
+> to older DuckDB release branches.
 
 ## Quickstart
 
-The BigQuery extension can be installed from the official [Community Extension Repository](https://community-extensions.duckdb.org/), eliminating the need to enable the `unsigned` mode. Just use the following command to install and load the extension:
+Configure one of the supported
+[authentication methods](https://hafenkran.github.io/duckdb-bigquery/getting-started/authentication-and-secrets/)
+before connecting. Local development can use Google
+[Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials).
+The selected identity also needs the appropriate
+[BigQuery permissions](https://hafenkran.github.io/duckdb-bigquery/getting-started/required-permissions/).
+
+> **Note**: Windows users require an additional step to configure the gRPC SSL
+> certificates. See
+> [Windows gRPC Configuration](https://hafenkran.github.io/duckdb-bigquery/troubleshooting/#windows-grpc-configuration).
+
+Install and load the extension, then attach your BigQuery project. Replace
+`my-gcp-project` with the corresponding Google Cloud project ID:
 
 ```sql
 -- Install and load the DuckDB BigQuery extension from the Community Repository
 FORCE INSTALL 'bigquery' FROM community;
 LOAD 'bigquery';
-```
 
-> **Note**: Windows user require an additional step to configure the gRPC SSL certificates (see [here](#windows-grpc-configuration)).
-
-After loading the extension, you can connect to your BigQuery project using the `ATTACH` statement. Replace `my_gcp_project` with the name of your actual Google Cloud Project. Here is an example:
-
-`ATTACH` immediately checks that configured credentials can provide an authentication token. It does not load catalog
-metadata or verify BigQuery permissions for datasets, tables, jobs, or Storage APIs; those checks occur when the
-corresponding objects or operations are used. When `ACCESS_TOKEN` is configured directly, BigQuery may only reject an
-invalid token on the first API request.
-
-```sql
 -- Attach to your BigQuery Project
-D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery, READ_ONLY);
+ATTACH 'project=my-gcp-project' AS bq (TYPE bigquery, READ_ONLY);
 
 -- Show all tables in all datasets in the attached BigQuery project
-D SHOW ALL TABLES;
+SHOW ALL TABLES;
 ┌──────────┬──────────────────┬──────────┬──────────────┬───────────────────┬───────────┐
 │ database │      schema      │   name   │ column_names │   column_types    │ temporary │
 │ varchar  │     varchar      │  varchar │  varchar[]   │     varchar[]     │  boolean  │
 ├──────────┼──────────────────┼──────────┼──────────────┼───────────────────┼───────────┤
 │ bq       │ quacking_dataset │ duck_tbl │ [i, s]       │ [BIGINT, VARCHAR] │ false     │
-| bq       | barking_dataset  | dog_tbl  | [i, s]       | [BIGINT, VARCHAR] │ false     |
+│ bq       │ barking_dataset  │ dog_tbl  │ [i, s]       │ [BIGINT, VARCHAR] │ false     │
 └──────────┴──────────────────┴──────────┴──────────────┴───────────────────┴───────────┘
 
 -- Select data from a specific table in BigQuery
-D SELECT * FROM bq.quacking_dataset.duck_tbl;
+SELECT * FROM bq.quacking_dataset.duck_tbl;
 ┌───────┬────────────────┐
 │   i   │       s        │
 │ int32 │    varchar     │
@@ -168,601 +88,42 @@ D SELECT * FROM bq.quacking_dataset.duck_tbl;
 └───────┴────────────────┘
 ```
 
-Depending on the number of schemas and tables, initializing the BigQuery catalog may take some time. However, once initialized, the tables are cached. To speed up this process, you also focus the loading process on a particular dataset by specifying a `dataset=` parameter as follows.
-
-```sql
--- Attach to your BigQuery Project
-D ATTACH 'project=my_gcp_project dataset=quacking_dataset' as bq (TYPE bigquery);
-
--- Show all tables in all datasets in the attached BigQuery project
-D SHOW ALL TABLES;
-┌──────────┬──────────────────┬──────────┬──────────────┬───────────────────┬───────────┐
-│ database │      schema      │   name   │ column_names │   column_types    │ temporary │
-│ varchar  │     varchar      │  varchar │  varchar[]   │     varchar[]     │  boolean  │
-├──────────┼──────────────────┼──────────┼──────────────┼───────────────────┼───────────┤
-│ bq       │ quacking_dataset │ duck_tbl │ [i, s]       │ [BIGINT, VARCHAR] │ false     │
-└──────────┴──────────────────┴──────────┴──────────────┴───────────────────┴───────────┘
-```
-
-When working with BigQuery, you may need to separate storage and compute across different GCP projects. You can achieve this by using the `billing_project` parameter with the `ATTACH` command:
-
-```sql
--- Attach to a storage project while billing compute to a different project
-D ATTACH 'project=my_storage_project billing_project=my_compute_project' AS bq (TYPE bigquery, READ_ONLY);
-
--- Query data from the storage project, billed to the compute project
-D SELECT * FROM bq.quacking_dataset.duck_tbl WHERE i = 12;
-┌───────┬────────────────┐
-│   i   │       s        │
-│ int32 │    varchar     │
-├───────┼────────────────┤
-│    12 │ quack 🦆       │
-└───────┴────────────────┘
-```
-
-In this configuration:
-
-- `project=storage-project` specifies where your data is stored
-- `billing_project=compute-project` specifies which project will be billed for query execution and compute resources
-
-This approach allows you to maintain clear separation between data storage costs and compute costs across different GCP projects.
-
-## Additional Operations and Settings
-
-The following SQL statements provide a brief overview of supported functionalities and include examples for interacting with BigQuery:
-
-```sql
-ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
-
--- Create a BigQuery dataset
-CREATE SCHEMA bq.some_dataset;
-
--- Create a BigQuery table in some dataset
-CREATE TABLE bq.some_dataset.tbl(id INTEGER, some_string VARCHAR);
-
--- Insert values into the table 
-INSERT INTO bq.some_dataset.tbl VALUES (42, "my quacking string");
-
--- Retrieves rows from the table
-SELECT some_string FROM bq.some_dataset.tbl;
-
--- Drop a BigQury table in some dataset
-DROP TABLE IF EXISTS bq.some_dataset.tbl;
-
--- Drop a BigQuery dataset
-DROP SCHEMA IF EXISTS bq.some_dataset;
-
--- Altering tables - rename table
-ALTER TABLE bq.some_dataset.tbl RENAME TO tbl_renamed;
-
--- Altering tables - rename column
-ALTER TABLE bq.some_dataset.tbl RENAME COLUMN i TO i2;
-
--- Altering tables - add column
-ALTER TABLE bq.some_dataset.tbl ADD COLUMN j INTEGER;
-
--- Altering tables - drop column
-ALTER TABLE bq.some_dataset.tbl DROP COLUMN i;
-
--- Altering tables - change column type
-ALTER TABLE bq.some_dataset.tbl ALTER COLUMN i TYPE DOUBLE;
-
--- Altering tables - drop not null condition
-ALTER TABLE bq.some_dataset.tbl ALTER COLUMN i DROP NOT NULL;
-```
-
-### `bigquery_scan` Function
-
-The `bigquery_scan` function provides direct, efficient reads from a single table within your BigQuery project. This function is ideal for simple reads where no complex SQL is required, and it supports simple projection pushdown from DuckDB.
-
-If you would rather query just one table directly instead of attaching all tables, you can achieve this by directly using the `bigquery_scan` function, such as:
-
-```sql
-D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl');
-┌───────┬────────────────┬──────────────────────────┐
-│   i   │       s        │        timestamp         │
-│ int32 │    varchar     │        timestamp         │
-├───────┼────────────────┼──────────────────────────┤
-│    12 │ quack 🦆       │ 2024-03-21 08:01:02 UTC  │
-│    13 │ quack quack 🦆 │ 2024-05-19 10:25:44 UTC  │
-└───────┴────────────────┴──────────────────────────┘
-```
-
-> `bigquery_scan` is the single table-scan interface for BigQuery reads and uses the DuckDB-internals-based Arrow scan path.
-
-The function supports filter pushdown by accepting [row restriction filter statements](https://cloud.google.com/bigquery/docs/reference/storage/rpc/google.cloud.bigquery.storage.v1#google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions) as an optional argument. These filters are passed directly to BigQuery and restrict which rows are transfered from the source table. For example:
-
-```sql
-D SELECT * FROM bigquery_scan('my_gcp_project.quacking_dataset.duck_tbl', filter='i=13 AND DATE(timestamp)=DATE(2023, 5, 19)'));
-┌───────┬────────────────┬──────────────────────────┐
-│   i   │       s        │        timestamp         │
-│ int32 │    varchar     │        timestamp         │
-├───────┼────────────────┼──────────────────────────┤
-│    13 │ quack quack 🦆 │ 2024-05-19 10:25:44 UTC  │
-└───────┴────────────────┴──────────────────────────┘
-```
-
-The filter syntax follows the same rules as the `row_restriction` field in BigQuery's Storage Read API.                                          |
-
-While `bigquery_scan` offers high-speed data retrieval, it does not support reading from views or external tables due to limitations of the Storage Read API. For those cases, consider using the `bigquery_query` function, which allows more complex querying capabilities.
-
-The `bigquery_scan` function supports the following named parameters:
-
-| Parameter         | Type      | Description                                                                     |
-| ----------------- | --------- | ------------------------------------------------------------------------------- |
-| `filter`          | `VARCHAR` | Row restriction filter statements passed directly to BigQuery Storage Read API. |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution (useful for public datasets).            |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                               |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                      |
-
-### `bigquery_query` Function
-
-The `bigquery_query` function allows you to run custom [GoogleSQL](https://cloud.google.com/bigquery/docs/introduction-sql) read queries within your BigQuery project. Storage API reads use the same scan engine as `bigquery_scan`. This function is especially useful to get around the limitations of the BigQuery Storage Read API, such as reading from views or external tables.
-
-```sql
-D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`');
-┌───────┬────────────────┐
-│   i   │       s        │
-│ int32 │    varchar     │
-├───────┼────────────────┤
-│    12 │ quack 🦆       │
-│    13 │ quack quack 🦆 │
-└───────┴────────────────┘
-```
-
-`bigquery_query` also supports positional query parameters. Use `?` placeholders in the BigQuery SQL string and pass the parameter values as additional function arguments (this also works with prepared statements):
-
-```sql
-D PREPARE s AS
-  SELECT *
-  FROM bigquery_query('my_gcp_project', 'SELECT ? AS x, ? AS y', ?, ?);
-D EXECUTE s(42, 'abc');
-┌───────┬─────────┐
-│   x   │    y    │
-│ int64 │ varchar │
-├───────┼─────────┤
-│    42 │ abc     │
-└───────┴─────────┘
-```
-
-> **Note**: If your goal is straightforward table reads, `bigquery_scan` is often more efficient, as it bypasses the SQL layer for direct data access. However, `bigquery_query` is ideal when you need to execute custom SQL that requires the full querying capabilities of BigQuery expressed in GoogleSQL. In this case, BigQuery transparently creates an anonymous temporary result table, which is fetched using the selected scan engine.
-
-The `dry_run` parameter allows you to validate a query without executing it. This is useful for estimating query costs and checking syntax before running expensive queries:
-
-```sql
-D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`', dry_run=true);
-┌───────────────────────┬───────────┬──────────┐
-│ total_bytes_processed │ cache_hit │ location │
-│        int64          │  boolean  │ varchar  │
-├───────────────────────┼───────────┼──────────┤
-│                    54 │ false     │ US       │
-└───────────────────────┴───────────┴──────────┘
-```
-
-The `bigquery_query` function supports the following named parameters:
-
-| Parameter         | Type      | Description                                                                                                                                                                                                                                                                            |
-| ----------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `use_rest_api`    | `BOOLEAN` | When `true`, uses the BigQuery REST API with optional job creation instead of the Storage API. This provides lower latency for small result sets (under ~10MB) by returning results inline, avoiding the overhead of creating a job and reading via the Storage API. Default: `false`. |
-| `dry_run`         | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`.                                                                                                                                                         |
-| `billing_project` | `VARCHAR` | Project ID to bill for query execution when calling with a project ID (useful for public datasets). For attached databases, configure `billing_project` in `ATTACH` instead.                                                                                                            |
-| `api_endpoint`    | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                                                                                                                                                                                      |
-| `grpc_endpoint`   | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                                                                                                                                                                                             |
-| `timeout_ms`      | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms`; `0` waits indefinitely.                                                                                                                                                              |
-
-> **REST API vs Storage API**: By default, `bigquery_query` uses the [BigQuery Storage Read API](https://cloud.google.com/bigquery/docs/reference/storage) to fetch results. This executes the query as a job, materializes results into a temporary table, and reads them via gRPC — optimized for large result sets but adds overhead for small queries.
->
-> With `use_rest_api=true`, the query is executed using the [jobs.query REST endpoint](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query) with [`JOB_CREATION_OPTIONAL`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query#JobCreationMode) mode. For short-running queries, BigQuery can return results inline without creating a job at all, significantly reducing latency. This is ideal for interactive or exploratory queries with small result sets (under ~10MB).
->
-> If a query job is still running when a REST wait request returns, the extension polls until it completes or a configured positive timeout is reached. Set `timeout_ms` for one call or `bq_query_timeout_ms` as the session default; `0` waits indefinitely.
->
-> ```sql
-> D SELECT * FROM bigquery_query('my_gcp_project', 'SELECT count(*) FROM `my_dataset.my_table`', use_rest_api=true);
-> ```
-
-### `bigquery_execute` Function
-
-The `bigquery_execute` function runs arbitrary GoogleSQL queries directly in BigQuery. These queries are executed without interpretation by DuckDB. The call waits for BigQuery job completion, polling long-running jobs when required until completion or a configured positive timeout, and returns a result with details about the query execution, like the following.
-
-```sql
-D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
-D CALL bigquery_execute('bq', '
-    CREATE SCHEMA deluxe_dataset
-    OPTIONS(
-        location="us",
-        default_table_expiration_days=3.75,
-        labels=[("label1","value1"),("label2","value2")]
-    )
-');
-┌─────────┬──────────────────────────────────┬─────────────────┬──────────┬────────────┬───────────────────────┬───────────────────────┐
-│ success │             job_id               │    project_id   │ location │ total_rows │ total_bytes_processed │ num_dml_affected_rows │
-│ boolean │             varchar              │     varchar     │ varchar  │   uint64   │         int64         │         int64         │
-├─────────┼──────────────────────────────────┼─────────────────┼──────────┼────────────┼───────────────────────┼───────────────────────┤
-│ true    │ job_-Xu_D2wxe2Xjh-ArZNwZ6gut5ggi │ my_gcp_project  │ US       │          0 │                     0 │                     0 │
-└─────────┴──────────────────────────────────┴─────────────────┴──────────┴────────────┴───────────────────────┴───────────────────────┘
-```
-
-Similar to `bigquery_query`, the `dry_run` parameter allows you to validate queries without executing them:
-
-```sql
-D CALL bigquery_execute('my_gcp_project', 'SELECT * FROM `my_gcp_project.quacking_dataset.duck_tbl`', dry_run=true);
-┌───────────────────────┬───────────┬──────────┐
-│ total_bytes_processed │ cache_hit │ location │
-│        int64          │  boolean  │ varchar  │
-├───────────────────────┼───────────┼──────────┤
-│                    54 │ false     │ US       │
-└───────────────────────┴───────────┴──────────┘
-```
-
-The `bigquery_execute` function supports the following named parameters:
-
-| Parameter            | Type      | Description                                                                                                                                                                                                                                   |
-| -------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dry_run`            | `BOOLEAN` | When `true`, validates the query without executing it. Returns metadata: `total_bytes_processed`, `cache_hit`, and `location`.                                                                                                                |
-| `api_endpoint`       | `VARCHAR` | Custom BigQuery API endpoint URL.                                                                                                                                                                                                             |
-| `grpc_endpoint`      | `VARCHAR` | Custom BigQuery Storage gRPC endpoint URL.                                                                                                                                                                                                    |
-| `timeout_ms`         | `BIGINT`  | Maximum wait time for this query to complete, including polling. Overrides `bq_query_timeout_ms`; `0` waits indefinitely.                                                                                                                     |
-| `destination_table`  | `VARCHAR` | Materialise the query result into this table (`dataset.table` or `project.dataset.table`). Runs the query as a `jobs.insert` job writing to the table — something the default `jobs.query` path cannot do. Cannot be combined with `dry_run`. |
-| `write_disposition`  | `VARCHAR` | How to write into an existing `destination_table`: `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`. Ignored without `destination_table`.                                                                                         |
-| `create_disposition` | `VARCHAR` | Whether to create `destination_table` if it does not exist: `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`. Ignored without `destination_table`.                                                                                              |
-
-When `destination_table` is set, the query runs as a query job that writes its result into the table, and the returned `total_rows` / `total_bytes_processed` reflect that job (`num_dml_affected_rows` is `NULL` for non-DML queries):
-
-```sql
-D CALL bigquery_execute('my_gcp_project',
-    'SELECT id, name FROM `my_gcp_project.quacking_dataset.ducks` WHERE active',
-    destination_table := 'quacking_dataset.active_ducks',
-    write_disposition := 'WRITE_TRUNCATE');
-```
-
-### `bigquery_load` Function
-
-The `bigquery_load` function submits a BigQuery load job that writes data into a destination BigQuery table. The source can be a local file (`source_file`), one or more Cloud Storage URIs (`source_uris`), or a DuckDB table/view (`source_table`). File and URI loads support `PARQUET`, `CSV`, `NEWLINE_DELIMITED_JSON`, `AVRO`, and `ORC`; `source_table` is always staged through a temporary Parquet file.
-
-```sql
-D SELECT * FROM bigquery_load(
-    'my_gcp_project',
-    'my_dataset.target_table',
-    source_file := '/path/to/data.csv',
-    source_format := 'CSV',
-    autodetect := true,
-    csv_skip_leading_rows := 1,
-    location := 'EU'
-);
-┌─────────┬──────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┐
-│ success │            job_id            │   project_id   │ location │              destination_table               │ output_rows │      status      │
-│ boolean │           varchar            │    varchar     │ varchar  │                   varchar                    │   uint64    │       json       │
-├─────────┼──────────────────────────────┼────────────────┼──────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┤
-│ true    │ job_duckdb_load_rpamgsjlffwi │ my_gcp_project │ EU       │ my_gcp_project.my_dataset.target_table       │       10878 │ {"state":"DONE"} │
-└─────────┴──────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┘
-
-D CALL bigquery_load(
-    'bq',
-    'my_dataset.target_table',
-    source_table := 'local_staging_table',
-    write_disposition := 'WRITE_APPEND',
-    location := 'EU'
-);
-┌─────────┬──────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┐
-│ success │            job_id            │   project_id   │ location │              destination_table               │ output_rows │      status      │
-│ boolean │           varchar            │    varchar     │ varchar  │                   varchar                    │   uint64    │       json       │
-├─────────┼──────────────────────────────┼────────────────┼──────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┤
-│ true    │ job_duckdb_load_wifsj1ffusqo │ my_gcp_project │ EU       │ my_gcp_project.my_dataset.target_table       │       10878 │ {"state":"DONE"} │
-└─────────┴──────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┘
-
-D CALL bigquery_load(
-    'my_storage_project',
-    'my_dataset.target_table',
-    source_uris := ['gs://my_bucket/path/part-1.parquet', 'gs://my_bucket/path/part-2.parquet'],
-    source_format := 'PARQUET',
-    write_disposition := 'WRITE_APPEND',
-    location := 'EU',
-    labels := MAP {'pipeline': 'daily_load', 'env': 'prod'},
-    billing_project := 'my_billing_project'
-);
-```
-
-Use `source_uris` to load one or more Cloud Storage objects directly. To attach labels to the BigQuery load job for billing or audit workflows, pass `labels` as a `MAP(VARCHAR, VARCHAR)`. When calling `bigquery_load` with a project ID, pass `billing_project` to bill the load job to a separate project. For attached databases, configure cross-project billing in the `ATTACH` string instead of passing `billing_project` to `bigquery_load`.
-
-Compared to `CREATE TABLE ... AS` or `INSERT INTO ...`, `bigquery_load` uses a different write path:
-
-- `CREATE TABLE ... AS` and `INSERT INTO bq...` use the BigQuery Storage Write API and stream rows with `AppendRows`.
-- `bigquery_load` uses a BigQuery load job. With a local `source_file` it uploads the file directly; with `source_uris` it passes Cloud Storage URIs directly to BigQuery; with `source_table` it first stages the DuckDB relation as a temporary Parquet file and then submits the load job.
-
-Use `CREATE TABLE ... AS` when you want the normal streaming write path from a DuckDB query result. Use `bigquery_load` when you already have load-job inputs or when you explicitly want load-job semantics such as `write_disposition`, `create_disposition`, schema update options, source-format parsing options, or Hive partitioning.
-
-The `bigquery_load` function supports the following named parameters:
-
-| Parameter               | Type                         | Description                                                                                                                                                   |
-| ----------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `source_file`           | `VARCHAR`                    | Local file path to upload, or a single `gs://` URI. Legacy alias: `file`.                                                                                     |
-| `source_uris`           | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` URIs to load directly from Cloud Storage.                                                                                                 |
-| `source_table`          | `VARCHAR`                    | DuckDB table or view to stage as Parquet. Legacy alias: `table`.                                                                                              |
-| `source_format`         | `VARCHAR`                    | `PARQUET`, `CSV`, `NEWLINE_DELIMITED_JSON`, `AVRO`, or `ORC`. If omitted for files/URIs, inferred from common extensions and otherwise defaults to `PARQUET`. |
-| `autodetect`            | `BOOLEAN`                    | Forwarded to BigQuery schema autodetection.                                                                                                                   |
-| `schema_update_options` | `VARCHAR` or `LIST<VARCHAR>` | `ALLOW_FIELD_ADDITION` and/or `ALLOW_FIELD_RELAXATION`.                                                                                                       |
-| `max_bad_records`       | `BIGINT`                     | Maximum number of bad records accepted by BigQuery.                                                                                                           |
-| `ignore_unknown_values` | `BOOLEAN`                    | Whether to ignore values not represented in the table schema.                                                                                                 |
-| `write_disposition`     | `VARCHAR`                    | `WRITE_TRUNCATE` (default), `WRITE_APPEND`, or `WRITE_EMPTY`.                                                                                                 |
-| `create_disposition`    | `VARCHAR`                    | `CREATE_IF_NEEDED` (default) or `CREATE_NEVER`.                                                                                                               |
-| `location`              | `VARCHAR`                    | BigQuery job location.                                                                                                                                        |
-| `billing_project`       | `VARCHAR`                    | Project ID to bill for the load job. Only supported for direct project-ID calls.                                                                              |
-| `labels`                | `MAP(VARCHAR, VARCHAR)`      | BigQuery job labels to attach to the load job.                                                                                                                |
-| `timeout_ms`            | `BIGINT`                     | Optional maximum time to wait for the submitted load job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery.                  |
-
-Format-specific load options are validated before the job is submitted:
-
-| Parameter Group               | Parameters                                                                                                                                                                                                        |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CSV only                      | `csv_field_delimiter`, `csv_skip_leading_rows`, `csv_quote`, `csv_allow_quoted_newlines`, `csv_allow_jagged_rows`, `csv_encoding`, `csv_null_marker`, `csv_null_markers`, `csv_preserve_ascii_control_characters` |
-| CSV and JSON temporal parsing | `date_format`, `datetime_format`, `time_format`, `timestamp_format`, `time_zone`                                                                                                                                  |
-| JSON only                     | `json_extension`                                                                                                                                                                                                  |
-| Avro only                     | `avro_use_logical_types`                                                                                                                                                                                          |
-| Parquet only                  | `parquet_enable_list_inference`, `parquet_enum_as_string`                                                                                                                                                         |
-| Avro, Parquet, and ORC        | `reference_file_schema_uri`, `decimal_target_types`                                                                                                                                                               |
-| Cloud Storage URI loads only  | `hive_partitioning_mode`, `hive_partitioning_source_uri_prefix`                                                                                                                                                   |
-
-Exactly one of `source_file`, `source_uris`, or `source_table` must be provided. Without `timeout_ms`, or with `timeout_ms := 0`, `bigquery_load` waits for the load job to complete. For Cloud Storage loads, the BigQuery job identity needs permission to read the objects, and the bucket location must be compatible with the destination dataset location.
-
-### `bigquery_extract` Function
-
-The `bigquery_extract` function submits a BigQuery extract job that extracts an existing BigQuery table to Cloud Storage. This path uses BigQuery's `JobConfigurationExtract` API, so it avoids transferring table data through DuckDB, but it is table-based: use it for existing tables, not arbitrary `SELECT` queries.
-
-```sql
-D CALL bigquery_extract(
-    'bq',
-    source_table := 'my_dataset.source_table',
-    destination_uris := 'gs://my_bucket/export/source_table_*.parquet',
-    location := 'EU'
-);
-┌─────────┬─────────────────────────────────┬────────────────┬──────────┬──────────────────────────────────────┬───────────────────────────────────────────────┬─────────┬─────────────────────────────┬─────────────┬──────────────────┐
-│ success │             job_id              │   project_id   │ location │             source_table             │               destination_uris                │ format  │ destination_uri_file_counts │ input_bytes │      status      │
-│ boolean │             varchar             │    varchar     │ varchar  │               varchar                │                 varchar[]                     │ varchar │            int64[]          │    int64    │       json       │
-├─────────┼─────────────────────────────────┼────────────────┼──────────┼──────────────────────────────────────┼───────────────────────────────────────────────┼─────────┼─────────────────────────────┼─────────────┼──────────────────┤
-│ true    │ job_duckdb_extract_tnwejzbesyix │ my_gcp_project │ EU       │ my_gcp_project.my_dataset.source_table │ [gs://my_bucket/export/source_table_*.parquet] │ PARQUET │ [3]                         │    10485760 │ {"state":"DONE"} │
-└─────────┴─────────────────────────────────┴────────────────┴──────────┴──────────────────────────────────────┴───────────────────────────────────────────────┴─────────┴─────────────────────────────┴─────────────┴──────────────────┘
-```
-
-Use `destination_uris` for a single Cloud Storage URI or a `LIST<VARCHAR>`. Destination URIs must use the `gs://` scheme. If `format` is omitted, it is inferred from the destination file extension: `.csv`, `.csv.gz`, `.json`, `.json.gz`, `.avro`, or `.parquet`. All destination URIs must imply the same format. CSV-only options are prefixed with `csv_`, AVRO-only options are prefixed with `avro_`, and `compression` is validated against the selected format before submitting the BigQuery extract job.
-
-The `bigquery_extract` function supports the following named parameters:
-
-| Parameter                | Type                         | Description                                                                                                                                                                                                          |
-| ------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `source_table`           | `VARCHAR`                    | BigQuery table to export. Accepts `dataset.table`, `project.dataset.table`, `project:dataset.table`, or `projects/.../datasets/.../tables/...`.                                                                      |
-| `destination_uris`       | `VARCHAR` or `LIST<VARCHAR>` | One or more `gs://` destination URIs.                                                                                                                                                                                |
-| `format`                 | `VARCHAR`                    | Optional export format: `CSV`, `JSON`, `AVRO`, or `PARQUET`. `JSON` maps to BigQuery's newline-delimited JSON extract format.                                                                                        |
-| `compression`            | `VARCHAR`                    | Optional BigQuery export compression. Supported values depend on `format`: CSV/JSON support `NONE` and `GZIP`; AVRO supports `NONE`, `DEFLATE`, and `SNAPPY`; PARQUET supports `NONE`, `GZIP`, `SNAPPY`, and `ZSTD`. |
-| `csv_print_header`       | `BOOLEAN`                    | CSV only: whether to include a header row.                                                                                                                                                                           |
-| `csv_field_delimiter`    | `VARCHAR`                    | CSV only: field delimiter.                                                                                                                                                                                           |
-| `avro_use_logical_types` | `BOOLEAN`                    | AVRO only: whether to use Avro logical types.                                                                                                                                                                        |
-| `location`               | `VARCHAR`                    | BigQuery job location.                                                                                                                                                                                               |
-| `billing_project`        | `VARCHAR`                    | Project ID to bill for the extract job. Only supported for direct project-ID calls.                                                                                                                                  |
-| `api_endpoint`           | `VARCHAR`                    | Custom BigQuery API endpoint URL. Only supported for direct project-ID calls.                                                                                                                                        |
-| `labels`                 | `MAP(VARCHAR, VARCHAR)`      | BigQuery job labels to attach to the extract job.                                                                                                                                                                    |
-| `timeout_ms`             | `BIGINT`                     | Optional maximum time to wait for the extract job to finish. `0` waits indefinitely; timed-out jobs may continue running in BigQuery.                                                                                |
-
-`destination_uris` must be provided. This extract-job based function writes to Cloud Storage through BigQuery's extract-job API; use an empty or unique destination path for each extract.
-
-### `bigquery_jobs` Function
-
-The `bigquery_jobs` fucntion retrieves a list of jobs within the specified project. It displays job metadata such as
-job state, start and end time, configuration, statistics, and many more. More information on the job information can be found [here](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/list).
-
-```sql
-D ATTACH 'project=my_gcp_project' as bq (TYPE bigquery);
-D SELECT * FROM bigquery_jobs('bq', maxResults=2);
-┌───────────┬──────────────────────┬───────────┬───┬──────────────────────┬──────────────────┐
-│   state   │        job_id        │  project  │ … │    configuration     │      status      │
-│  varchar  │       varchar        │  varchar  │   │         json         │       json       │
-├───────────┼──────────────────────┼───────────┼───┼──────────────────────┼──────────────────┤
-│ Completed │ job_zAAv42SdMT51qk…  │ my_gcp_p… │ … │ {"query":{"query":…  │ {"state":"DONE"} │
-│ Completed │ job_ro2WURJlGlkXCC…  │ my_gcp_p… │ … │ {"query":{"query":…  │ {"state":"DONE"} │
-├───────────┴──────────────────────┴───────────┴───┴──────────────────────┴──────────────────┤
-│ 2 rows                                                                16 columns (5 shown) │
-└────────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-The operation supports the following additional named parameters as query arguments:
-
-| Parameter         | Type        | Description                                                                                      |
-| ----------------- | ----------- | ------------------------------------------------------------------------------------------------ |
-| `jobId`           | `VARCHAR`   | Filters results by job ID. Returns only the matching job, ignoring all other arguments.          |
-| `allUsers`        | `BOOLEAN`   | If true, returns jobs for all users in the project. Default is false (only current user's jobs). |
-| `maxResults`      | `INTEGER`   | Limits the number of jobs returned.                                                              |
-| `minCreationTime` | `TIMESTAMP` | Filters jobs created after the specified time (in milliseconds since the epoch).                 |
-| `maxCreationTime` | `TIMESTAMP` | Filters jobs created before the specified time (in milliseconds since the epoch).                |
-| `stateFilter`     | `VARCHAR`   | Filters jobs by state (e.g., `PENDING`, `RUNNING`,`DONE`).                                       |
-| `parentJobId`     | `VARCHAR`   | Filters results to only include child jobs of the specified parent job ID.                       |
-
-### `bigquery_clear_cache` Function
-
-DuckDB caches schema metadata, such as datasets and table structures, to avoid repeated fetches from BigQuery. If the schema changes externally, use `bigquery_clear_cache` to update the cache and retrieve the latest schema information:
-
-```sql
-D CALL bigquery_clear_cache();
-```
-
-### Reading Public Datasets
-
-Public datasets can be accessed by specifying your project as a `billing_project`. All queries will then be executed and billed on that project. This works for functions such as `bigquery_scan`, `bigquery_execute`, and the `ATTACH` command.
-
-```sql
-D SELECT * FROM bigquery_scan('bigquery-public-data.geo_us_boundaries.cnecta', billing_project='my_gcp_project');
-┌─────────┬──────────────────┬──────────────────────┬───┬───────────────────┬───────────────┬───────────────┬──────────────────────┐
-│ geo_id  │ cnecta_fips_code │         name         │ … │ area_water_meters │ int_point_lat │ int_point_lon │     cnecta_geom      │
-│ varchar │     varchar      │       varchar        │   │       int64       │    double     │    double     │       varchar        │
-├─────────┼──────────────────┼──────────────────────┼───┼───────────────────┼───────────────┼───────────────┼──────────────────────┤
-│ 710     │ 710              │ Augusta-Waterville…  │ … │         183936850 │    44.4092939 │   -69.6901717 │ POLYGON((-69.79281…  │
-│ 775     │ 775              │ Portland-Lewiston-…  │ … │        1537827560 │    43.8562034 │   -70.3192682 │ POLYGON((-70.48007…  │
-│ 770     │ 770              │ Pittsfield-North A…  │ … │          24514153 │    42.5337519 │   -73.1678825 │ POLYGON((-73.30698…  │
-│ 790     │ 790              │ Springfield-Hartfo…  │ … │         256922043 │    42.0359069 │   -72.6213616 │ POLYGON((-72.63682…  │
-│ 715     │ 715              │ Boston-Worcester-P…  │ … │        3004814151 │    42.3307869 │   -71.3296644 │ MULTIPOLYGON(((-71…  │
-│ 725     │ 725              │ Lebanon-Claremont,…  │ … │          58476158 │    43.6727226 │   -72.2484543 │ POLYGON((-72.39601…  │
-│ 720     │ 720              │ Bridgeport-New Hav…  │ … │         374068423 │    41.3603421 │   -73.1284227 │ MULTIPOLYGON(((-72…  │
-├─────────┴──────────────────┴──────────────────────┴───┴───────────────────┴───────────────┴───────────────┴──────────────────────┤
-│ 7 rows                                                                                                      11 columns (7 shown) │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Working with Geometries
-
-The BigQuery extension maps BigQuery [`GEOGRAPHY`](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#geography_type) columns to DuckDB `GEOMETRY` and uses WKT for interchange. With DuckDB v1.5.0 and newer, you can read GEOGRAPHY as GEOMETRY and write GEOMETRY back to GEOGRAPHY without any extra settings:
-
-> **Note (DuckDB < v1.5.0):** Older DuckDB versions required loading `spatial` and enabling `SET bq_geography_as_geometry = true;`. This legacy setting is no longer used.
-
-```sql
-D ATTACH 'project=my_gcp_project' AS bq (TYPE bigquery);
-
--- Read GEOGRAPHY columns as native GEOMETRY
-D SELECT name, geography_column, typeof(geography_column) FROM bq.dataset.geo_table;
-┌──────────────┬──────────────────────────────────────────┬──────────┐
-│     name     │            geography_column              │  typeof  │
-│   varchar    │                geometry                  │ varchar  │
-├──────────────┼──────────────────────────────────────────┼──────────┤
-│ Location A   │ POINT(-122.4194 37.7749)                 │ GEOMETRY │
-│ Location B   │ POLYGON((-122.5 37.7, -122.3 37.8, ...)) │ GEOMETRY │
-└──────────────┴──────────────────────────────────────────┴──────────┘
-
--- Write GEOMETRY data - automatically converted to BigQuery GEOGRAPHY (WKT)
-D INSERT INTO bq.dataset.geo_table VALUES 
-    ('New Point', 'POINT(-122.2 37.8)'::GEOMETRY),
-    ('Other Point', 'POINT(-122.0 37.9)'::GEOMETRY);
-```
-
-### Experimental BigQuery partitioning, clustering & options clauses
-
-Use `bq_experimental_enable_sql_parser` to enable BigQuery-specific `CREATE TABLE` clauses like `PARTITION BY`,
-`CLUSTER BY`, and `OPTIONS`. The extension parses these clauses before DuckDB, stores them in the table create info,
-and re-emits them when generating the final BigQuery SQL so the settings are applied server-side. This applies to
-`CREATE TABLE` and `CREATE TABLE ... AS` statements.
-
-```sql
-D SET bq_experimental_enable_sql_parser = true;
-D ATTACH 'project=my_gcp_project dataset=my_dataset' AS bq (TYPE bigquery);
-
--- Create Table with Partitioning, clustering, and table options
-D CREATE TABLE bq.my_dataset.partition_cluster_tbl (ts TIMESTAMP, i BIGINT)
-   PARTITION BY DATE(ts)
-   CLUSTER BY i
-   OPTIONS (description="example description");
-
--- Pseudo column partitioning
-D CREATE TABLE bq.my_dataset.partition_tbl (i BIGINT)
-   PARTITION BY _PARTITIONDATE;
-```
-
-### Additional Extension Settings
-
-| Setting                                | Description                                                                                                                                                                                                                                          | Default |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `bq_bignumeric_as_varchar`             | Compatibility setting kept for older workflows. `BIGNUMERIC` columns are exposed as `VARCHAR` by default in current versions.                                                                                                                        | `true`  |
-| `bq_query_timeout_ms`                  | Maximum time to wait for a BigQuery query to complete, including polling. `0` waits indefinitely; a timed-out query job may continue running in BigQuery.                                                                                            | `0`     |
-| `bq_auth_timeout_s`                    | Timeout for authentication token fetches in seconds. This bounds ADC metadata and OAuth token requests without changing normal BigQuery query timeouts.                                                                                              | `10`    |
-| `bq_debug_show_queries`                | [DEBUG] - whether to print all queries sent to BigQuery to stdout                                                                                                                                                                                    | `false` |
-| `bq_experimental_filter_pushdown`      | [EXPERIMENTAL] - Whether or not to use filter pushdown                                                                                                                                                                                               | `true`  |
-| `bq_enable_aggregate_pushdown`         | [EXPERIMENTAL] - Rewrite supported BigQuery aggregate queries to BigQuery query jobs instead of scanning all source rows through the Storage Read API. Unsupported shapes fall back before a remote query is started. Runtime errors from started BigQuery jobs are not retried locally, and GoogleSQL cast/string/float semantics may differ from DuckDB. | `false` |
-| `bq_experimental_use_info_schema`      | [EXPERIMENTAL] - Use information schema to fetch catalog info (often faster than REST API)                                                                                                                                                           | `true`  |
-| `bq_experimental_enable_sql_parser`    | [EXPERIMENTAL] - Enable BigQuery CREATE TABLE clause parsing extensions (PARTITION BY / CLUSTER BY / OPTIONS)                                                                                                                                        | `false` |
-| `bq_curl_ca_bundle_path`               | Path to the CA certificates used by cURL for SSL certificate verification                                                                                                                                                                            |         |
-| `bq_max_read_streams`                  | Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match the number of DuckDB threads. Requires `SET preserve_insertion_order=FALSE` for parallelization to work, and BigQuery may return fewer streams than requested. | `0`     |
-| `bq_enable_inflight_request_windowing` | Whether to keep multiple BigQuery Storage Write `AppendRows` requests in flight before waiting for acknowledgements. Usually faster, but slightly less memory efficient. Set to `false` to fall back to synchronous write/read lockstep.             | `true`  |
-| `bq_arrow_compression`                 | Compression codec for BigQuery Storage Read API. Options: `UNSPECIFIED`, `LZ4_FRAME`, `ZSTD`                                                                                                                                                         | `ZSTD`  |
-
-### Experimental Aggregate Pushdown
-
-`bq_enable_aggregate_pushdown` is experimental and disabled by default. When enabled, supported aggregate queries over BigQuery sources can be rewritten to BigQuery query jobs instead of reading all source rows through the Storage Read API.
-
-Important behavior:
-
-* Unsupported query shapes fall back to the local DuckDB plan before a remote BigQuery query is started.
-* Runtime errors from a started BigQuery job are not retried locally.
-* GoogleSQL cast, string formatting, floating-point, `NaN`, and `Infinity` semantics may differ from DuckDB.
-* The feature currently covers selected aggregate functions, compatible `DISTINCT` aggregates, compatible aggregate arguments, compatible `WHERE` filters, and compatible `GROUP BY` expressions.
-* It does not currently push down joins, `HAVING`, top-level `ORDER BY`, top-level `LIMIT`, or general BigQuery subplans.
-
-Use `EXPLAIN` to check whether a query shape is pushed down. A successfully pushed aggregate uses a `BIGQUERY_QUERY` operator and the plan shows the GoogleSQL query that will be executed remotely:
-
-```sql
-D SET bq_enable_aggregate_pushdown=true;
-D PRAGMA explain_output='physical_only';
-
-D EXPLAIN SELECT i, COUNT(*)
-  FROM bq.my_dataset.aggregate_pushdown
-  GROUP BY i;
-
-┌───────────────────────────┐
-│       BIGQUERY_QUERY      │
-│    ────────────────────   │
-│           Query:          │
-│  SELECT `i` AS            │
-│  __duckdb_bq_group_0,     │
-│  COUNT(*) AS              │
-│  __duckdb_bq_aggr_0 FROM  │
-│  `my-project.my_dataset   │
-│  .aggregate_pushdown`     │
-│  GROUP BY `i`             │
-│                           │
-│         Type: REST        │
-│                           │
-│           ~1 row          │
-└───────────────────────────┘
-```
-
-If the plan still contains `BIGQUERY_SCAN`, `UNGROUPED_AGGREGATE`, or `GROUP_BY`, that query shape was not pushed down and DuckDB will execute the remaining aggregate logic locally. Standard aggregate queries using `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, compatible `DISTINCT` aggregates, simple `WHERE` filters, and simple `GROUP BY` expressions are expected to be covered first.
-
-## Limitations
-
-There are some limitations that arise from the combination of DuckDB and BigQuery. These include:
-
-* **Reading from Views**: This DuckDB extension utilizes the BigQuery Storage Read API to optimize reading results. However, this approach has limitations (see [here](https://cloud.google.com/bigquery/docs/reference/storage#limitations) for more information). First, the Storage Read API does not support direct reading from logical or materialized views. Second, reading external tables is not supported. To mitigate these limitations, you can use the `bigquery_query` function to execute the query directly in BigQuery.
-
-* **Propagation Delay**: After creating a table in BigQuery, there might be a brief propagation delay before the table becomes fully "visible". Therefore, be aware of potential delays when executing `CREATE TABLE ... AS` or `CREATE OR REPLACE TABLE ...` statements followed by immediate inserts. This delay is usually just a matter of seconds, but in rare cases, it can take up to a minute.
-
-* **BIGNUMERIC Read/Write Semantics**: BigQuery `BIGNUMERIC` is read as DuckDB `VARCHAR` because its precision (up to 76)
-  exceeds DuckDB `DECIMAL` precision (max 38). This works for `bigquery_scan`, `bigquery_query`, and `ATTACH` reads.
-  For writes into `BIGNUMERIC` target columns, prefer quoted decimal text (or exact `DECIMAL`) instead of unquoted
-  numeric literals, because unquoted literals may be interpreted as `DOUBLE` and lose precision.
-
-* **Primary Keys and Foreign Keys**: While BigQuery recently introduced the concept of primary keys and foreign keys constraints, they differ from what you're accustomed to in DuckDB or other traditional RDBMS. Therefore, this extension does not support this concept.
-
-## Building the Project
-
-This extension uses VCPKG for dependency management. Enabling VCPKG is very simple: follow the [installation instructions](https://github.com/microsoft/vcpkg?tab=readme-ov-file#quick-start-unix) or just run the following:
+Continue with the full
+[Install, Attach, and Query](https://hafenkran.github.io/duckdb-bigquery/getting-started/install-attach-and-query/)
+guide or review all
+[attachment options](https://hafenkran.github.io/duckdb-bigquery/user-guide/attach/).
+
+For direct table scans, GoogleSQL execution, load and extract jobs, and job
+inspection, see the
+[Function Reference](https://hafenkran.github.io/duckdb-bigquery/function-reference/),
+including `bigquery_scan`, `bigquery_query`, `bigquery_execute`,
+`bigquery_load`, `bigquery_extract`, and `bigquery_jobs`.
+
+## Building from Source
+
+The extension uses VCPKG for dependency management. The following example
+creates sibling checkouts of the extension and VCPKG on a Unix-like system:
 
 ```bash
-git clone https://github.com/Microsoft/vcpkg.git
+git clone --recurse-submodules https://github.com/hafenkran/duckdb-bigquery.git
+git clone https://github.com/microsoft/vcpkg.git
 ./vcpkg/bootstrap-vcpkg.sh
-export VCPKG_TOOLCHAIN_PATH=`pwd`/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+cd duckdb-bigquery
+GEN=ninja \
+VCPKG_TOOLCHAIN_PATH="$(pwd)/../vcpkg/scripts/buildsystems/vcpkg.cmake" \
+make release
 ```
 
-Now to build the extension, run:
+Use `make debug` instead of `make release` for a debug build. The primary
+release outputs are:
 
-```bash
-make
-```
+- `build/release/duckdb`
+- `build/release/extension/bigquery/bigquery.duckdb_extension`
 
-The main binaries that will be built are:
-
-```bash
-# the binary for the duckdb shell with the extension code automatically loaded.
-./build/release/duckdb
-
-# the test runner of duckdb. Again, the extension is already linked into the binary.
-./build/release/test/unittest
-
-# the loadable extension binary as it would be distributed.
-./build/release/extension/bigquery/bigquery.duckdb_extension
-```
-
-After this step you can either simply start the shell with `./build/release/duckdb` or by installing/loading the extension from inside your duckdb instance with:
-
-```sql
-INSTALL './build/release/extension/bigquery/bigquery.duckdb_extension'
-LOAD 'bigquery'
-```
-
-Now you can use the features from this extension.
+BigQuery integration tests require credentials, can modify live cloud
+resources, and may incur charges. Do not run them against an unintended project
+or dataset.
 
 ## Important Notes on Using Google BigQuery
 
@@ -775,3 +136,6 @@ When using this software with Google BigQuery, please ensure your usage complies
 Please be aware that using Google BigQuery through this software can incur costs. Google BigQuery is a paid service, and charges may apply based on the amount of data processed, stored, and the number of queries executed. Users are responsible for any costs associated with their use of Google BigQuery. For detailed information on BigQuery pricing, please refer to the [Google BigQuery Pricing](https://cloud.google.com/bigquery/pricing) page. It is recommended to monitor your usage and set up budget alerts in the Google Cloud Console to avoid unexpected charges.
 
 By using this software, you acknowledge and agree that you are solely responsible for any charges incurred from Google BigQuery.
+## License
+
+This project is available under the [MIT License](LICENSE).
