@@ -4,6 +4,15 @@ Install the BigQuery extension from the official
 [Community Extension Repository](https://duckdb.org/community_extensions/extensions/bigquery).
 The extension does not require unsigned-extension mode.
 
+!!! note "DuckDB version compatibility"
+
+    Current development targets DuckDB 1.5.x. The latest extension changes are
+    available only in builds for DuckDB 1.5.x and are not currently backported
+    to older DuckDB release branches.
+
+    Older DuckDB releases can use their corresponding compatible extension
+    builds, but those builds may not contain the latest features.
+
 Before continuing, configure one of the supported
 [authentication methods](authentication-and-secrets.md). The following
 example then installs the extension, attaches a BigQuery project, and queries a
@@ -45,8 +54,8 @@ For attachment options such as dataset scope, billing projects, endpoints, and
 write access, continue with
 [Attaching Projects](../user-guide/attach.md).
 
-!!! warning "Windows TLS configuration"
+!!! warning "Windows gRPC configuration"
 
-    Windows may require an additional gRPC trust-store configuration. If HTTPS
-    or gRPC requests fail because a root certificate cannot be found, follow
-    [TLS and certificates](../troubleshooting.md#tls-and-certificates).
+    Windows requires an additional gRPC trust-store configuration. Follow
+    [Windows gRPC Configuration](../troubleshooting.md#windows-grpc-configuration)
+    before starting DuckDB.

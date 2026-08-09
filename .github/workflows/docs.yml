@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "docs/**"
+      - README.md
       - CHANGELOG.md
       - LICENSE
       - docs-requirements.txt
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - "docs/**"
+      - README.md
       - CHANGELOG.md
       - LICENSE
       - docs-requirements.txt
@@ -61,6 +63,7 @@ jobs:
             --max-retries 3
             --retry-wait-time 2
             --timeout 30
+            "README.md"
             "docs/**/*.md"
             "CHANGELOG.md"
 

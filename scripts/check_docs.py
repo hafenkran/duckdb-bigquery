@@ -21,7 +21,7 @@ FORBIDDEN = {
 
 
 def markdown_files() -> list[Path]:
-    return sorted(DOCS.rglob("*.md"))
+    return [ROOT / "README.md", *sorted(DOCS.rglob("*.md"))]
 
 
 def navigation_targets(value: object):
