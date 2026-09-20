@@ -1,0 +1,89 @@
+# name: test/sql/misc/bigquery_function_metadata.test
+# description: BigQuery function discovery metadata without credentials or remote requests
+# group: [misc]
+
+require bigquery
+
+statement ok
+CREATE TEMP TABLE bigquery_function_metadata AS
+SELECT * FROM duckdb_functions() WHERE starts_with(function_name, 'bigquery_');
+
+# Cover every registered function, positional argument order, categories and varargs.
+query TTTTT rowsort
+SELECT function_name, function_type,
+       parameters[:CASE function_name
+           WHEN 'bigquery_clear_cache' THEN 0
+           WHEN 'bigquery_execute' THEN 2
+           WHEN 'bigquery_load' THEN 2
+           WHEN 'bigquery_query' THEN 2
+           ELSE 1 END],
+       varargs, categories
+FROM bigquery_function_metadata;
+----
+bigquery_attach	table	[dataset]	NULL	[bigquery, utility]
+bigquery_clear_cache	table	[]	NULL	[bigquery, utility]
+bigquery_execute	table	[project_or_catalog, sql]	NULL	[bigquery, jobs]
+bigquery_extract	table	[project_or_catalog]	NULL	[bigquery, jobs]
+bigquery_jobs	table	[project_or_catalog]	NULL	[bigquery, jobs]
+bigquery_load	table	[project_or_catalog, destination_table]	NULL	[bigquery, jobs]
+bigquery_normalize_geography	scalar	[geometry]	NULL	[bigquery, geometry]
+bigquery_query	table	[project_or_catalog, sql]	ANY	[bigquery, read]
+bigquery_scan	table	[table]	NULL	[bigquery, read]
+
+query I
+SELECT count(*) FROM bigquery_function_metadata
+WHERE coalesce(length(trim(description)), 0) = 0
+   OR coalesce(len(examples), 0) = 0
+   OR len(parameters) <> len(parameter_types);
+----
+0
+
+query I
+SELECT count(*) FROM bigquery_function_metadata, unnest(parameters) AS p(name)
+WHERE regexp_full_match(name, 'col[0-9]+');
+----
+0
+
+query TT
+SELECT parameters, parameter_types FROM bigquery_function_metadata
+WHERE function_name = 'bigquery_clear_cache';
+----
+[]	[]
+
+query TT
+SELECT parameter_types, return_type FROM bigquery_function_metadata
+WHERE function_name = 'bigquery_normalize_geography';
+----
+[GEOMETRY]	GEOMETRY
+
+# Cloud examples are inspected as strings only, never bound or executed.
+query I
+SELECT count(*) FROM bigquery_function_metadata, unnest(examples) AS e(example)
+WHERE coalesce(length(trim(example)), 0) = 0
+   OR (function_type = 'table' AND
+       (NOT starts_with(example, 'SELECT * FROM ' || function_name || '(') OR NOT ends_with(example, ';')))
+   OR (function_type = 'scalar' AND NOT starts_with(example, function_name || '('));
+----
+0
+
+# Execute the actual stored examples only for the two functions that run locally.
+statement ok
+SET VARIABLE bigquery_cache_example = (
+    SELECT examples[1] FROM bigquery_function_metadata WHERE function_name = 'bigquery_clear_cache'
+);
+
+query I
+SELECT * FROM query(getvariable('bigquery_cache_example'));
+----
+true
+
+statement ok
+SET VARIABLE bigquery_geometry_example = (
+    SELECT 'SELECT ' || examples[1] FROM bigquery_function_metadata
+    WHERE function_name = 'bigquery_normalize_geography'
+);
+
+query T
+SELECT * FROM query(getvariable('bigquery_geometry_example'));
+----
+POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))

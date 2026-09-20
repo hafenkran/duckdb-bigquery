@@ -12,6 +12,8 @@
 #include "duckdb/main/secret/secret.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
 #include "duckdb/optimizer/optimizer_extension.hpp"
+#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
+#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/planner/extension_callback.hpp"
 
 // OpenSSL linked through vcpkg
@@ -68,37 +70,130 @@ public:
     }
 };
 
+namespace bigquery {
+
+static void RegisterDocumentedTableFunction(ExtensionLoader &loader,
+                                            TableFunction function,
+                                            vector<string> parameter_names,
+                                            string description,
+                                            string example,
+                                            string category) {
+    CreateTableFunctionInfo info(std::move(function));
+    auto &registered_function = info.functions.GetFunctionReferenceByOffset(0);
+    D_ASSERT(parameter_names.size() == registered_function.arguments.size());
+    FunctionDescription documentation;
+    documentation.parameter_types = registered_function.arguments;
+    documentation.parameter_names = std::move(parameter_names);
+    // duckdb_functions() replaces all parameter names when a description supplies any names.
+    // Append named options in the same order used by DuckDB to expose their types.
+    for (const auto &parameter : registered_function.named_parameters) {
+        documentation.parameter_names.push_back(parameter.first);
+    }
+    documentation.description = std::move(description);
+    documentation.examples = {std::move(example)};
+    documentation.categories = {"bigquery", std::move(category)};
+    info.descriptions.push_back(std::move(documentation));
+    info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+    loader.RegisterFunction(std::move(info));
+}
+
+} // namespace bigquery
+
 static void LoadInternal(ExtensionLoader &loader) {
 
     bigquery::BigqueryAttachFunction bigquery_attach_function;
-    loader.RegisterFunction(bigquery_attach_function);
+    bigquery::RegisterDocumentedTableFunction(
+        loader,
+        std::move(bigquery_attach_function),
+        {"dataset"},
+        "Create local DuckDB views backed by bigquery_scan for tables in a BigQuery dataset as a compatibility helper; "
+        "prefer ATTACH ... (TYPE bigquery) for catalog integration.",
+        "SELECT * FROM bigquery_attach('my-gcp-project.my_dataset');",
+        "utility");
 
     bigquery::BigqueryScanFunction bigquery_scan_function;
-    loader.RegisterFunction(bigquery_scan_function);
+    bigquery::RegisterDocumentedTableFunction(
+        loader,
+        std::move(bigquery_scan_function),
+        {"table"},
+        "Read a fully qualified native BigQuery table through the Storage Read API without creating a DuckDB catalog.",
+        "SELECT * FROM bigquery_scan('my-gcp-project.my_dataset.my_table');",
+        "read");
 
     bigquery::BigqueryQueryFunction bigquery_query_function;
-    loader.RegisterFunction(bigquery_query_function);
+    bigquery::RegisterDocumentedTableFunction(
+        loader,
+        std::move(bigquery_query_function),
+        {"project_or_catalog", "sql"},
+        "Run GoogleSQL in a BigQuery project or attached catalog and return result rows, optionally binding additional "
+        "positional values to ? query parameters.",
+        "SELECT * FROM bigquery_query('my-gcp-project', 'SELECT 42 AS answer');",
+        "read");
 
     bigquery::BigqueryClearCacheFunction clear_cache_function;
-    loader.RegisterFunction(clear_cache_function);
+    bigquery::RegisterDocumentedTableFunction(loader,
+                                              std::move(clear_cache_function),
+                                              {},
+                                              "Clear the local metadata caches of all attached BigQuery catalogs.",
+                                              "SELECT * FROM bigquery_clear_cache();",
+                                              "utility");
 
     bigquery::BigQueryExecuteFunction bigquery_execute_function;
-    loader.RegisterFunction(bigquery_execute_function);
+    bigquery::RegisterDocumentedTableFunction(
+        loader,
+        std::move(bigquery_execute_function),
+        {"project_or_catalog", "sql"},
+        "Run a GoogleSQL statement or script in a BigQuery project or attached catalog and return execution metadata.",
+        "SELECT * FROM bigquery_execute('my-gcp-project', 'SELECT 1 AS result');",
+        "jobs");
 
     bigquery::BigQueryExtractFunction bigquery_extract_function;
-    loader.RegisterFunction(bigquery_extract_function);
+    bigquery::RegisterDocumentedTableFunction(
+        loader,
+        std::move(bigquery_extract_function),
+        {"project_or_catalog"},
+        "Export a BigQuery table to Cloud Storage objects using an extract job and return job metadata.",
+        "SELECT * FROM bigquery_extract('my-gcp-project', source_table := 'my_dataset.my_table', "
+        "destination_uris := ['gs://my-bucket/export-*.parquet'], format := 'PARQUET');",
+        "jobs");
 
     bigquery::BigQueryListJobsFunction bigquery_list_jobs_function;
-    loader.RegisterFunction(bigquery_list_jobs_function);
+    bigquery::RegisterDocumentedTableFunction(loader,
+                                              std::move(bigquery_list_jobs_function),
+                                              {"project_or_catalog"},
+                                              "List BigQuery jobs or retrieve one job by jobId in a project or "
+                                              "attached catalog without creating a query job.",
+                                              "SELECT * FROM bigquery_jobs('my-gcp-project', maxResults := 10);",
+                                              "jobs");
 
     bigquery::BigQueryLoadFunction bigquery_load_function;
-    loader.RegisterFunction(bigquery_load_function);
+    bigquery::RegisterDocumentedTableFunction(
+        loader,
+        std::move(bigquery_load_function),
+        {"project_or_catalog", "destination_table"},
+        "Load a local file, Cloud Storage objects, or a DuckDB table or view into a BigQuery table using a load job "
+        "and return job metadata.",
+        "SELECT * FROM bigquery_load('my-gcp-project', 'my_dataset.my_table', "
+        "source_uris := ['gs://my-bucket/input.parquet'], write_disposition := 'WRITE_EMPTY');",
+        "jobs");
 
     ScalarFunction normalize_geography("bigquery_normalize_geography",
                                        {LogicalType::GEOMETRY()},
                                        LogicalType::GEOMETRY(),
                                        bigquery::BqNormalizeGeographyFunction);
-    loader.RegisterFunction(normalize_geography);
+    FunctionDescription normalize_geography_description;
+    normalize_geography_description.parameter_types = normalize_geography.arguments;
+    normalize_geography_description.parameter_names = {"geometry"};
+    normalize_geography_description.description =
+        "Normalize a DuckDB geometry locally for BigQuery geography writes, including polygon winding and "
+        "touching-hole topology.";
+    normalize_geography_description.examples = {
+        "bigquery_normalize_geography('POLYGON((0 0, 0 10, 10 10, 10 0, 0 0))'::GEOMETRY('OGC:CRS84'))"};
+    normalize_geography_description.categories = {"bigquery", "geometry"};
+    CreateScalarFunctionInfo normalize_geography_info(std::move(normalize_geography));
+    normalize_geography_info.descriptions.push_back(std::move(normalize_geography_description));
+    normalize_geography_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+    loader.RegisterFunction(std::move(normalize_geography_info));
 
     auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     StorageExtension::Register(config, "bigquery", make_shared_ptr<bigquery::BigqueryStorageExtension>());
