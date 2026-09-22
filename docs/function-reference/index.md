@@ -14,6 +14,34 @@ and tables introduced on the Home page. Job examples select stable result
 fields because generated IDs, timestamps, locations, and byte counts vary
 between executions.
 
+## Discover Functions through SQL
+
+After loading the extension, query `duckdb_functions()` to discover its
+functions, descriptions, parameter names and types, examples, and categories:
+
+```sql
+LOAD bigquery;
+
+SELECT
+    function_name,
+    function_type,
+    description,
+    parameters,
+    parameter_types,
+    varargs,
+    examples,
+    categories
+FROM duckdb_functions()
+WHERE starts_with(function_name, 'bigquery_')
+ORDER BY function_name;
+```
+
+Each name in `parameters` corresponds to the type at the same position in
+`parameter_types`. The `varargs` field describes additional positional
+arguments, such as the values bound to `?` placeholders by `bigquery_query`.
+Table-function examples are complete `SELECT` statements; the scalar
+`bigquery_normalize_geography` example is an expression to use in a `SELECT`.
+
 ## Read Functions
 
 - **[`bigquery_scan`](bigquery-scan.md)**<br>
