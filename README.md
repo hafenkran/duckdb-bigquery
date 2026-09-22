@@ -1,4 +1,4 @@
-# DuckDB BigQuery Extension
+# DuckDB BigQuery Community Extension
 
 <p align="center">
   <a href="https://duckdb.org/community_extensions/extensions/bigquery"><img alt="DuckDB Community Extension" src="https://img.shields.io/badge/DuckDB-Community%20Extension-FFF000?logo=duckdb&amp;logoColor=000"></a>
