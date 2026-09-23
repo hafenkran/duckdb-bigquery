@@ -49,6 +49,20 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i IN (2222, 3333, 4444
 4444
 5555
 
+# Top-N pushes an optional dynamic filter into the scan; it must be ignored rather than rejected
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown ORDER BY i DESC LIMIT 3;
+----
+9999
+9998
+9997
+
+query I
+SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i < 5000 ORDER BY i DESC LIMIT 2;
+----
+4999
+4998
+
 statement ok
 CREATE TABLE bq.${BQ_TEST_DATASET}.filter_pushdown_struct(
     id INTEGER,

@@ -159,12 +159,23 @@ static string TransformComparisonOperator(ExpressionType type) {
 
 static string TransformFilterPath(const vector<string> &column_path, const TableFilter &filter);
 
+// An empty result means the filter imposes no constraint (e.g. an untranslatable optional filter).
 static string CreateFilterExpression(const vector<string> &column_path,
                                      const vector<unique_ptr<TableFilter>> &filters,
                                      const string &op) {
     vector<string> filter_entries;
     for (auto &filter : filters) {
-        filter_entries.push_back(TransformFilterPath(column_path, *filter));
+        auto entry = TransformFilterPath(column_path, *filter);
+        if (entry.empty()) {
+            if (op == "OR") {
+                return string();
+            }
+            continue;
+        }
+        filter_entries.push_back(std::move(entry));
+    }
+    if (filter_entries.empty()) {
+        return string();
     }
     return "(" + StringUtil::Join(filter_entries, " " + op + " ") + ")";
 }
@@ -193,8 +204,17 @@ static string TransformFilterPath(const vector<string> &column_path, const Table
         return TransformFilterPath(child_path, *struct_filter.child_filter);
     }
     case TableFilterType::OPTIONAL_FILTER: {
+        // Optional filters (Top-N dynamic filters, join bloom/min-max filters, ...) are not required for
+        // correctness, so drop them when they cannot be expressed in BigQuery SQL.
         auto &optional_filter = filter.Cast<OptionalFilter>();
-        return TransformFilterPath(column_path, *optional_filter.child_filter);
+        if (!optional_filter.child_filter) {
+            return string();
+        }
+        try {
+            return TransformFilterPath(column_path, *optional_filter.child_filter);
+        } catch (Exception &) {
+            return string();
+        }
     }
     case TableFilterType::IN_FILTER: {
         auto &in_filter = filter.Cast<InFilter>();
@@ -1577,7 +1597,10 @@ string BigquerySQL::TransformFilters(const TableFilterSet &filters,
     vector<string> filter_entries;
     filter_entries.reserve(filters.filters.size());
     for (auto &filter : filters.filters) {
-        filter_entries.push_back(TransformFilter(column_name_resolver(filter.first), *filter.second));
+        auto entry = TransformFilter(column_name_resolver(filter.first), *filter.second);
+        if (!entry.empty()) {
+            filter_entries.push_back(std::move(entry));
+        }
     }
     return StringUtil::Join(filter_entries, " AND ");
 }
