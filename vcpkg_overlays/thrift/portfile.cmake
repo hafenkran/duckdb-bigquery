@@ -27,6 +27,13 @@ vcpkg_replace_string(
     "#include <thrift/TNonCopyable.h>\n#include <cstdint>"
 )
 
+# Newer libc++ (e.g. Apple clang 21) compares iterators with == in std::map range constructors.
+vcpkg_replace_string(
+    "${SOURCE_PATH}/lib/cpp/src/thrift/Thrift.h"
+    "  bool operator!=(const TEnumIterator& end) {"
+    "  bool operator==(const TEnumIterator& end) const {\n    THRIFT_UNUSED_VARIABLE(end);\n    assert(end.n_ == -1);\n    return (ii_ == n_);\n  }\n\n  bool operator!=(const TEnumIterator& end) {"
+)
+
 if (VCPKG_TARGET_IS_OSX)
     message(WARNING "${PORT} requires bison version greater than 2.5,\n\
 please use command `brew install bison` to install bison")
