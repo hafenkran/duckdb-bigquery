@@ -31,6 +31,14 @@ static unique_ptr<Catalog> BigqueryAttach(optional_ptr<StorageExtensionInfo> sto
     BigqueryOptions options;
     options.access_mode = attach_options.access_mode;
     auto catalog = duckdb::make_uniq<BigqueryCatalog>(db, info.path, options);
+    auto secret_option = attach_options.options.find("secret");
+    if (secret_option != attach_options.options.end()) {
+        auto secret_name = secret_option->second.ToString();
+        if (secret_name.empty()) {
+            throw BinderException("The SECRET option of ATTACH ... (TYPE bigquery) must not be empty");
+        }
+        catalog->config.SetSecretName(secret_name);
+    }
     BigqueryClient client(context, catalog->config);
     client.ValidateAuthentication();
     return catalog;

@@ -407,7 +407,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
     }
 
     bool credentials_set = false;
-    auto secret_match = LookupBigquerySecret(*context, config.project_id);
+    auto secret_match = LookupBigquerySecret(*context, config.project_id, config.secret_name);
     if (secret_match.HasMatch()) {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
         auto credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
@@ -442,7 +442,7 @@ google::cloud::Options BigqueryClient::OptionsGRPC() {
     }
 
     bool credentials_set = false;
-    auto secret_match = LookupBigquerySecret(*context, config.project_id);
+    auto secret_match = LookupBigquerySecret(*context, config.project_id, config.secret_name);
     if (secret_match.HasMatch()) {
         auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
         auto credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
@@ -2107,7 +2107,7 @@ void BigqueryClient::CheckAuthentication() {
         auto auth_options = BigqueryAuthOptions();
         std::shared_ptr<google::cloud::Credentials> credentials;
 
-        auto secret_match = LookupBigquerySecret(*context, config.project_id);
+        auto secret_match = LookupBigquerySecret(*context, config.project_id, config.secret_name);
         if (secret_match.HasMatch()) {
             auto &bq_secret = dynamic_cast<const BigquerySecret &>(secret_match.GetSecret());
             credentials = CreateGCPCredentialsFromSecret(bq_secret, auth_options);
