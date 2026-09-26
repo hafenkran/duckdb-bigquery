@@ -72,6 +72,23 @@ Unlike the project attachment, this result contains no relations from
 bigquery, READ_ONLY)` is equivalent. After a dataset-scoped attachment,
 `USE bq` selects that dataset as the current schema.
 
+## Select a Secret
+
+Use `SECRET` to select an existing BigQuery secret by name. This lets you attach
+the same project with different credentials, even when the secrets share a scope:
+
+```sql
+ATTACH 'project=my-gcp-project dataset=my_dataset'
+  AS bq_ro (TYPE bigquery, READ_ONLY, SECRET my_ro_secret);
+ATTACH 'project=my-gcp-project dataset=my_dataset'
+  AS bq_rw (TYPE bigquery, SECRET my_rw_secret);
+```
+
+The selected secret is used for operations through that catalog, including
+`bigquery_query('bq_rw', ...)`. Its scope does not need to match the project.
+The name must be non-empty and refer to an existing secret of type `bigquery`.
+Without `SECRET`, automatic scope matching and ADC fallback remain unchanged.
+
 ## Attach Public or Cross-Project Data
 
 Use `billing_project` when the project storing the data differs from the

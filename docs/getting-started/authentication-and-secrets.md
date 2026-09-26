@@ -17,8 +17,10 @@ and project-scoped credentials managed by DuckDB. Common setup paths are:
   Manage project-scoped credentials with per-connection isolation and easy
   rotation, particularly for multi-tenant or server use.
 
-DuckDB secrets take priority when their scope matches the target project. If no
-secret matches, the Google client library resolves ADC, including
+With `ATTACH`, you can explicitly [select a secret by name](../user-guide/attach.md#select-a-secret)
+using `SECRET my_secret`, overriding scope matching for that catalog.
+Otherwise, DuckDB secrets take priority when their scope matches the target
+project. If no secret matches, the Google client library resolves ADC, including
 `GOOGLE_APPLICATION_CREDENTIALS`, local gcloud ADC files, and service accounts
 attached to Google-hosted runtimes.
 
