@@ -64,6 +64,11 @@ public:
         return *this;
     }
 
+    BigqueryConfig &SetSecretName(const std::string &secret_name) {
+        this->secret_name = secret_name;
+        return *this;
+    }
+
     bool HasProjectId() const {
         return !project_id.empty();
     }
@@ -103,6 +108,8 @@ public:
     string billing_project_id;
     string api_endpoint;
     string grpc_endpoint;
+    //! When set, credentials come from this named secret instead of a scope match on the project
+    string secret_name;
 };
 
 struct BigqueryDatasetRef {

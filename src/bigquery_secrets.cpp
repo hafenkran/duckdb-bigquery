@@ -305,9 +305,22 @@ std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const
     return nullptr;
 }
 
-SecretMatch LookupBigquerySecret(ClientContext &context, const string &project_id) {
+SecretMatch LookupBigquerySecret(ClientContext &context, const string &project_id, const string &secret_name) {
     auto &secret_manager = SecretManager::Get(context);
     auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
+
+    if (!secret_name.empty()) {
+        auto secret_entry = secret_manager.GetSecretByName(transaction, secret_name);
+        if (!secret_entry) {
+            throw InvalidInputException("BigQuery secret '%s' does not exist", secret_name);
+        }
+        if (secret_entry->secret->GetType() != "bigquery") {
+            throw InvalidInputException("Secret '%s' has type '%s', expected 'bigquery'",
+                                        secret_name,
+                                        secret_entry->secret->GetType());
+        }
+        return SecretMatch(*secret_entry, NumericLimits<int64_t>::Maximum());
+    }
 
     vector<string> scope_prefixes = {"bq://", "bigquery://"};
     for (const auto &prefix : scope_prefixes) {

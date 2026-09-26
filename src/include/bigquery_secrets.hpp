@@ -74,9 +74,10 @@ void ValidateCredentialInput(const string &param, const string &value);
 std::shared_ptr<google::cloud::Credentials> CreateGCPCredentialsFromSecret(const BigquerySecret &secret,
                                                                            google::cloud::Options auth_options = {});
 
-//! Helper function to lookup a secret for a specific project_id using scope bq://project_id or bigquery://project_id
+//! Helper function to lookup a secret for a specific project_id using scope bq://project_id or bigquery://project_id.
+//! If secret_name is non-empty, that secret is returned instead and must exist with type bigquery.
 //! Returns a SecretMatch that owns the secret to prevent use-after-free
-SecretMatch LookupBigquerySecret(ClientContext &context, const string &project_id);
+SecretMatch LookupBigquerySecret(ClientContext &context, const string &project_id, const string &secret_name = "");
 
 //! Register the BigQuery secret type and creation functions with the SecretManager
 void RegisterBigquerySecretType(DatabaseInstance &db);
