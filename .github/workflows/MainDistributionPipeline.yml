@@ -78,6 +78,7 @@ jobs:
             duckdb_version: v1.5.6
             ci_tools_version: v1.5.6
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw"
+            opt_in_archs: "linux_amd64_musl;linux_arm64_musl"
             vcpkg_commit: "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
             extra_toolchains: "parser_tools"
             skip_tests: true
