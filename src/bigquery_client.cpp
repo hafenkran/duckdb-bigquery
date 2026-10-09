@@ -68,12 +68,12 @@ static void ApplyCurlTransportOptions(google::cloud::Options &options) {
         options.set<google::cloud::CARootsFilePathOption>(ca_path);
     }
 
-	if (BigquerySettings::CurlSslNoRevoke()) {
-		options.set<google::cloud::experimental::CurlSslOptionsOption>(static_cast<long>(CURLSSLOPT_NO_REVOKE));
-	} else if (BigquerySettings::CurlSslRevokeBestEffort()) {
-		options.set<google::cloud::experimental::CurlSslOptionsOption>(
-			static_cast<long>(CURLSSLOPT_REVOKE_BEST_EFFORT));
-	}
+    if (BigquerySettings::CurlSslNoRevoke()) {
+        options.set<google::cloud::experimental::CurlSslOptionsOption>(static_cast<long>(CURLSSLOPT_NO_REVOKE));
+    } else if (BigquerySettings::CurlSslRevokeBestEffort()) {
+        options.set<google::cloud::experimental::CurlSslOptionsOption>(
+            static_cast<long>(CURLSSLOPT_REVOKE_BEST_EFFORT));
+    }
 }
 
 static google::cloud::Options BigqueryAuthOptions() {
