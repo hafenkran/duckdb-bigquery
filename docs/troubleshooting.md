@@ -33,6 +33,35 @@ See
 for the setting details. Keep the root bundle current and do not disable
 certificate verification.
 
+### Windows Certificate Revocation Checks
+
+Windows builds use Schannel for cURL-based REST and authentication requests.
+A trusted CA certificate or a different CA bundle does not bypass Schannel's
+certificate revocation checks. Make the CRL or OCSP endpoints reachable from
+the account running DuckDB, including the Windows proxy configuration used
+for certificate retrieval.
+
+If missing or offline revocation endpoints must be tolerated, enable
+`bq_curl_ssl_revoke_best_effort`. This still attempts the checks and can wait
+for Windows certificate retrieval timeouts.
+
+For environments that cannot support these checks, the stronger opt-in is:
+
+```sql
+-- Disable Schannel revocation checks for REST and authentication requests.
+SET bq_curl_ssl_no_revoke = true;
+```
+
+Set the option before creating credentials or connecting. It maps to
+`CURLSSLOPT_NO_REVOKE` and takes precedence over `bq_curl_ssl_revoke_best_effort`
+if both are enabled. Certificate chains and hostnames are still verified,
+but revoked certificates may be accepted because their revocation status is
+not checked. Windows' Untrusted Publishers block list still applies.
+
+Both options default to `false` and only affect cURL with Schannel. They do
+not affect the gRPC transport used by the Storage APIs or control HTTP retry
+counts. Disabling revocation checks does not resolve unrelated TLS errors.
+
 ### Windows gRPC Configuration
 
 On Windows, gRPC requires an additional environment variable to configure the
