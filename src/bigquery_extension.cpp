@@ -280,12 +280,12 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::BOOLEAN,
                               Value(bigquery::BigquerySettings::CurlSslRevokeBestEffort()),
                               bigquery::BigquerySettings::SetCurlSslRevokeBestEffort);
-	config.AddExtensionOption("bq_curl_ssl_no_revoke",
-							  "On Windows with Schannel, disable certificate revocation checks while still verifying "
-							  "certificate chains and hostnames; takes precedence over bq_curl_ssl_revoke_best_effort",
-							  LogicalType::BOOLEAN,
-							  Value(bigquery::BigquerySettings::CurlSslNoRevoke()),
-							  bigquery::BigquerySettings::SetCurlSslNoRevoke);
+    config.AddExtensionOption("bq_curl_ssl_no_revoke",
+                              "On Windows with Schannel, disable certificate revocation checks while still verifying "
+                              "certificate chains and hostnames; takes precedence over bq_curl_ssl_revoke_best_effort",
+                              LogicalType::BOOLEAN,
+                              Value(bigquery::BigquerySettings::CurlSslNoRevoke()),
+                              bigquery::BigquerySettings::SetCurlSslNoRevoke);
     config.AddExtensionOption("bq_max_read_streams",
                               "Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match "
                               "the number of DuckDB threads. `preserve_insertion_order` must be false for "
