@@ -51,6 +51,8 @@ For operational errors and known limitations, see
 | `bq_bignumeric_as_varchar` | `BOOLEAN` | `true` | Expose BigQuery `BIGNUMERIC` as exact `VARCHAR` values |
 | `bq_debug_show_queries` | `BOOLEAN` | `false` | Print generated GoogleSQL to standard output |
 | `bq_curl_ca_bundle_path` | `VARCHAR` | empty | Set a readable CA bundle for cURL-based REST requests |
+| `bq_curl_ssl_revoke_best_effort` | `BOOLEAN` | `false` | With Schannel, tolerate missing or offline certificate revocation endpoints |
+| `bq_curl_ssl_no_revoke` | `BOOLEAN` | `false` | With Schannel, disable revocation checks; takes precedence over `bq_curl_ssl_revoke_best_effort` |
 
 Timeout and stream-count values must be nonnegative and fit in a signed
 32-bit integer. BigQuery can return fewer read streams than requested.

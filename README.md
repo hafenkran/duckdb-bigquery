@@ -114,6 +114,21 @@ This setting does not disable certificate verification and does not accept a
 certificate that Windows can identify as revoked. It does not affect the gRPC
 transport used by the BigQuery Storage APIs.
 
+`best_effort` still attempts revocation checks and can wait for unreachable
+endpoints. If those checks cannot be supported in your environment, you can
+explicitly disable them before creating credentials or connecting:
+
+```sql
+SET bq_curl_ssl_no_revoke = true;
+```
+
+This maps to `CURLSSLOPT_NO_REVOKE`. Certificate chains and hostnames are still
+verified, but revoked certificates may be accepted because their revocation
+status is not checked. Windows' Untrusted Publishers block list still applies.
+Both settings default to `false`; `bq_curl_ssl_no_revoke` takes precedence if
+both are enabled. They only affect cURL with Schannel, not gRPC. Making the
+revocation endpoints reachable remains the preferred solution.
+
 ## Building from Source
 
 The extension uses VCPKG for dependency management. The following example

@@ -1,0 +1,42 @@
+# name: test/sql/misc/bigquery_ssl_options.test
+# description: Check opt-in defaults and configuration of Schannel revocation settings without network requests
+# group: [misc]
+
+require bigquery
+
+query TT
+SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+----
+false	false
+
+statement ok
+SET bq_curl_ssl_no_revoke = true;
+
+query TT
+SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+----
+true	false
+
+statement ok
+SET bq_curl_ssl_revoke_best_effort = true;
+
+query TT
+SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+----
+true	true
+
+statement ok
+RESET bq_curl_ssl_no_revoke;
+
+query TT
+SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+----
+false	true
+
+statement ok
+RESET bq_curl_ssl_revoke_best_effort;
+
+query TT
+SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+----
+false	false
