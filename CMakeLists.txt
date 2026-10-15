@@ -1,5 +1,9 @@
-cmake_minimum_required(VERSION 3.5...3.29)
+cmake_minimum_required(VERSION 3.20...3.29)
 
+if(NOT CMAKE_CXX_STANDARD OR CMAKE_CXX_STANDARD LESS 17)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(POLICY CMP0177)
     cmake_policy(SET CMP0177 NEW)
@@ -10,7 +14,8 @@ set(TARGET_NAME bigquery)
 
 # musl-specific workaround: thrift headers miss <cstdint>, so force-include it when building in the musl CI container.
 set(MUSL_EXTRA_CXXFLAGS "")
-if(DEFINED ENV{DUCKDB_PLATFORM} AND "$ENV{DUCKDB_PLATFORM}" STREQUAL "linux_amd64_musl")
+if(DEFINED ENV{DUCKDB_PLATFORM} AND "$ENV{DUCKDB_PLATFORM}" STREQUAL
+                                    "linux_amd64_musl")
     set(MUSL_EXTRA_CXXFLAGS "-include cstdint")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MUSL_EXTRA_CXXFLAGS}")
 endif()
@@ -26,10 +31,8 @@ if(WIN32)
     else()
         set(MSVC_RUNTIME_LIB "MultiThreaded")
     endif()
-    set(MSVC_RUNTIME_ARGS
-        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-        -DCMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME_LIB}
-    )
+    set(MSVC_RUNTIME_ARGS -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+                          -DCMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME_LIB})
 endif()
 set(VCPKG_CRT_ARGS "")
 if(WIN32)
@@ -40,15 +43,12 @@ if(WIN32)
     if(NOT DEFINED VCPKG_LIBRARY_LINKAGE)
         set(VCPKG_LIBRARY_LINKAGE static)
     endif()
-    set(VCPKG_CRT_ARGS
-        -DVCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE}
-        -DVCPKG_LIBRARY_LINKAGE=${VCPKG_LIBRARY_LINKAGE}
-    )
+    set(VCPKG_CRT_ARGS -DVCPKG_CRT_LINKAGE=${VCPKG_CRT_LINKAGE}
+                       -DVCPKG_LIBRARY_LINKAGE=${VCPKG_LIBRARY_LINKAGE})
 endif()
 execute_process(
     COMMAND
-        ${CMAKE_COMMAND}
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        ${CMAKE_COMMAND} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
         # osx options
         -DOSX_BUILD_ARCH=${OSX_BUILD_ARCH}
@@ -60,33 +60,32 @@ execute_process(
         -DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}
         -DVCPKG_TARGET_ARCHITECTURE=${VCPKG_TARGET_ARCHITECTURE}
         -DVCPKG_OVERLAY_TRIPLETS=${CMAKE_CURRENT_SOURCE_DIR}/extension-ci-tools/toolchains/
-        ${MSVC_RUNTIME_ARGS}
-        ${VCPKG_CRT_ARGS}
+        ${MSVC_RUNTIME_ARGS} ${VCPKG_CRT_ARGS}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
         -DCMAKE_CXX_FLAGS=${MUSL_EXTRA_CXXFLAGS}
         # Force static linking for cross-compilation
-        -DBUILD_SHARED_LIBS=OFF
-        -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-        -G ${CMAKE_GENERATOR}
-        -S ${CMAKE_CURRENT_SOURCE_DIR}/external
-        -B ${CMAKE_BINARY_DIR}/external
-    RESULT_VARIABLE DEPENDENCIES_GENERATE_RESULT
-)
+        -DBUILD_SHARED_LIBS=OFF -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" -G
+        ${CMAKE_GENERATOR} -S ${CMAKE_CURRENT_SOURCE_DIR}/external -B
+        ${CMAKE_BINARY_DIR}/external
+    RESULT_VARIABLE DEPENDENCIES_GENERATE_RESULT)
 
-if(NOT DEPENDENCIES_GENERATE_RESULT EQUAL 0)
+if(NOT
+   DEPENDENCIES_GENERATE_RESULT
+   EQUAL
+   0)
     message(FATAL_ERROR "Could not generate dependencies project")
 endif()
 
 execute_process(
-    COMMAND
-        ${CMAKE_COMMAND}
-        --build ${CMAKE_BINARY_DIR}/external
-        --config ${CMAKE_BUILD_TYPE}
-    RESULT_VARIABLE DEPENDENCIES_BUILD_RESULT
-)
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/external --config
+            ${CMAKE_BUILD_TYPE} RESULT_VARIABLE DEPENDENCIES_BUILD_RESULT)
 
-if(NOT DEPENDENCIES_BUILD_RESULT EQUAL 0)
+if(NOT
+   DEPENDENCIES_BUILD_RESULT
+   EQUAL
+   0)
     message(FATAL_ERROR "Could not build dependencies project")
 endif()
 
@@ -101,7 +100,8 @@ find_package(Snappy CONFIG REQUIRED)
 if(TARGET Snappy::snappy AND NOT TARGET Snappy::snappy-static)
     # Arrow 20's static config expects Snappy::snappy-static, while vcpkg exports Snappy::snappy.
     add_library(Snappy::snappy-static INTERFACE IMPORTED)
-    set_target_properties(Snappy::snappy-static PROPERTIES INTERFACE_LINK_LIBRARIES Snappy::snappy)
+    set_target_properties(Snappy::snappy-static
+                          PROPERTIES INTERFACE_LINK_LIBRARIES Snappy::snappy)
 endif()
 find_package(Arrow REQUIRED)
 find_package(CURL REQUIRED)
@@ -116,7 +116,8 @@ find_package(google_cloud_cpp_bigquerycontrol REQUIRED)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
-set(INCLUDE_VC_DIR ${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include/)
+set(INCLUDE_VC_DIR
+    ${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include/)
 
 project(${TARGET_NAME})
 include_directories(src/include)
@@ -170,15 +171,19 @@ function(link_libraries_to_extension target_name)
 
     get_target_property(target_type ${target_name} TYPE)
     if(target_type STREQUAL "STATIC_LIBRARY")
-        get_target_property(interface_link_libraries ${target_name} INTERFACE_LINK_LIBRARIES)
-        if(interface_link_libraries STREQUAL "interface_link_libraries-NOTFOUND")
+        get_target_property(interface_link_libraries ${target_name}
+                            INTERFACE_LINK_LIBRARIES)
+        if(interface_link_libraries STREQUAL
+           "interface_link_libraries-NOTFOUND")
             set(interface_link_libraries "")
         endif()
         foreach(link_dep IN LISTS extension_link_deps)
             list(REMOVE_ITEM interface_link_libraries "${link_dep}")
             list(APPEND interface_link_libraries "$<LINK_ONLY:${link_dep}>")
         endforeach()
-        set_property(TARGET ${target_name} PROPERTY INTERFACE_LINK_LIBRARIES "${interface_link_libraries}")
+        set_property(
+            TARGET ${target_name} PROPERTY INTERFACE_LINK_LIBRARIES
+                                           "${interface_link_libraries}")
     endif()
 endfunction()
 
@@ -190,5 +195,4 @@ install(
     TARGETS ${EXTENSION_NAME}
     EXPORT "${DUCKDB_EXPORT_SET}"
     LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-    ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
-)
+    ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
