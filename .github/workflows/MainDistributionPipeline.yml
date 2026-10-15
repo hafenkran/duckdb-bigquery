@@ -34,7 +34,7 @@ jobs:
               name: Checkout Extension CI tools
               with:
                   path: "extension-ci-tools"
-                  ref: v1.5.6
+                  ref: v2.0-cyanoptera
                   repository: duckdb/extension-ci-tools
 
             - name: Install apt format dependencies
@@ -75,8 +75,8 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.6
-            ci_tools_version: v1.5.6
+            duckdb_version: v2.0-cyanoptera
+            ci_tools_version: v2.0-cyanoptera
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw"
             opt_in_archs: "linux_amd64_musl;linux_arm64_musl"
             vcpkg_commit: "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
@@ -97,8 +97,8 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.6
-            ci_tools_version: v1.5.6
+            duckdb_version: v2.0-cyanoptera
+            ci_tools_version: v2.0-cyanoptera
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw"
             vcpkg_commit: "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
             extra_toolchains: "parser_tools"
@@ -115,8 +115,8 @@ jobs:
         secrets: inherit
         with:
             extension_name: bigquery
-            duckdb_version: v1.5.6
-            ci_tools_version: v1.5.6
+            duckdb_version: v2.0-cyanoptera
+            ci_tools_version: v2.0-cyanoptera
             exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw"
             deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
             reduced_ci_mode: "disabled"

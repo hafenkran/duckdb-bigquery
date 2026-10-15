@@ -6,5 +6,7 @@ duckdb_extension_load(bigquery
     LOAD_TESTS
 )
 
+duckdb_extension_statically_link(bigquery)
+
 # Any extra extensions that should be built
 # e.g.: duckdb_extension_load(json)
