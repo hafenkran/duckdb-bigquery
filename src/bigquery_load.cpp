@@ -63,11 +63,11 @@ static string NormalizeEnumValue(const string &value) {
     return StringUtil::Upper(value);
 }
 
-static string ParseEnumParameter(const named_parameter_map_t &named_parameters,
+static string ParseEnumParameter(const named_argument_map_t &named_parameters,
                                  const string &parameter_name,
                                  const string &default_value,
                                  const vector<string> &allowed_values) {
-    auto entry = named_parameters.find(parameter_name);
+    auto entry = named_parameters.find(Identifier(parameter_name));
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return default_value;
     }
@@ -82,18 +82,18 @@ static string ParseEnumParameter(const named_parameter_map_t &named_parameters,
     throw BinderException("Invalid value for parameter '%s': %s", parameter_name, normalized);
 }
 
-static std::optional<string> ParseOptionalStringParameter(const named_parameter_map_t &named_parameters,
+static std::optional<string> ParseOptionalStringParameter(const named_argument_map_t &named_parameters,
                                                           const string &parameter_name) {
-    auto entry = named_parameters.find(parameter_name);
+    auto entry = named_parameters.find(Identifier(parameter_name));
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return std::nullopt;
     }
     return entry->second.GetValue<string>();
 }
 
-static std::optional<vector<string>> ParseOptionalSourceUrisParameter(const named_parameter_map_t &named_parameters,
+static std::optional<vector<string>> ParseOptionalSourceUrisParameter(const named_argument_map_t &named_parameters,
                                                                       const string &parameter_name) {
-    auto entry = named_parameters.find(parameter_name);
+    auto entry = named_parameters.find(Identifier(parameter_name));
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return std::nullopt;
     }
@@ -118,7 +118,7 @@ static std::optional<vector<string>> ParseOptionalSourceUrisParameter(const name
     return result;
 }
 
-static std::optional<string> ParseOptionalAliasedStringParameter(const named_parameter_map_t &named_parameters,
+static std::optional<string> ParseOptionalAliasedStringParameter(const named_argument_map_t &named_parameters,
                                                                  const string &parameter_name,
                                                                  const string &legacy_parameter_name) {
     auto value = ParseOptionalStringParameter(named_parameters, parameter_name);
@@ -131,18 +131,18 @@ static std::optional<string> ParseOptionalAliasedStringParameter(const named_par
     return value ? value : legacy_value;
 }
 
-static std::optional<bool> ParseOptionalBoolParameter(const named_parameter_map_t &named_parameters,
+static std::optional<bool> ParseOptionalBoolParameter(const named_argument_map_t &named_parameters,
                                                       const string &parameter_name) {
-    auto entry = named_parameters.find(parameter_name);
+    auto entry = named_parameters.find(Identifier(parameter_name));
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return std::nullopt;
     }
     return entry->second.GetValue<bool>();
 }
 
-static std::optional<int> ParseOptionalNonNegativeInt32Parameter(const named_parameter_map_t &named_parameters,
+static std::optional<int> ParseOptionalNonNegativeInt32Parameter(const named_argument_map_t &named_parameters,
                                                                  const string &parameter_name) {
-    auto entry = named_parameters.find(parameter_name);
+    auto entry = named_parameters.find(Identifier(parameter_name));
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return std::nullopt;
     }
@@ -157,10 +157,10 @@ static std::optional<int> ParseOptionalNonNegativeInt32Parameter(const named_par
     return static_cast<int>(value);
 }
 
-static vector<string> ParseOptionalStringListParameter(const named_parameter_map_t &named_parameters,
+static vector<string> ParseOptionalStringListParameter(const named_argument_map_t &named_parameters,
                                                        const string &parameter_name,
                                                        const bool normalize_upper = false) {
-    auto entry = named_parameters.find(parameter_name);
+    auto entry = named_parameters.find(Identifier(parameter_name));
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return {};
     }
@@ -325,7 +325,7 @@ static void ValidateLoadOptionCombinations(const BigQueryLoadOptions &options, c
     }
 }
 
-static BigQueryLoadParameters ParseLoadParameters(const named_parameter_map_t &named_parameters) {
+static BigQueryLoadParameters ParseLoadParameters(const named_argument_map_t &named_parameters) {
     BigQueryLoadParameters params;
     params.source_file = ParseOptionalAliasedStringParameter(named_parameters, "source_file", "file");
     params.source_table = ParseOptionalAliasedStringParameter(named_parameters, "source_table", "table");
@@ -479,7 +479,7 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
     auto copy_query = "COPY (SELECT * FROM " + relation_name + ") TO '" + escaped_temp_file_path + "' (FORMAT PARQUET)";
 
     try {
-        Parser parser(context.GetParserOptions());
+        Parser parser(context);
         parser.ParseQuery(copy_query);
         if (parser.statements.size() != 1) {
             throw InternalException("Expected a single COPY statement for source table materialization");
@@ -495,7 +495,10 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
 #ifdef DEBUG
         logical_plan->Verify(context);
 #endif
-        if (ClientConfig::GetConfig(context).enable_optimizer && logical_plan->RequireOptimizer()) {
+        Value optimizer_setting;
+        const bool optimizer_enabled =
+            !context.TryGetCurrentSetting("enable_optimizer", optimizer_setting) || optimizer_setting.GetValue<bool>();
+        if (optimizer_enabled && logical_plan->RequireOptimizer()) {
             Optimizer optimizer(*logical_planner.binder, context);
             logical_plan = optimizer.Optimize(std::move(logical_plan));
 #ifdef DEBUG
@@ -510,13 +513,15 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
         executor.Initialize(physical_plan->Root());
 
         while (true) {
-            auto execution_result = executor.ExecuteTask(false);
-            if (execution_result == PendingExecutionResult::BLOCKED) {
+            auto execution_result = executor.ExecuteTask();
+            if (execution_result == QueryResultState::EXECUTION_ERROR) {
+                executor.ThrowException();
+            }
+            if (execution_result == QueryResultState::BLOCKED) {
                 executor.WaitForTask();
                 continue;
             }
-            if (execution_result == PendingExecutionResult::RESULT_READY ||
-                execution_result == PendingExecutionResult::EXECUTION_FINISHED) {
+            if (execution_result == QueryResultState::READY || execution_result == QueryResultState::FINISHED) {
                 break;
             }
         }
@@ -538,7 +543,7 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
     }
 }
 
-static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<string> &names) {
+static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<Identifier> &names) {
     names.emplace_back("success");
     return_types.emplace_back(LogicalType(LogicalTypeId::BOOLEAN));
 
@@ -564,7 +569,7 @@ static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vec
 static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
                                                  TableFunctionBindInput &input,
                                                  vector<LogicalType> &return_types,
-                                                 vector<string> &names) {
+                                                 vector<Identifier> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto destination_table_string = input.inputs[1].GetValue<string>();
     auto params = ParseLoadParameters(input.named_parameters);
@@ -581,7 +586,7 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     auto destination_table = BigqueryUtils::ParseDatasetTableString(destination_table_string);
 
     auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    auto database = database_manager.GetDatabase(context, Identifier(dbname_or_project_id));
     if (database) {
         auto &catalog = database->GetCatalog();
         if (catalog.GetCatalogType() != "bigquery") {
@@ -664,6 +669,7 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
         throw BinderException("Failed to convert load job status to JSON");
     }
 
+    output.SetChildCardinality(1);
     output.SetValue(0, 0, Value::BOOLEAN(true));
     output.SetValue(1, 0, Value(job.job_reference().job_id()));
     output.SetValue(2, 0, Value(job.job_reference().project_id()));
@@ -677,7 +683,7 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
     }
 
     output.SetValue(6, 0, Value(status_json));
-    output.SetCardinality(1);
+    output.CheckCardinality(1);
     data.finished = true;
 }
 
@@ -686,48 +692,50 @@ BigQueryLoadFunction::BigQueryLoadFunction()
                     {LogicalType(LogicalTypeId::VARCHAR), LogicalType(LogicalTypeId::VARCHAR)},
                     BigQueryLoadFunc,
                     BigQueryLoadBind) {
-    named_parameters["source_file"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["file"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["source_uris"] = LogicalType::ANY;
-    named_parameters["source_table"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["table"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["source_format"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["write_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["create_disposition"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["location"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["labels"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
-    named_parameters["timeout_ms"] = LogicalType::BIGINT;
-    named_parameters["autodetect"] = LogicalType::BOOLEAN;
-    named_parameters["schema_update_options"] = LogicalType::ANY;
-    named_parameters["max_bad_records"] = LogicalType::BIGINT;
-    named_parameters["ignore_unknown_values"] = LogicalType::BOOLEAN;
+    TypedKwargs options;
+    options.Add("source_file", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("file", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("source_uris", LogicalType::ANY);
+    options.Add("source_table", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("table", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("source_format", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("write_disposition", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("create_disposition", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("location", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("billing_project", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("labels", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR));
+    options.Add("timeout_ms", LogicalType::BIGINT);
+    options.Add("autodetect", LogicalType::BOOLEAN);
+    options.Add("schema_update_options", LogicalType::ANY);
+    options.Add("max_bad_records", LogicalType::BIGINT);
+    options.Add("ignore_unknown_values", LogicalType::BOOLEAN);
 
-    named_parameters["csv_field_delimiter"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["csv_skip_leading_rows"] = LogicalType::BIGINT;
-    named_parameters["csv_quote"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["csv_allow_quoted_newlines"] = LogicalType::BOOLEAN;
-    named_parameters["csv_allow_jagged_rows"] = LogicalType::BOOLEAN;
-    named_parameters["csv_encoding"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["csv_null_marker"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["csv_null_markers"] = LogicalType::ANY;
-    named_parameters["csv_preserve_ascii_control_characters"] = LogicalType::BOOLEAN;
+    options.Add("csv_field_delimiter", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("csv_skip_leading_rows", LogicalType::BIGINT);
+    options.Add("csv_quote", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("csv_allow_quoted_newlines", LogicalType::BOOLEAN);
+    options.Add("csv_allow_jagged_rows", LogicalType::BOOLEAN);
+    options.Add("csv_encoding", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("csv_null_marker", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("csv_null_markers", LogicalType::ANY);
+    options.Add("csv_preserve_ascii_control_characters", LogicalType::BOOLEAN);
 
-    named_parameters["date_format"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["datetime_format"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["time_format"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["timestamp_format"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["time_zone"] = LogicalType(LogicalTypeId::VARCHAR);
+    options.Add("date_format", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("datetime_format", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("time_format", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("timestamp_format", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("time_zone", LogicalType(LogicalTypeId::VARCHAR));
 
-    named_parameters["json_extension"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["avro_use_logical_types"] = LogicalType::BOOLEAN;
-    named_parameters["parquet_enable_list_inference"] = LogicalType::BOOLEAN;
-    named_parameters["parquet_enum_as_string"] = LogicalType::BOOLEAN;
-    named_parameters["reference_file_schema_uri"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["decimal_target_types"] = LogicalType::ANY;
+    options.Add("json_extension", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("avro_use_logical_types", LogicalType::BOOLEAN);
+    options.Add("parquet_enable_list_inference", LogicalType::BOOLEAN);
+    options.Add("parquet_enum_as_string", LogicalType::BOOLEAN);
+    options.Add("reference_file_schema_uri", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("decimal_target_types", LogicalType::ANY);
 
-    named_parameters["hive_partitioning_mode"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["hive_partitioning_source_uri_prefix"] = LogicalType(LogicalTypeId::VARCHAR);
+    options.Add("hive_partitioning_mode", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("hive_partitioning_source_uri_prefix", LogicalType(LogicalTypeId::VARCHAR));
+    GetSignature().AddTypedKwargs("options", std::move(options));
 }
 
 } // namespace bigquery

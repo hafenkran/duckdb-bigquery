@@ -29,17 +29,17 @@ struct BigQueryExecuteBindData : public TableFunctionData {
 };
 
 //! Parse a VARCHAR named parameter, returning the default when absent or NULL.
-static string GetStringParam(const named_parameter_map_t &named_parameters,
+static string GetStringParam(const named_argument_map_t &named_parameters,
                              const string &name,
                              const string &default_value) {
-    auto entry = named_parameters.find(name);
+    auto entry = named_parameters.find(Identifier(name));
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return default_value;
     }
     return entry->second.GetValue<string>();
 }
 
-static string ParseDispositionParam(const named_parameter_map_t &named_parameters,
+static string ParseDispositionParam(const named_argument_map_t &named_parameters,
                                     const string &name,
                                     const string &default_value,
                                     const vector<string> &allowed_values) {
@@ -81,7 +81,7 @@ static BigqueryTableRef ParseDestinationTable(const string &table_string, const 
 static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &context,
                                                             TableFunctionBindInput &input,
                                                             vector<LogicalType> &return_types,
-                                                            vector<string> &names) {
+                                                            vector<Identifier> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
 
@@ -94,7 +94,7 @@ static duckdb::unique_ptr<FunctionData> BigQueryExecuteBind(ClientContext &conte
     result->timeout_ms = params.timeout_ms;
 
     auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    auto database = database_manager.GetDatabase(context, Identifier(dbname_or_project_id));
     if (database) {
         // Use attached database for this operation
         auto &catalog = database->GetCatalog();
@@ -186,6 +186,7 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
 
         const auto &job_ref = job.job_reference();
         const auto &query_stats = job.statistics().query();
+        output.SetChildCardinality(1);
         output.SetValue(0, 0, true);
         output.SetValue(1, 0, Value(job_ref.job_id()));
         output.SetValue(2, 0, Value(job_ref.project_id()));
@@ -208,7 +209,7 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
                         query_stats.has_num_dml_affected_rows()
                             ? Value::BIGINT(query_stats.num_dml_affected_rows().value())
                             : Value(LogicalType::BIGINT));
-        output.SetCardinality(1);
+        output.CheckCardinality(1);
         return;
     }
 
@@ -216,6 +217,7 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
     data.finished = true;
 
     if (!data.dry_run) {
+        output.SetChildCardinality(1);
         output.SetValue(0, 0, true);
         output.SetValue(1, 0, response.job_reference().job_id());
         output.SetValue(2, 0, response.job_reference().project_id());
@@ -224,11 +226,12 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
         output.SetValue(5, 0, Value::BIGINT(response.total_bytes_processed().value()));
         output.SetValue(6, 0, Value::BIGINT(response.num_dml_affected_rows().value()));
     } else {
+        output.SetChildCardinality(1);
         output.SetValue(0, 0, Value::BIGINT(response.total_bytes_processed().value()));
         output.SetValue(1, 0, Value::BOOLEAN(response.cache_hit().value()));
         output.SetValue(2, 0, response.job_reference().location().value());
     }
-    output.SetCardinality(1);
+    output.CheckCardinality(1);
 }
 
 BigQueryExecuteFunction::BigQueryExecuteFunction()
@@ -237,13 +240,15 @@ BigQueryExecuteFunction::BigQueryExecuteFunction()
                     BigQueryExecuteFunc,
                     BigQueryExecuteBind) {
 
-    named_parameters["api_endpoint"] = LogicalType::VARCHAR;
-    named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
-    named_parameters["dry_run"] = LogicalType::BOOLEAN;
-    named_parameters["timeout_ms"] = LogicalType::BIGINT;
-    named_parameters["destination_table"] = LogicalType::VARCHAR;
-    named_parameters["write_disposition"] = LogicalType::VARCHAR;
-    named_parameters["create_disposition"] = LogicalType::VARCHAR;
+    TypedKwargs options;
+    options.Add("api_endpoint", LogicalType::VARCHAR);
+    options.Add("grpc_endpoint", LogicalType::VARCHAR);
+    options.Add("dry_run", LogicalType::BOOLEAN);
+    options.Add("timeout_ms", LogicalType::BIGINT);
+    options.Add("destination_table", LogicalType::VARCHAR);
+    options.Add("write_disposition", LogicalType::VARCHAR);
+    options.Add("create_disposition", LogicalType::VARCHAR);
+    GetSignature().AddTypedKwargs("options", std::move(options));
 }
 
 } // namespace bigquery

@@ -22,7 +22,7 @@ static constexpr const char *kTokenUri = "token_uri";
 class BigquerySecret : public KeyValueSecret {
 public:
     //! Constructor for creating a new BigQuery secret
-    BigquerySecret(const vector<string> &prefix_paths, const string &provider, const string &name);
+    BigquerySecret(const vector<string> &prefix_paths, const Identifier &provider, const Identifier &name);
 
     //! Constructor for deserialization
     BigquerySecret(const BaseSecret &base_secret);

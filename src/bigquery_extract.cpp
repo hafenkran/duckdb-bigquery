@@ -104,7 +104,7 @@ static string NormalizeExtractFormat(const string &format) {
     return normalized;
 }
 
-static BigQueryExtractParameters ParseExtractParameters(const named_parameter_map_t &named_parameters) {
+static BigQueryExtractParameters ParseExtractParameters(const named_argument_map_t &named_parameters) {
     BigQueryExtractParameters params;
 
     auto source_table = named_parameters.find("source_table");
@@ -269,7 +269,7 @@ static Value Int64ListValue(const google::protobuf::RepeatedField<int64_t> &valu
     return Value::LIST(LogicalType::BIGINT, std::move(children));
 }
 
-static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<string> &names) {
+static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<Identifier> &names) {
     names.emplace_back("success");
     return_types.emplace_back(LogicalType(LogicalTypeId::BOOLEAN));
 
@@ -304,7 +304,7 @@ static void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vec
 static unique_ptr<FunctionData> BigQueryExtractBind(ClientContext &context,
                                                     TableFunctionBindInput &input,
                                                     vector<LogicalType> &return_types,
-                                                    vector<string> &names) {
+                                                    vector<Identifier> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto params = ParseExtractParameters(input.named_parameters);
 
@@ -320,7 +320,7 @@ static unique_ptr<FunctionData> BigQueryExtractBind(ClientContext &context,
     bind_data->timeout_ms = params.timeout_ms;
 
     auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    auto database = database_manager.GetDatabase(context, Identifier(dbname_or_project_id));
     if (database) {
         auto &catalog = database->GetCatalog();
         if (catalog.GetCatalogType() != "bigquery") {
@@ -378,6 +378,7 @@ static void BigQueryExtractFunc(ClientContext &context, TableFunctionInput &data
         throw BinderException("Failed to convert extract job status to JSON");
     }
 
+    output.SetChildCardinality(1);
     output.SetValue(0, 0, Value::BOOLEAN(true));
     output.SetValue(1, 0, Value(job.job_reference().job_id()));
     output.SetValue(2, 0, Value(job.job_reference().project_id()));
@@ -401,7 +402,7 @@ static void BigQueryExtractFunc(ClientContext &context, TableFunctionInput &data
     }
 
     output.SetValue(9, 0, Value(status_json));
-    output.SetCardinality(1);
+    output.CheckCardinality(1);
     data.finished = true;
 }
 
@@ -410,18 +411,20 @@ BigQueryExtractFunction::BigQueryExtractFunction()
                     {LogicalType(LogicalTypeId::VARCHAR)},
                     BigQueryExtractFunc,
                     BigQueryExtractBind) {
-    named_parameters["source_table"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["destination_uris"] = LogicalType::ANY;
-    named_parameters["format"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["compression"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["csv_print_header"] = LogicalType(LogicalTypeId::BOOLEAN);
-    named_parameters["csv_field_delimiter"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["avro_use_logical_types"] = LogicalType(LogicalTypeId::BOOLEAN);
-    named_parameters["location"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["labels"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
-    named_parameters["billing_project"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["api_endpoint"] = LogicalType(LogicalTypeId::VARCHAR);
-    named_parameters["timeout_ms"] = LogicalType::BIGINT;
+    TypedKwargs options;
+    options.Add("source_table", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("destination_uris", LogicalType::ANY);
+    options.Add("format", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("compression", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("csv_print_header", LogicalType(LogicalTypeId::BOOLEAN));
+    options.Add("csv_field_delimiter", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("avro_use_logical_types", LogicalType(LogicalTypeId::BOOLEAN));
+    options.Add("location", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("labels", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR));
+    options.Add("billing_project", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("api_endpoint", LogicalType(LogicalTypeId::VARCHAR));
+    options.Add("timeout_ms", LogicalType::BIGINT);
+    GetSignature().AddTypedKwargs("options", std::move(options));
 }
 
 } // namespace bigquery

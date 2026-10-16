@@ -19,7 +19,7 @@ namespace bigquery {
 static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                                   TableFunctionBindInput &input,
                                                   vector<LogicalType> &return_types,
-                                                  vector<string> &names) {
+                                                  vector<Identifier> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
     auto query_string = input.inputs[1].GetValue<string>();
     vector<Value> query_parameters;
@@ -28,7 +28,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     }
 
     auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    auto database = database_manager.GetDatabase(context, Identifier(dbname_or_project_id));
 
     auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
     input.table_function.projection_pushdown = !params.use_rest_api && !params.dry_run;
@@ -124,7 +124,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
             throw BinderException("BigQuery query has no columns: " + query_string);
         }
 
-        bind_data->names = names;
+        bind_data->names = BigqueryUtils::ToStrings(names);
         bind_data->types = return_types;
         return std::move(bind_data);
     }
@@ -187,7 +187,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
         throw BinderException("BigQuery query has no columns: " + query_string);
     }
 
-    bind_data->names = names;
+    bind_data->names = BigqueryUtils::ToStrings(names);
     bind_data->all_types = return_types;
 
     if (!mapped_bq_types.empty()) {
@@ -317,10 +317,11 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
                                                           bind_data.timeout_ms);
         bind_data.finished = true;
 
+        output.SetChildCardinality(1);
         output.SetValue(0, 0, Value::BIGINT(response.total_bytes_processed().value()));
         output.SetValue(1, 0, Value::BOOLEAN(response.cache_hit().value()));
         output.SetValue(2, 0, response.job_reference().location().value());
-        output.SetCardinality(1);
+        output.CheckCardinality(1);
         return;
     }
 
@@ -351,7 +352,8 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
     BigqueryScanFunction::BigqueryScanExecute(context, data, output);
 }
 
-static BindInfo BigqueryQueryGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+static BindInfo BigqueryQueryGetBindInfo(TableFunctionGetBindInfoInput &input) {
+    const auto bind_data_p = input.bind_data;
     D_ASSERT(bind_data_p);
     const auto *base = bind_data_p.get();
     BindInfo info(ScanType::EXTERNAL);
@@ -368,7 +370,7 @@ static BindInfo BigqueryQueryGetBindInfo(const optional_ptr<FunctionData> bind_d
 
     const auto &bind_data = base->Cast<BigqueryScanBindData>();
     if (bind_data.bq_table_entry) {
-        info.table = bind_data.bq_table_entry.get_mutable();
+        info.InsertOption("table", Value(bind_data.TableString()));
     }
     return info;
 }
@@ -476,13 +478,15 @@ BigqueryQueryFunction::BigqueryQueryFunction()
     filter_pushdown = true;
     filter_prune = true;
 
-    named_parameters["billing_project"] = LogicalType::VARCHAR;
-    named_parameters["api_endpoint"] = LogicalType::VARCHAR;
-    named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
-    named_parameters["use_rest_api"] = LogicalType::BOOLEAN;
-    named_parameters["dry_run"] = LogicalType::BOOLEAN;
-    named_parameters["timeout_ms"] = LogicalType::BIGINT;
-    varargs = LogicalType::ANY;
+    GetSignature().AddArgs("args", LogicalType::ANY);
+    TypedKwargs options;
+    options.Add("billing_project", LogicalType::VARCHAR);
+    options.Add("api_endpoint", LogicalType::VARCHAR);
+    options.Add("grpc_endpoint", LogicalType::VARCHAR);
+    options.Add("use_rest_api", LogicalType::BOOLEAN);
+    options.Add("dry_run", LogicalType::BOOLEAN);
+    options.Add("timeout_ms", LogicalType::BIGINT);
+    GetSignature().AddTypedKwargs("options", std::move(options));
 }
 
 } // namespace bigquery

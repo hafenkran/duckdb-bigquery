@@ -78,16 +78,26 @@ static void RegisterDocumentedTableFunction(ExtensionLoader &loader,
                                             string description,
                                             string example,
                                             string category) {
+    auto &function_signature = function.GetSignature();
+    D_ASSERT(parameter_names.size() == function_signature.GetPositionalParameterCount());
+    for (idx_t i = 0; i < parameter_names.size(); i++) {
+        function_signature.GetParameter(i).SetName(Identifier(parameter_names[i]));
+    }
     CreateTableFunctionInfo info(std::move(function));
-    auto &registered_function = info.functions.GetFunctionReferenceByOffset(0);
-    D_ASSERT(parameter_names.size() == registered_function.arguments.size());
+    const auto &registered_function = *info.functions.GetFunctionByOffset(0);
+    const auto &signature = registered_function.GetSignature();
+    D_ASSERT(parameter_names.size() == signature.GetPositionalParameterCount());
     FunctionDescription documentation;
-    documentation.parameter_types = registered_function.arguments;
+    for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
+        documentation.parameter_types.push_back(signature.GetParameter(i).GetType());
+    }
     documentation.parameter_names = std::move(parameter_names);
     // duckdb_functions() replaces all parameter names when a description supplies any names.
     // Append named options in the same order used by DuckDB to expose their types.
-    for (const auto &parameter : registered_function.named_parameters) {
-        documentation.parameter_names.push_back(parameter.first);
+    if (auto options = signature.GetTypedKwargs()) {
+        for (const auto &option : options->GetOptions()) {
+            documentation.parameter_names.push_back(option.name.GetIdentifierName());
+        }
     }
     documentation.description = std::move(description);
     documentation.examples = {std::move(example)};
@@ -182,7 +192,9 @@ static void LoadInternal(ExtensionLoader &loader) {
                                        LogicalType::GEOMETRY(),
                                        bigquery::BqNormalizeGeographyFunction);
     FunctionDescription normalize_geography_description;
-    normalize_geography_description.parameter_types = normalize_geography.arguments;
+    normalize_geography.SetFallible();
+    normalize_geography.GetSignature().GetParameter(0).SetName("geometry");
+    normalize_geography_description.parameter_types = {LogicalType::GEOMETRY()};
     normalize_geography_description.parameter_names = {"geometry"};
     normalize_geography_description.description =
         "Normalize a DuckDB geometry locally for BigQuery geography writes, including polygon winding and "

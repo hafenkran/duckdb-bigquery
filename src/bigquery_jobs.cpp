@@ -37,7 +37,7 @@ public:
     vector<google::cloud::bigquery::v2::ListFormatJob> jobs_list;
 };
 
-void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<string> &names) {
+void InitializeNamesAndReturnTypes(vector<LogicalType> &return_types, vector<Identifier> &names) {
     struct ColumnInfo {
         ColumnInfo(const std::string &name, LogicalTypeId type) : name(name), type(type) {
         }
@@ -201,7 +201,7 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
 static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
                                                      TableFunctionBindInput &input,
                                                      vector<LogicalType> &return_types,
-                                                     vector<string> &names) {
+                                                     vector<Identifier> &names) {
     auto dbname_or_project_id = input.inputs[0].GetValue<string>();
 
     string api_endpoint;
@@ -218,7 +218,7 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
         {"api_endpoint", [&](const Value &val) { api_endpoint = val.GetValue<string>(); }},
     };
     for (auto &param : input.named_parameters) {
-        auto it = param_map.find(param.first);
+        auto it = param_map.find(param.first.GetIdentifierName());
         if (it != param_map.end()) {
             it->second(param.second);
         }
@@ -229,7 +229,7 @@ static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,
 
     unique_ptr<ListJobsBindData> bind_data = nullptr;
     auto &database_manager = DatabaseManager::Get(context);
-    auto database = database_manager.GetDatabase(context, dbname_or_project_id);
+    auto database = database_manager.GetDatabase(context, Identifier(dbname_or_project_id));
     if (database) {
         // Use attached database for this operation
         auto &catalog = database->GetCatalog();
@@ -284,10 +284,13 @@ static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &dat
     idx_t out_idx = 0;
     idx_t job_idx = gstate.current_idx;
 
+    const idx_t output_count =
+        gstate.single_job ? 1 : MinValue<idx_t>(STANDARD_VECTOR_SIZE, gstate.jobs_list.size() - job_idx);
+    output.SetChildCardinality(output_count);
     if (gstate.single_job) {
         MapJobToRow(gstate.job_by_id, output, out_idx);
         out_idx++;
-        output.SetCardinality(out_idx);
+        output.CheckCardinality(out_idx);
         bind_data.finished = true;
     } else {
         while (out_idx < STANDARD_VECTOR_SIZE && job_idx < gstate.jobs_list.size()) {
@@ -298,7 +301,7 @@ static void BigQueryListJobsFunc(ClientContext &context, TableFunctionInput &dat
         }
 
         gstate.current_idx += out_idx;
-        output.SetCardinality(out_idx);
+        output.CheckCardinality(out_idx);
 
         if (gstate.current_idx >= gstate.jobs_list.size()) {
             bind_data.finished = true;
@@ -312,14 +315,16 @@ BigQueryListJobsFunction::BigQueryListJobsFunction()
                     BigQueryListJobsFunc,
                     BigQueryListJobsBind,
                     BigQueryListJobsInitGlobalState) {
-    named_parameters["jobId"] = LogicalType::VARCHAR;
-    named_parameters["allUsers"] = LogicalType::BOOLEAN;
-    named_parameters["maxResults"] = LogicalType::INTEGER;
-    named_parameters["minCreationTime"] = LogicalType::VARCHAR;
-    named_parameters["maxCreationTime"] = LogicalType::VARCHAR;
-    named_parameters["stateFilter"] = LogicalType::VARCHAR;
-    named_parameters["parentJobId"] = LogicalType::VARCHAR;
-    named_parameters["api_endpoint"] = LogicalType::VARCHAR;
+    TypedKwargs options;
+    options.Add("jobId", LogicalType::VARCHAR);
+    options.Add("allUsers", LogicalType::BOOLEAN);
+    options.Add("maxResults", LogicalType::INTEGER);
+    options.Add("minCreationTime", LogicalType::VARCHAR);
+    options.Add("maxCreationTime", LogicalType::VARCHAR);
+    options.Add("stateFilter", LogicalType::VARCHAR);
+    options.Add("parentJobId", LogicalType::VARCHAR);
+    options.Add("api_endpoint", LogicalType::VARCHAR);
+    GetSignature().AddTypedKwargs("options", std::move(options));
 }
 
 

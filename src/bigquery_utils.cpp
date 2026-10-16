@@ -240,7 +240,7 @@ LogicalType BigqueryUtils::FieldSchemaToLogicalType(const google::cloud::bigquer
     } else if (bigquery_type == "STRUCT" || bigquery_type == "RECORD") {
         child_list_t<LogicalType> new_types;
         for (auto &child : field.fields()) {
-            new_types.push_back(make_pair(child.name(), FieldSchemaToLogicalType(child)));
+            new_types.push_back(make_pair(Identifier(child.name()), FieldSchemaToLogicalType(child)));
         }
         type = LogicalType::STRUCT(std::move(new_types));
     } else {
@@ -332,7 +332,7 @@ LogicalType BigqueryUtils::ArrowTypeToLogicalType(const std::shared_ptr<arrow::D
 
         child_list_t<LogicalType> child_types;
         for (auto &field : fields) {
-            child_types.push_back(make_pair(field->name(), ArrowTypeToLogicalType(field->type())));
+            child_types.push_back(make_pair(Identifier(field->name()), ArrowTypeToLogicalType(field->type())));
         }
         return LogicalType::STRUCT(std::move(child_types));
     }
@@ -400,7 +400,8 @@ std::shared_ptr<arrow::DataType> BigqueryUtils::LogicalTypeToArrowType(const Log
     case LogicalTypeId::STRUCT: {
         arrow::FieldVector fields;
         for (idx_t i = 0; i < StructType::GetChildCount(type); ++i) {
-            fields.push_back(MakeArrowField(StructType::GetChildName(type, i), StructType::GetChildType(type, i)));
+            fields.push_back(MakeArrowField(StructType::GetChildName(type, i).GetIdentifierName(),
+                                            StructType::GetChildType(type, i)));
         }
         return arrow::struct_(std::move(fields));
     }
@@ -421,7 +422,7 @@ std::shared_ptr<arrow::Schema> BigqueryUtils::BuildArrowSchema(const ColumnList 
     for (auto &col : cols.Logical()) {
         auto mapped_bq_type = BigqueryUtils::CastToBigqueryType(col.GetType());
         auto arrow_type = BigqueryUtils::LogicalTypeToArrowType(mapped_bq_type);
-        fields.push_back(arrow::field(col.GetName(), std::move(arrow_type), true));
+        fields.push_back(arrow::field(col.GetName().GetIdentifierName(), std::move(arrow_type), true));
     }
     return arrow::schema(std::move(fields));
 }
@@ -429,13 +430,13 @@ std::shared_ptr<arrow::Schema> BigqueryUtils::BuildArrowSchema(const ColumnList 
 void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
                                                   ArrowTableSchema &arrow_table,
                                                   ArrowSchemaWrapper &schema_root,
-                                                  vector<string> &names,
+                                                  vector<Identifier> &names,
                                                   vector<LogicalType> &return_types,
                                                   vector<LogicalType> &mapped_bq_types,
                                                   const ColumnList *source_columns) {
     ArrowTableFunction::PopulateArrowTableSchema(context, arrow_table, schema_root.arrow_schema);
 
-    names = arrow_table.GetNames();
+    names = ToIdentifiers(arrow_table.GetNames());
     return_types = arrow_table.GetTypes();
     if (return_types.empty()) {
         throw BinderException("BigQuery table has no columns");
@@ -458,7 +459,7 @@ void BigqueryUtils::PopulateAndMapArrowTableTypes(ClientContext &context,
             // Propagate aliases for all types
             if (src_type.HasAlias() && !src_type.GetAlias().empty()) {
                 if (!return_types[idx].HasAlias() || return_types[idx].GetAlias().empty()) {
-                    return_types[idx].SetAlias(src_type.GetAlias());
+                    return_types[idx] = return_types[idx].WithAlias(src_type.GetAlias());
                 }
             }
             idx++;
@@ -532,7 +533,7 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
         return LogicalType::DOUBLE;
     case LogicalTypeId::GEOMETRY: {
         LogicalType geography_type = LogicalType(LogicalTypeId::VARCHAR);
-        geography_type.SetAlias("GEOGRAPHY");
+        geography_type = geography_type.WithAlias("GEOGRAPHY");
         return geography_type;
     }
     case LogicalTypeId::BLOB:
@@ -555,7 +556,7 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
     case LogicalTypeId::VARCHAR: {
         LogicalType result = LogicalType::VARCHAR;
         if (type.HasAlias()) {
-            result.SetAlias(type.GetAlias());
+            result = result.WithAlias(type.GetAlias());
         }
         return result;
     }
@@ -570,7 +571,7 @@ LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
         for (idx_t i = 0; i < StructType::GetChildCount(type); i++) {
             auto child_name = StructType::GetChildName(type, i);
             auto child_type = StructType::GetChildType(type, i);
-            child_types.push_back(make_pair(child_name, CastToBigqueryType(child_type)));
+            child_types.push_back(make_pair(Identifier(child_name), CastToBigqueryType(child_type)));
         }
         return LogicalType::STRUCT(std::move(child_types));
     }
@@ -706,7 +707,7 @@ LogicalType BigqueryUtils::BigquerySQLToLogicalType(const string &type) {
             string field_name = field.substr(0, pos_space);
             string field_type = field.substr(pos_space + 1);
             LogicalType field_logical_type = BigquerySQLToLogicalType(field_type);
-            struct_types.push_back(make_pair(field_name, field_logical_type));
+            struct_types.push_back(make_pair(Identifier(field_name), field_logical_type));
         }
 
         result = LogicalType::STRUCT(std::move(struct_types));
@@ -1062,6 +1063,7 @@ void BigqueryUtils::FillChunkFromRestRows(const google::protobuf::RepeatedPtrFie
                                           DataChunk &output) {
 
     idx_t actual_count = MinValue<idx_t>(count, static_cast<idx_t>(rows.size()) - start_row);
+    output.SetChildCardinality(actual_count);
     for (idx_t row_idx = 0; row_idx < actual_count; row_idx++) {
         auto &row = rows[static_cast<int>(start_row + row_idx)];
         const auto &fields = row.fields();
@@ -1073,16 +1075,16 @@ void BigqueryUtils::FillChunkFromRestRows(const google::protobuf::RepeatedPtrFie
             output.SetValue(col_idx, row_idx, value);
         }
     }
-    output.SetCardinality(actual_count);
+    output.CheckCardinality(actual_count);
 }
 
 BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
-    const named_parameter_map_t &named_parameters) {
+    const named_argument_map_t &named_parameters) {
 
     BigQueryCommonParameters params;
     params.timeout_ms = BigqueryUtils::ParseTimeoutMsParameter(named_parameters);
     for (auto &kv : named_parameters) {
-        auto loption = StringUtil::Lower(kv.first);
+        auto loption = StringUtil::Lower(kv.first.GetIdentifierName());
 
         if (loption == "billing_project") {
             params.billing_project = kv.second.GetValue<string>();
@@ -1102,7 +1104,7 @@ BigQueryCommonParameters BigQueryCommonParameters::ParseFromNamedParameters(
     return params;
 }
 
-std::map<string, string> BigqueryUtils::ParseOptionalLabelsParameter(const named_parameter_map_t &named_parameters) {
+std::map<string, string> BigqueryUtils::ParseOptionalLabelsParameter(const named_argument_map_t &named_parameters) {
     auto entry = named_parameters.find("labels");
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return {};
@@ -1135,7 +1137,7 @@ std::map<string, string> BigqueryUtils::ParseOptionalLabelsParameter(const named
     return labels;
 }
 
-std::optional<int> BigqueryUtils::ParseTimeoutMsParameter(const named_parameter_map_t &named_parameters) {
+std::optional<int> BigqueryUtils::ParseTimeoutMsParameter(const named_argument_map_t &named_parameters) {
     auto entry = named_parameters.find("timeout_ms");
     if (entry == named_parameters.end() || entry->second.IsNull()) {
         return std::nullopt;

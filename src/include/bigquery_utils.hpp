@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/parser/column_list.hpp"
 #include "duckdb/function/table/arrow.hpp"
 
 // #include "google/cloud/bigquery/v2/minimal/internal/table_schema.h"
@@ -166,6 +167,24 @@ struct BigqueryType {
 
 struct BigqueryUtils {
 public:
+    static vector<string> ToStrings(const vector<Identifier> &names) {
+        vector<string> result;
+        result.reserve(names.size());
+        for (const auto &name : names) {
+            result.push_back(name.GetIdentifierName());
+        }
+        return result;
+    }
+
+    static vector<Identifier> ToIdentifiers(const vector<string> &names) {
+        vector<Identifier> result;
+        result.reserve(names.size());
+        for (const auto &name : names) {
+            result.emplace_back(name);
+        }
+        return result;
+    }
+
     // static ConnectionDetails ParseConnectionString(const string &connection_string);
     static BigqueryTableRef ParseTableString(const string &table_string);
     static BigqueryTableRef ParseDatasetTableString(const string &table_string);
@@ -202,7 +221,7 @@ public:
     static void PopulateAndMapArrowTableTypes(ClientContext &context,
                                               ArrowTableSchema &arrow_table,
                                               ArrowSchemaWrapper &schema_root,
-                                              vector<string> &names,
+                                              vector<Identifier> &names,
                                               vector<LogicalType> &return_types,
                                               vector<LogicalType> &mapped_bq_types,
                                               const ColumnList *source_columns = nullptr);
@@ -232,8 +251,8 @@ public:
                                       const vector<LogicalType> &types,
                                       DataChunk &output);
 
-    static std::map<string, string> ParseOptionalLabelsParameter(const named_parameter_map_t &named_parameters);
-    static std::optional<int> ParseTimeoutMsParameter(const named_parameter_map_t &named_parameters);
+    static std::map<string, string> ParseOptionalLabelsParameter(const named_argument_map_t &named_parameters);
+    static std::optional<int> ParseTimeoutMsParameter(const named_argument_map_t &named_parameters);
 
 private:
     static vector<string> SplitStructFields(const string &struct_field_str);
@@ -251,7 +270,7 @@ struct BigQueryCommonParameters {
     std::optional<int> timeout_ms;
 
     //! Parse common parameters from named_parameters map
-    static BigQueryCommonParameters ParseFromNamedParameters(const named_parameter_map_t &named_parameters);
+    static BigQueryCommonParameters ParseFromNamedParameters(const named_argument_map_t &named_parameters);
 };
 
 template <typename FUNC>
