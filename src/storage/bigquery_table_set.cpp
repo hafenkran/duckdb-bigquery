@@ -24,8 +24,8 @@ optional_ptr<CatalogEntry> BigqueryTableSet::CreateTable(ClientContext &context,
 
     BigqueryTableRef table_ref;
     table_ref.project_id = bq_catalog.GetProjectID();
-    table_ref.dataset_id = schema.name;
-    table_ref.table_id = create_table_info.table;
+    table_ref.dataset_id = schema.name.GetIdentifierName();
+    table_ref.table_id = create_table_info.GetQualifiedName().Name().GetIdentifierName();
 
     bqclient->CreateTable(create_table_info, table_ref);
     auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, info.Base());
@@ -47,9 +47,9 @@ unique_ptr<BigqueryTableInfo> BigqueryTableSet::GetTableInfo(ClientContext &cont
     auto bqclient = transaction.GetBigqueryClient();
 
     auto project_id = dynamic_cast<BigqueryCatalog &>(catalog).GetProjectID();
-    auto dataset_id = schema.name;
+    auto dataset_id = schema.name.GetIdentifierName();
 
-    auto info = make_uniq<BigqueryTableInfo>(project_id, schema.name, table_name);
+    auto info = make_uniq<BigqueryTableInfo>(project_id, schema.name.GetIdentifierName(), table_name);
     bqclient->GetTableInfo(dataset_id, table_name, info->create_info->columns, info->create_info->constraints);
     return info;
 }
@@ -88,7 +88,7 @@ void BigqueryTableSet::LoadEntries(ClientContext &, BigqueryTransaction &transac
         unique_ptr<BigqueryTableInfo> info;
         vector<unique_ptr<BigqueryTableInfo>> table_infos;
 
-        vector<BigqueryTableRef> table_refs = bqclient->GetTables(schema.name);
+        vector<BigqueryTableRef> table_refs = bqclient->GetTables(schema.name.GetIdentifierName());
         for (auto &table_ref : table_refs) {
             info = make_uniq<BigqueryTableInfo>(table_ref);
             bqclient->GetTableInfo(table_ref.dataset_id,
@@ -106,8 +106,8 @@ optional_ptr<CatalogEntry> BigqueryTableSet::ReloadEntry(ClientContext &,
                                                          const string &table_name) {
     auto bqclient = transaction.GetBigqueryClient();
     auto project_id = dynamic_cast<BigqueryCatalog &>(catalog).GetProjectID();
-    auto table_info = make_uniq<BigqueryTableInfo>(project_id, schema.name, table_name);
-    if (!bqclient->TryGetTableInfo(schema.name,
+    auto table_info = make_uniq<BigqueryTableInfo>(project_id, schema.name.GetIdentifierName(), table_name);
+    if (!bqclient->TryGetTableInfo(schema.name.GetIdentifierName(),
                                    table_name,
                                    table_info->create_info->columns,
                                    table_info->create_info->constraints)) {

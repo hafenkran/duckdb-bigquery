@@ -1,3 +1,4 @@
+#include "duckdb/execution/physical_plan_generator.hpp"
 
 #include "duckdb/planner/operator/logical_update.hpp"
 
@@ -38,7 +39,7 @@ SourceResultType BigqueryUpdate::GetDataInternal(ExecutionContext &context,
     gstate.updated_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_UPDATE);
     gstate.finished = true;
 
-    chunk.SetCardinality(1);
+    chunk.SetChildCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.updated_count));
     return SourceResultType::FINISHED;
 }
@@ -49,7 +50,7 @@ string BigqueryUpdate::GetName() const {
 
 InsertionOrderPreservingMap<string> BigqueryUpdate::ParamsToString() const {
     InsertionOrderPreservingMap<string> result;
-    result["Table Name"] = table.name;
+    result["Table Name"] = table.name.GetIdentifierName();
     return result;
 }
 

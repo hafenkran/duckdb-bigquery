@@ -1,3 +1,4 @@
+#include "duckdb/main/attached_database.hpp"
 #include "duckdb.hpp"
 
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"

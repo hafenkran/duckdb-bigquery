@@ -17,7 +17,7 @@ optional_ptr<CatalogEntry> BigqueryCatalogSet::CreateEntry(BigqueryTransaction &
         throw InternalException("Cannot create entry with empty name");
     }
     auto result = transaction.ReferenceEntry(entry);
-    entries[result->name] = std::move(entry);
+    entries[result->name.GetIdentifierName()] = std::move(entry);
     return result;
 }
 
@@ -36,7 +36,7 @@ void BigqueryCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
         throw BinderException("Cannot drop entry of type " + CatalogTypeToString(info.type));
     }
 
-    EraseEntryInternal(info.name);
+    EraseEntryInternal(info.GetQualifiedName().Name().GetIdentifierName());
 }
 
 void BigqueryCatalogSet::Scan(ClientContext &context, const std::function<void(CatalogEntry &)> &callback) {

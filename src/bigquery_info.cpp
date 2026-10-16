@@ -11,8 +11,8 @@ BigqueryCreateSchemaInfo::BigqueryCreateSchemaInfo() : CreateSchemaInfo() {
 BigqueryCreateSchemaInfo::BigqueryCreateSchemaInfo(const CreateSchemaInfo &info, unordered_map<string, string> options)
     : CreateSchemaInfo(), options(std::move(options)) {
     this->info_type = info.info_type;
-    this->catalog = info.catalog;
-    this->schema = info.schema;
+    SetCatalog(info.GetQualifiedName().Catalog());
+    SetSchema(info.GetQualifiedName().Schema());
     this->type = info.type;
     this->on_conflict = info.on_conflict;
     this->temporary = info.temporary;
@@ -24,7 +24,7 @@ BigqueryCreateSchemaInfo::BigqueryCreateSchemaInfo(const CreateSchemaInfo &info,
 }
 
 unique_ptr<CreateInfo> BigqueryCreateSchemaInfo::Copy() const {
-    auto copy = make_uniq<BigqueryCreateSchemaInfo>(*this);
+    auto copy = make_uniq<BigqueryCreateSchemaInfo>(static_cast<const CreateSchemaInfo &>(*this), options);
     copy->options = options;
     return std::move(copy);
 }
@@ -57,11 +57,12 @@ BigqueryCreateTableInfo::BigqueryCreateTableInfo(string catalog,
                                                  string schema,
                                                  string name,
                                                  unordered_map<string, string> options)
-    : CreateTableInfo(std::move(catalog), std::move(schema), std::move(name)), options(std::move(options)) {
+    : CreateTableInfo(QualifiedName(Identifier(catalog), Identifier(schema), Identifier(name))),
+      options(std::move(options)) {
 }
 
 BigqueryCreateTableInfo::BigqueryCreateTableInfo(const CreateTableInfo &info, unordered_map<string, string> options)
-    : CreateTableInfo(info.catalog, info.schema, info.table), options(std::move(options)) {
+    : CreateTableInfo(info.GetQualifiedName()), options(std::move(options)) {
     this->info_type = info.info_type;
     this->type = info.type;
     this->on_conflict = info.on_conflict;
@@ -137,11 +138,11 @@ BigqueryCreateViewInfo::BigqueryCreateViewInfo() : CreateViewInfo() {
 BigqueryCreateViewInfo::BigqueryCreateViewInfo(SchemaCatalogEntry &schema,
                                                string view_name,
                                                unordered_map<string, string> options)
-    : CreateViewInfo(schema, std::move(view_name)), options(std::move(options)) {
+    : CreateViewInfo(schema, Identifier(view_name)), options(std::move(options)) {
 }
 
 BigqueryCreateViewInfo::BigqueryCreateViewInfo(const CreateViewInfo &info, unordered_map<string, string> options)
-    : CreateViewInfo(info.catalog, info.schema, info.view_name), options(std::move(options)) {
+    : CreateViewInfo(info.GetQualifiedName()), options(std::move(options)) {
     this->info_type = info.info_type;
     this->type = info.type;
     this->on_conflict = info.on_conflict;

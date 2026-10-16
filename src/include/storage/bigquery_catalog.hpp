@@ -65,7 +65,7 @@ public:
 
     bool InMemory() override;
     string GetDBPath() override;
-    string GetDefaultSchema() const override;
+    optional<Identifier> GetDefaultSchema() const override;
 
     const string GetProjectID() {
         return config.project_id;

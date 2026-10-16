@@ -1,3 +1,4 @@
+#include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
@@ -75,7 +76,7 @@ vector<string> GetInsertColumns(const duckdb::bigquery::BigqueryInsert &insert, 
         }
         for (idx_t i = 0; i < column_count; i++) {
             auto &col = columns.GetColumn(column_indexes[i]);
-            column_names.push_back(col.GetName());
+            column_names.push_back(col.GetName().GetIdentifierName());
         }
     }
     return column_names;
@@ -101,7 +102,8 @@ unique_ptr<GlobalSinkState> BigqueryInsert::GetGlobalSinkState(ClientContext &co
     vector<idx_t> target_column_indexes;
     target_column_indexes.reserve(insert_columns.size());
     for (idx_t i = 0; i < insert_columns.size(); i++) {
-        target_column_indexes.push_back(insert_table->GetColumnIndex(insert_columns[i]).index);
+        Identifier column_name(insert_columns[i]);
+        target_column_indexes.push_back(insert_table->GetColumnIndex(column_name).index);
     }
     result->target_column_indexes = std::move(target_column_indexes);
     return std::move(result);
@@ -120,7 +122,7 @@ SourceResultType BigqueryInsert::GetDataInternal(ExecutionContext &context,
                                                  DataChunk &chunk,
                                                  OperatorSourceInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
-    chunk.SetCardinality(1);
+    chunk.SetChildCardinality(1);
     chunk.SetValue(0, 0, Value::BIGINT(gstate.insert_count));
     return SourceResultType::FINISHED;
 }
@@ -142,7 +144,7 @@ string BigqueryInsert::GetName() const {
 
 InsertionOrderPreservingMap<string> BigqueryInsert::ParamsToString() const {
     InsertionOrderPreservingMap<string> result;
-    result["Table Name"] = table ? table->name : info->Base().table;
+    result["Table Name"] = table ? table->name.GetIdentifierName() : info->Base().GetTableName().GetIdentifierName();
     return result;
 }
 
