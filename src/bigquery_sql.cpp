@@ -15,12 +15,15 @@
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/planner/operator/logical_projection.hpp"
 
+#include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/filter/conjunction_filter.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
+#include "duckdb/planner/filter/expression_filter.hpp"
 #include "duckdb/planner/filter/in_filter.hpp"
 #include "duckdb/planner/filter/null_filter.hpp"
 #include "duckdb/planner/filter/optional_filter.hpp"
 #include "duckdb/planner/filter/struct_filter.hpp"
+#include "duckdb/planner/table_filter_set.hpp"
 
 #include "bigquery_info.hpp"
 #include "bigquery_sql.hpp"
@@ -31,6 +34,17 @@
 
 namespace duckdb {
 namespace bigquery {
+
+static ExpressionClass ClassifySQLExpression(const Expression &expr) {
+    if (BoundCastExpression::IsCast(expr)) {
+        return ExpressionClass::LEGACY_BOUND_CAST;
+    }
+    if (BoundComparisonExpression::IsComparison(expr)) {
+        return ExpressionClass::LEGACY_BOUND_COMPARISON;
+    }
+    return expr.GetExpressionClass();
+}
+
 namespace {
 
 static string QuoteFilterColumnPath(const vector<string> &column_path) {
@@ -184,31 +198,55 @@ static string CreateFilterExpression(const vector<string> &column_path,
 
 static string TransformFilterPath(const vector<string> &column_path, const TableFilter &filter) {
     switch (filter.filter_type) {
-    case TableFilterType::CONSTANT_COMPARISON: {
-        auto &constant_filter = filter.Cast<ConstantFilter>();
+    case TableFilterType::EXPRESSION_FILTER: {
+        if (ExpressionFilter::IsOptionalFilter(filter)) {
+            return string();
+        }
+        const auto &expression_filter = filter.Cast<ExpressionFilter>();
+        LogicalType column_type = LogicalType::ANY;
+        ExpressionIterator::VisitExpression<BoundReferenceExpression>(
+            *expression_filter.expr,
+            [&](const BoundReferenceExpression &expr) { column_type = expr.GetReturnType(); });
+        BoundColumnRefExpression column(column_type, ColumnBinding(TableIndex(0), ProjectionIndex(0)));
+        auto expression = filter.ToExpression(column);
+        string sql;
+        if (!BigquerySQL::TryTransformBoundFilter(
+                *expression,
+                [&](const ColumnBinding &, string &result) {
+                    result = QuoteFilterColumnPath(column_path);
+                    return true;
+                },
+                {},
+                sql)) {
+            throw NotImplementedException("Unsupported BigQuery filter expression: %s", expression->ToString());
+        }
+        return sql;
+    }
+    case TableFilterType::LEGACY_CONSTANT_COMPARISON: {
+        auto &constant_filter = filter.Cast<LegacyConstantFilter>();
         return QuoteFilterColumnPath(column_path) + " " + TransformComparisonOperator(constant_filter.comparison_type) +
                " " + TransformFilterLiteral(constant_filter.constant);
     }
-    case TableFilterType::IS_NULL:
+    case TableFilterType::LEGACY_IS_NULL:
         return QuoteFilterColumnPath(column_path) + " IS NULL";
-    case TableFilterType::IS_NOT_NULL:
+    case TableFilterType::LEGACY_IS_NOT_NULL:
         return QuoteFilterColumnPath(column_path) + " IS NOT NULL";
-    case TableFilterType::CONJUNCTION_AND:
-    case TableFilterType::CONJUNCTION_OR: {
-        auto &conjunction_filter = dynamic_cast<const ConjunctionFilter &>(filter);
-        string op = filter.filter_type == TableFilterType::CONJUNCTION_AND ? "AND" : "OR";
+    case TableFilterType::LEGACY_CONJUNCTION_AND:
+    case TableFilterType::LEGACY_CONJUNCTION_OR: {
+        auto &conjunction_filter = dynamic_cast<const LegacyConjunctionFilter &>(filter);
+        string op = filter.filter_type == TableFilterType::LEGACY_CONJUNCTION_AND ? "AND" : "OR";
         return CreateFilterExpression(column_path, conjunction_filter.child_filters, op);
     }
-    case TableFilterType::STRUCT_EXTRACT: {
-        auto &struct_filter = filter.Cast<StructFilter>();
+    case TableFilterType::LEGACY_STRUCT_EXTRACT: {
+        auto &struct_filter = filter.Cast<LegacyStructFilter>();
         auto child_path = column_path;
-        child_path.push_back(struct_filter.child_name);
+        child_path.push_back(struct_filter.child_name.GetIdentifierName());
         return TransformFilterPath(child_path, *struct_filter.child_filter);
     }
-    case TableFilterType::OPTIONAL_FILTER: {
+    case TableFilterType::LEGACY_OPTIONAL_FILTER: {
         // Optional filters (Top-N dynamic filters, join bloom/min-max filters, ...) are not required for
         // correctness, so drop them when they cannot be expressed in BigQuery SQL.
-        auto &optional_filter = filter.Cast<OptionalFilter>();
+        auto &optional_filter = filter.Cast<LegacyOptionalFilter>();
         if (!optional_filter.child_filter) {
             return string();
         }
@@ -218,8 +256,8 @@ static string TransformFilterPath(const vector<string> &column_path, const Table
             return string();
         }
     }
-    case TableFilterType::IN_FILTER: {
-        auto &in_filter = filter.Cast<InFilter>();
+    case TableFilterType::LEGACY_IN_FILTER: {
+        auto &in_filter = filter.Cast<LegacyInFilter>();
         vector<string> in_values;
         for (auto &value : in_filter.values) {
             in_values.push_back(TransformFilterLiteral(value));
@@ -232,24 +270,25 @@ static string TransformFilterPath(const vector<string> &column_path, const Table
 }
 
 static bool TryTransformConstantExpression(Expression &expr, string &literal_sql) {
-    if (expr.GetExpressionClass() == ExpressionClass::BOUND_CAST) {
-        auto &cast = expr.Cast<BoundCastExpression>();
-        if (cast.try_cast || cast.child->GetExpressionClass() != ExpressionClass::BOUND_CONSTANT ||
-            !IsFilterLiteralType(cast.return_type)) {
+    if (ClassifySQLExpression(expr) == ExpressionClass::LEGACY_BOUND_CAST) {
+        auto &cast = expr.Cast<BoundFunctionExpression>();
+        if (BoundCastExpression::IsTryCast(cast) ||
+            ClassifySQLExpression(*BoundCastExpression::ChildMutable(cast)) != ExpressionClass::BOUND_CONSTANT ||
+            !IsFilterLiteralType(cast.GetReturnType())) {
             return false;
         }
-        auto &constant = cast.child->Cast<BoundConstantExpression>();
-        Value casted;
-        if (!constant.value.DefaultTryCastAs(cast.return_type, casted, nullptr)) {
+        auto &constant = BoundCastExpression::ChildMutable(cast)->Cast<BoundConstantExpression>();
+        auto casted = constant.GetValue().DefaultTryCastAs(cast.GetReturnType());
+        if (!casted) {
             return false;
         }
-        return TryTransformFilterLiteral(casted, literal_sql);
+        return TryTransformFilterLiteral(*casted, literal_sql);
     }
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_CONSTANT) {
         return false;
     }
     auto &constant = expr.Cast<BoundConstantExpression>();
-    return TryTransformFilterLiteral(constant.value, literal_sql);
+    return TryTransformFilterLiteral(constant.GetValue(), literal_sql);
 }
 
 static bool IsArithmeticScalarType(const LogicalType &type) {
@@ -403,35 +442,36 @@ static bool TryGetFilterTemporalCastType(const LogicalType &type, string &cast_t
 }
 
 static bool TryUnwrapIntegralFloatingCast(Expression &expr, Expression *&unwrapped) {
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_CAST) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::LEGACY_BOUND_CAST) {
         return false;
     }
-    auto &cast = expr.Cast<BoundCastExpression>();
-    if (cast.try_cast ||
-        (cast.return_type.id() != LogicalTypeId::FLOAT && cast.return_type.id() != LogicalTypeId::DOUBLE) ||
-        !IsIntegralScalarType(cast.child->return_type)) {
+    auto &cast = expr.Cast<BoundFunctionExpression>();
+    if (BoundCastExpression::IsTryCast(cast) ||
+        (cast.GetReturnType().id() != LogicalTypeId::FLOAT && cast.GetReturnType().id() != LogicalTypeId::DOUBLE) ||
+        !IsIntegralScalarType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
         return false;
     }
-    unwrapped = cast.child.get();
+    unwrapped = BoundCastExpression::ChildMutable(cast).get();
     return true;
 }
 
 static bool TryTransformIntegralFloatingModuloConstant(Expression &expr, string &constant_sql) {
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_CONSTANT) {
         return false;
     }
     auto &constant = expr.Cast<BoundConstantExpression>();
-    if (constant.value.IsNull()) {
+    if (constant.GetValue().IsNull()) {
         return false;
     }
-    if (IsIntegralScalarType(constant.value.type())) {
+    if (IsIntegralScalarType(constant.GetValue().type())) {
         return TryTransformConstantExpression(expr, constant_sql);
     }
-    if (constant.value.type().id() != LogicalTypeId::FLOAT && constant.value.type().id() != LogicalTypeId::DOUBLE) {
+    if (constant.GetValue().type().id() != LogicalTypeId::FLOAT &&
+        constant.GetValue().type().id() != LogicalTypeId::DOUBLE) {
         return false;
     }
 
-    const auto value = constant.value.GetValue<double>();
+    const auto value = constant.GetValue().GetValue<double>();
     static constexpr double MAX_SAFE_INTEGER = 9007199254740992.0;
     if (!std::isfinite(value) || value != std::trunc(value) || value < -MAX_SAFE_INTEGER || value > MAX_SAFE_INTEGER) {
         return false;
@@ -485,24 +525,24 @@ static bool IsFilterListStringElementType(const LogicalType &type) {
 
 static bool TryTransformFilterListConstructorChildren(Expression &expr,
                                                       const vector<unique_ptr<Expression>> *&children) {
-    if (expr.GetExpressionClass() == ExpressionClass::BOUND_OPERATOR) {
+    if (ClassifySQLExpression(expr) == ExpressionClass::BOUND_OPERATOR) {
         auto &op = expr.Cast<BoundOperatorExpression>();
         if (op.GetExpressionType() != ExpressionType::ARRAY_CONSTRUCTOR) {
             return false;
         }
-        children = &op.children;
+        children = &op.GetChildren();
         return true;
     }
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_FUNCTION) {
         return false;
     }
 
     auto &function = expr.Cast<BoundFunctionExpression>();
-    const auto function_name = StringUtil::Lower(function.function.name);
+    const auto function_name = StringUtil::Lower(function.Function().GetName().GetIdentifierName());
     if (function_name != "list_value" && function_name != "list_pack") {
         return false;
     }
-    children = &function.children;
+    children = &function.GetChildren();
     return true;
 }
 
@@ -510,27 +550,27 @@ static bool TryTransformGroupTemporalCastChild(
     Expression &expr,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     string &expression_sql) {
-    if (expr.GetExpressionClass() == ExpressionClass::BOUND_COLUMN_REF) {
-        if (!IsFilterTemporalCastSourceType(expr.return_type)) {
+    if (ClassifySQLExpression(expr) == ExpressionClass::BOUND_COLUMN_REF) {
+        if (!IsFilterTemporalCastSourceType(expr.GetReturnType())) {
             return false;
         }
         auto &colref = expr.Cast<BoundColumnRefExpression>();
-        return column_sql_resolver(colref.binding, expression_sql);
+        return column_sql_resolver(colref.Binding(), expression_sql);
     }
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_FUNCTION) {
         return false;
     }
 
     auto &function = expr.Cast<BoundFunctionExpression>();
-    const auto function_name = StringUtil::Lower(function.function.name);
-    if (function_name != "lower" || function.children.size() != 1 ||
-        function.return_type.id() != LogicalTypeId::VARCHAR ||
-        function.children[0]->return_type.id() != LogicalTypeId::VARCHAR) {
+    const auto function_name = StringUtil::Lower(function.Function().GetName().GetIdentifierName());
+    if (function_name != "lower" || function.GetChildren().size() != 1 ||
+        function.GetReturnType().id() != LogicalTypeId::VARCHAR ||
+        function.GetChildren()[0]->GetReturnType().id() != LogicalTypeId::VARCHAR) {
         return false;
     }
 
     string child_sql;
-    if (!TryTransformGroupTemporalCastChild(*function.children[0], column_sql_resolver, child_sql)) {
+    if (!TryTransformGroupTemporalCastChild(*function.GetChildren()[0], column_sql_resolver, child_sql)) {
         return false;
     }
     expression_sql = "LOWER(" + child_sql + ")";
@@ -541,50 +581,52 @@ static bool TryTransformGroupArithmeticExpression(
     Expression &expr,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     string &expression_sql) {
-    switch (expr.GetExpressionClass()) {
+    switch (ClassifySQLExpression(expr)) {
     case ExpressionClass::BOUND_COLUMN_REF: {
-        if (!IsArithmeticScalarType(expr.return_type)) {
+        if (!IsArithmeticScalarType(expr.GetReturnType())) {
             return false;
         }
         auto &colref = expr.Cast<BoundColumnRefExpression>();
-        return column_sql_resolver(colref.binding, expression_sql);
+        return column_sql_resolver(colref.Binding(), expression_sql);
     }
     case ExpressionClass::BOUND_CONSTANT:
-        if (!IsArithmeticScalarType(expr.return_type) || !TryTransformConstantExpression(expr, expression_sql) ||
+        if (!IsArithmeticScalarType(expr.GetReturnType()) || !TryTransformConstantExpression(expr, expression_sql) ||
             expression_sql == "NULL") {
             return false;
         }
         return true;
     case ExpressionClass::BOUND_FUNCTION: {
         auto &function = expr.Cast<BoundFunctionExpression>();
-        const auto function_name = StringUtil::Lower(function.function.name);
-        if (function_name == "abs" && function.children.size() == 1) {
-            if (!IsArithmeticScalarType(function.return_type) ||
-                !IsArithmeticScalarType(function.children[0]->return_type) ||
-                !TryTransformGroupArithmeticExpression(*function.children[0], column_sql_resolver, expression_sql)) {
+        const auto function_name = StringUtil::Lower(function.Function().GetName().GetIdentifierName());
+        if (function_name == "abs" && function.GetChildren().size() == 1) {
+            if (!IsArithmeticScalarType(function.GetReturnType()) ||
+                !IsArithmeticScalarType(function.GetChildren()[0]->GetReturnType()) ||
+                !TryTransformGroupArithmeticExpression(*function.GetChildren()[0],
+                                                       column_sql_resolver,
+                                                       expression_sql)) {
                 return false;
             }
             expression_sql = "ABS(" + expression_sql + ")";
             return true;
         }
 
-        const bool unary_minus = function_name == "-" && function.children.size() == 1;
-        const bool basic_binary_operator =
-            (function_name == "+" || function_name == "-" || function_name == "*") && function.children.size() == 2;
-        const bool division = function_name == "/" && function.children.size() == 2;
-        const bool modulo = function_name == "%" && function.children.size() == 2;
-        const bool floating_modulo = modulo && (function.return_type.id() == LogicalTypeId::FLOAT ||
-                                                function.return_type.id() == LogicalTypeId::DOUBLE);
+        const bool unary_minus = function_name == "-" && function.GetChildren().size() == 1;
+        const bool basic_binary_operator = (function_name == "+" || function_name == "-" || function_name == "*") &&
+                                           function.GetChildren().size() == 2;
+        const bool division = function_name == "/" && function.GetChildren().size() == 2;
+        const bool modulo = function_name == "%" && function.GetChildren().size() == 2;
+        const bool floating_modulo = modulo && (function.GetReturnType().id() == LogicalTypeId::FLOAT ||
+                                                function.GetReturnType().id() == LogicalTypeId::DOUBLE);
         if ((!unary_minus && !basic_binary_operator && !division && !modulo) ||
-            !IsArithmeticScalarType(function.return_type) ||
-            (modulo && !IsModuloScalarType(function.return_type) && !floating_modulo)) {
+            !IsArithmeticScalarType(function.GetReturnType()) ||
+            (modulo && !IsModuloScalarType(function.GetReturnType()) && !floating_modulo)) {
             return false;
         }
 
         vector<string> child_entries;
-        child_entries.reserve(function.children.size());
+        child_entries.reserve(function.GetChildren().size());
         if (floating_modulo) {
-            for (auto &child : function.children) {
+            for (auto &child : function.GetChildren()) {
                 string child_sql;
                 if (!TryTransformGroupFloatingModuloOperand(*child, column_sql_resolver, child_sql)) {
                     return false;
@@ -592,19 +634,19 @@ static bool TryTransformGroupArithmeticExpression(
                 child_entries.push_back(std::move(child_sql));
             }
         } else {
-            for (auto &child : function.children) {
+            for (auto &child : function.GetChildren()) {
                 auto child_expr = child.get();
-                if (division && child_expr->GetExpressionClass() == ExpressionClass::BOUND_CAST) {
-                    auto &cast = child_expr->Cast<BoundCastExpression>();
-                    if (!cast.try_cast &&
-                        (cast.return_type.id() == LogicalTypeId::FLOAT ||
-                         cast.return_type.id() == LogicalTypeId::DOUBLE) &&
-                        IsArithmeticScalarType(cast.child->return_type)) {
-                        child_expr = cast.child.get();
+                if (division && ClassifySQLExpression(*child_expr) == ExpressionClass::LEGACY_BOUND_CAST) {
+                    auto &cast = child_expr->Cast<BoundFunctionExpression>();
+                    if (!BoundCastExpression::IsTryCast(cast) &&
+                        (cast.GetReturnType().id() == LogicalTypeId::FLOAT ||
+                         cast.GetReturnType().id() == LogicalTypeId::DOUBLE) &&
+                        IsArithmeticScalarType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
+                        child_expr = BoundCastExpression::ChildMutable(cast).get();
                     }
                 }
-                if (!IsArithmeticScalarType(child_expr->return_type) ||
-                    (modulo && !IsModuloScalarType(child_expr->return_type))) {
+                if (!IsArithmeticScalarType(child_expr->GetReturnType()) ||
+                    (modulo && !IsModuloScalarType(child_expr->GetReturnType()))) {
                     return false;
                 }
                 string child_sql;
@@ -637,20 +679,20 @@ static bool TryTransformGroupFunctionExpression(
     Expression &expr,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     string &expression_sql) {
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_FUNCTION) {
         return false;
     }
 
     auto &function = expr.Cast<BoundFunctionExpression>();
-    const auto function_name = StringUtil::Lower(function.function.name);
-    if (function_name == "lower" && function.children.size() == 1) {
-        if (function.return_type.id() != LogicalTypeId::VARCHAR ||
-            function.children[0]->return_type.id() != LogicalTypeId::VARCHAR) {
+    const auto function_name = StringUtil::Lower(function.Function().GetName().GetIdentifierName());
+    if (function_name == "lower" && function.GetChildren().size() == 1) {
+        if (function.GetReturnType().id() != LogicalTypeId::VARCHAR ||
+            function.GetChildren()[0]->GetReturnType().id() != LogicalTypeId::VARCHAR) {
             return false;
         }
 
         string child_sql;
-        if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+        if (!TryTransformBoundScalarExpressionInternal(*function.GetChildren()[0],
                                                        column_sql_resolver,
                                                        {},
                                                        ScalarExpressionContext::GROUP_BY,
@@ -665,20 +707,19 @@ static bool TryTransformGroupFunctionExpression(
 }
 
 static bool TryTransformFloatingModuloConstant(Expression &expr, string &constant_sql) {
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_CONSTANT) {
         return false;
     }
     auto &constant = expr.Cast<BoundConstantExpression>();
-    if (constant.value.IsNull()) {
+    if (constant.GetValue().IsNull()) {
         return false;
     }
-    if (!IsArithmeticScalarType(constant.value.type()) && !IsIntegralScalarType(constant.value.type())) {
+    if (!IsArithmeticScalarType(constant.GetValue().type()) && !IsIntegralScalarType(constant.GetValue().type())) {
         return false;
     }
 
-    Value double_value;
-    if (!constant.value.DefaultTryCastAs(LogicalType::DOUBLE, double_value, nullptr) || double_value.IsNull() ||
-        !std::isfinite(double_value.GetValue<double>())) {
+    auto double_value = constant.GetValue().DefaultTryCastAs(LogicalType::DOUBLE);
+    if (!double_value || double_value->IsNull() || !std::isfinite(double_value->GetValue<double>())) {
         return false;
     }
     return TryTransformConstantExpression(expr, constant_sql);
@@ -693,7 +734,7 @@ static bool TryTransformFloatingModuloOperand(
     if (TryTransformFloatingModuloConstant(expr, operand_sql)) {
         return true;
     }
-    if (expr.return_type.id() != LogicalTypeId::FLOAT && expr.return_type.id() != LogicalTypeId::DOUBLE) {
+    if (expr.GetReturnType().id() != LogicalTypeId::FLOAT && expr.GetReturnType().id() != LogicalTypeId::DOUBLE) {
         return false;
     }
     return TryTransformBoundScalarExpressionInternal(expr,
@@ -715,13 +756,13 @@ static bool TryTransformGroupFloatingModuloOperand(
     if (TryTransformFloatingModuloConstant(expr, operand_sql)) {
         return true;
     }
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
-        (expr.return_type.id() != LogicalTypeId::FLOAT && expr.return_type.id() != LogicalTypeId::DOUBLE)) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_COLUMN_REF ||
+        (expr.GetReturnType().id() != LogicalTypeId::FLOAT && expr.GetReturnType().id() != LogicalTypeId::DOUBLE)) {
         return false;
     }
 
     auto &colref = expr.Cast<BoundColumnRefExpression>();
-    return column_sql_resolver(colref.binding, operand_sql);
+    return column_sql_resolver(colref.Binding(), operand_sql);
 }
 
 static bool TryTransformIntegralFloatingModuloOperand(
@@ -737,11 +778,11 @@ static bool TryTransformIntegralFloatingModuloOperand(
                                                          ScalarExpressionContext::FILTER,
                                                          operand_sql);
     }
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF || !integral_floating_sql_resolver) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_COLUMN_REF || !integral_floating_sql_resolver) {
         return false;
     }
     auto &colref = expr.Cast<BoundColumnRefExpression>();
-    return integral_floating_sql_resolver(colref.binding, operand_sql);
+    return integral_floating_sql_resolver(colref.Binding(), operand_sql);
 }
 
 static bool TryTransformFilterValueStringExpression(
@@ -750,7 +791,7 @@ static bool TryTransformFilterValueStringExpression(
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     ScalarExpressionContext context,
     string &expression_sql) {
-    if (expr.return_type.id() == LogicalTypeId::LIST || expr.return_type.id() == LogicalTypeId::ARRAY) {
+    if (expr.GetReturnType().id() == LogicalTypeId::LIST || expr.GetReturnType().id() == LogicalTypeId::ARRAY) {
         string child_sql;
         if (!TryTransformFilterListStringExpression(expr,
                                                     column_sql_resolver,
@@ -763,7 +804,7 @@ static bool TryTransformFilterValueStringExpression(
         return true;
     }
 
-    if (expr.return_type.id() == LogicalTypeId::STRUCT) {
+    if (expr.GetReturnType().id() == LogicalTypeId::STRUCT) {
         string child_sql;
         if (!TryTransformFilterStructStringExpression(expr,
                                                       column_sql_resolver,
@@ -776,7 +817,7 @@ static bool TryTransformFilterValueStringExpression(
         return true;
     }
 
-    if (!IsFilterListStringElementType(expr.return_type)) {
+    if (!IsFilterListStringElementType(expr.GetReturnType())) {
         return false;
     }
 
@@ -798,23 +839,24 @@ static bool TryTransformFilterStructStringExpression(
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     ScalarExpressionContext context,
     string &expression_sql) {
-    if (expr.return_type.id() != LogicalTypeId::STRUCT ||
-        expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+    if (expr.GetReturnType().id() != LogicalTypeId::STRUCT ||
+        ClassifySQLExpression(expr) != ExpressionClass::BOUND_FUNCTION) {
         return false;
     }
 
     auto &function = expr.Cast<BoundFunctionExpression>();
-    const auto function_name = StringUtil::Lower(function.function.name);
-    if (function_name != "struct_pack" || function.children.size() != StructType::GetChildCount(expr.return_type)) {
+    const auto function_name = StringUtil::Lower(function.Function().GetName().GetIdentifierName());
+    if (function_name != "struct_pack" ||
+        function.GetChildren().size() != StructType::GetChildCount(expr.GetReturnType())) {
         return false;
     }
 
     vector<string> entries;
-    entries.reserve(function.children.size() * 3 + 2);
+    entries.reserve(function.GetChildren().size() * 3 + 2);
     entries.push_back("'{'");
-    for (idx_t child_idx = 0; child_idx < function.children.size(); child_idx++) {
+    for (idx_t child_idx = 0; child_idx < function.GetChildren().size(); child_idx++) {
         string child_sql;
-        if (!TryTransformFilterValueStringExpression(*function.children[child_idx],
+        if (!TryTransformFilterValueStringExpression(*function.GetChildren()[child_idx],
                                                      column_sql_resolver,
                                                      integral_floating_sql_resolver,
                                                      context,
@@ -826,7 +868,7 @@ static bool TryTransformFilterStructStringExpression(
             entries.push_back("', '");
         }
         entries.push_back(
-            WriteBigQueryStringLiteral("'" + StructType::GetChildName(expr.return_type, child_idx) + "': "));
+            WriteBigQueryStringLiteral("'" + StructType::GetChildName(expr.GetReturnType(), child_idx) + "': "));
         entries.push_back(std::move(child_sql));
     }
     entries.push_back("'}'");
@@ -840,13 +882,13 @@ static bool TryTransformFilterListStringExpression(
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     ScalarExpressionContext context,
     string &expression_sql) {
-    if (expr.return_type.id() != LogicalTypeId::LIST && expr.return_type.id() != LogicalTypeId::ARRAY) {
+    if (expr.GetReturnType().id() != LogicalTypeId::LIST && expr.GetReturnType().id() != LogicalTypeId::ARRAY) {
         return false;
     }
-    if (expr.GetExpressionClass() == ExpressionClass::BOUND_COLUMN_REF) {
+    if (ClassifySQLExpression(expr) == ExpressionClass::BOUND_COLUMN_REF) {
         auto &colref = expr.Cast<BoundColumnRefExpression>();
         string column_sql;
-        if (!column_sql_resolver(colref.binding, column_sql) || IsDirectGroupColumnSQL(column_sql)) {
+        if (!column_sql_resolver(colref.Binding(), column_sql) || IsDirectGroupColumnSQL(column_sql)) {
             return false;
         }
         expression_sql = std::move(column_sql);
@@ -886,94 +928,97 @@ static bool TryTransformBoundScalarExpressionInternal(
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     ScalarExpressionContext context,
     string &expression_sql) {
-    switch (expr.GetExpressionClass()) {
+    switch (ClassifySQLExpression(expr)) {
     case ExpressionClass::BOUND_COLUMN_REF: {
         auto &colref = expr.Cast<BoundColumnRefExpression>();
-        return column_sql_resolver(colref.binding, expression_sql);
+        return column_sql_resolver(colref.Binding(), expression_sql);
     }
     case ExpressionClass::BOUND_CONSTANT:
         // TODO(group-by-abs): Keep GROUP BY constants local for now; this step only enables ABS(column).
         if (context == ScalarExpressionContext::GROUP_BY) {
             return false;
         }
-        if (context == ScalarExpressionContext::AGGREGATE && !IsArithmeticScalarType(expr.return_type)) {
+        if (context == ScalarExpressionContext::AGGREGATE && !IsArithmeticScalarType(expr.GetReturnType())) {
             return false;
         }
         return TryTransformConstantExpression(expr, expression_sql);
-    case ExpressionClass::BOUND_CAST: {
-        auto &cast = expr.Cast<BoundCastExpression>();
+    case ExpressionClass::LEGACY_BOUND_CAST: {
+        auto &cast = expr.Cast<BoundFunctionExpression>();
         if (context == ScalarExpressionContext::GROUP_BY) {
             string cast_type;
-            if (cast.return_type.id() == LogicalTypeId::VARCHAR) {
-                if (TryTransformFilterListStringExpression(*cast.child,
+            if (cast.GetReturnType().id() == LogicalTypeId::VARCHAR) {
+                if (TryTransformFilterListStringExpression(*BoundCastExpression::ChildMutable(cast),
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            ScalarExpressionContext::GROUP_BY,
                                                            expression_sql)) {
                     return true;
                 }
-                if (TryTransformFilterStructStringExpression(*cast.child,
+                if (TryTransformFilterStructStringExpression(*BoundCastExpression::ChildMutable(cast),
                                                              column_sql_resolver,
                                                              integral_floating_sql_resolver,
                                                              ScalarExpressionContext::GROUP_BY,
                                                              expression_sql)) {
                     return true;
                 }
-                if (!IsFilterStringCastSourceType(cast.child->return_type)) {
+                if (!IsFilterStringCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                     return false;
                 }
 
                 string child_sql;
-                if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                if (!TryTransformBoundScalarExpressionInternal(*BoundCastExpression::ChildMutable(cast),
                                                                column_sql_resolver,
                                                                integral_floating_sql_resolver,
                                                                ScalarExpressionContext::GROUP_BY,
                                                                child_sql)) {
                     return false;
                 }
-                const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                const auto cast_function = BoundCastExpression::IsTryCast(cast) ? "SAFE_CAST" : "CAST";
                 expression_sql = string(cast_function) + "(" + child_sql + " AS STRING)";
                 return true;
             }
-            if (TryGetFilterNumericCastType(cast.return_type, cast_type)) {
-                if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
+            if (TryGetFilterNumericCastType(cast.GetReturnType(), cast_type)) {
+                if (!IsFilterNumericCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                     return false;
                 }
 
                 string child_sql;
-                if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                if (!TryTransformBoundScalarExpressionInternal(*BoundCastExpression::ChildMutable(cast),
                                                                column_sql_resolver,
                                                                integral_floating_sql_resolver,
                                                                ScalarExpressionContext::GROUP_BY,
                                                                child_sql)) {
                     return false;
                 }
-                if (cast.child->return_type.id() == LogicalTypeId::BOOLEAN && cast_type != "INT64") {
+                if (BoundCastExpression::ChildMutable(cast)->GetReturnType().id() == LogicalTypeId::BOOLEAN &&
+                    cast_type != "INT64") {
                     child_sql = "CAST(" + child_sql + " AS INT64)";
                 }
 
-                const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                const auto cast_function = BoundCastExpression::IsTryCast(cast) ? "SAFE_CAST" : "CAST";
                 expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
                 return true;
             }
             {
                 string child_sql;
-                if (TryGetFilterTemporalCastType(cast.return_type, cast_type) &&
-                    TryTransformGroupTemporalCastChild(*cast.child, column_sql_resolver, child_sql)) {
-                    const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                if (TryGetFilterTemporalCastType(cast.GetReturnType(), cast_type) &&
+                    TryTransformGroupTemporalCastChild(*BoundCastExpression::ChildMutable(cast),
+                                                       column_sql_resolver,
+                                                       child_sql)) {
+                    const auto cast_function = BoundCastExpression::IsTryCast(cast) ? "SAFE_CAST" : "CAST";
                     expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
                     return true;
                 }
             }
 
-            if (!cast.try_cast || cast.return_type.id() != LogicalTypeId::DATE ||
-                cast.child->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
-                !IsFilterTemporalCastSourceType(cast.child->return_type)) {
+            if (!BoundCastExpression::IsTryCast(cast) || cast.GetReturnType().id() != LogicalTypeId::DATE ||
+                ClassifySQLExpression(*BoundCastExpression::ChildMutable(cast)) != ExpressionClass::BOUND_COLUMN_REF ||
+                !IsFilterTemporalCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                 return false;
             }
 
             string child_sql;
-            if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+            if (!TryTransformBoundScalarExpressionInternal(*BoundCastExpression::ChildMutable(cast),
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            ScalarExpressionContext::GROUP_BY,
@@ -988,27 +1033,27 @@ static bool TryTransformBoundScalarExpressionInternal(
         }
         if (context == ScalarExpressionContext::AGGREGATE) {
             string cast_type;
-            if (cast.return_type.id() == LogicalTypeId::VARCHAR) {
-                if (TryTransformFilterListStringExpression(*cast.child,
+            if (cast.GetReturnType().id() == LogicalTypeId::VARCHAR) {
+                if (TryTransformFilterListStringExpression(*BoundCastExpression::ChildMutable(cast),
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            ScalarExpressionContext::AGGREGATE,
                                                            expression_sql)) {
                     return true;
                 }
-                if (TryTransformFilterStructStringExpression(*cast.child,
+                if (TryTransformFilterStructStringExpression(*BoundCastExpression::ChildMutable(cast),
                                                              column_sql_resolver,
                                                              integral_floating_sql_resolver,
                                                              ScalarExpressionContext::AGGREGATE,
                                                              expression_sql)) {
                     return true;
                 }
-                if (!IsFilterStringCastSourceType(cast.child->return_type)) {
+                if (!IsFilterStringCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                     return false;
                 }
 
                 string child_sql;
-                if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                if (!TryTransformBoundScalarExpressionInternal(*BoundCastExpression::ChildMutable(cast),
                                                                column_sql_resolver,
                                                                integral_floating_sql_resolver,
                                                                ScalarExpressionContext::AGGREGATE,
@@ -1018,71 +1063,74 @@ static bool TryTransformBoundScalarExpressionInternal(
                 expression_sql = "CAST(" + child_sql + " AS STRING)";
                 return true;
             }
-            if (TryGetFilterNumericCastType(cast.return_type, cast_type)) {
-                if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
+            if (TryGetFilterNumericCastType(cast.GetReturnType(), cast_type)) {
+                if (!IsFilterNumericCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                     return false;
                 }
 
                 string child_sql;
-                if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+                if (!TryTransformBoundScalarExpressionInternal(*BoundCastExpression::ChildMutable(cast),
                                                                column_sql_resolver,
                                                                integral_floating_sql_resolver,
                                                                ScalarExpressionContext::AGGREGATE,
                                                                child_sql)) {
                     return false;
                 }
-                if (cast.child->return_type.id() == LogicalTypeId::BOOLEAN && cast_type != "INT64") {
+                if (BoundCastExpression::ChildMutable(cast)->GetReturnType().id() == LogicalTypeId::BOOLEAN &&
+                    cast_type != "INT64") {
                     child_sql = "CAST(" + child_sql + " AS INT64)";
                 }
 
-                const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                const auto cast_function = BoundCastExpression::IsTryCast(cast) ? "SAFE_CAST" : "CAST";
                 expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
                 return true;
             }
-            if (TryGetFilterTemporalCastType(cast.return_type, cast_type)) {
+            if (TryGetFilterTemporalCastType(cast.GetReturnType(), cast_type)) {
                 // Aggregate temporal casts stay narrow: string-like inputs only.
-                if (!IsFilterTemporalCastSourceType(cast.child->return_type)) {
+                if (!IsFilterTemporalCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                     return false;
                 }
 
                 string child_sql;
-                if (cast.child->GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
-                    if (!TryTransformConstantExpression(*cast.child, child_sql)) {
+                if (ClassifySQLExpression(*BoundCastExpression::ChildMutable(cast)) ==
+                    ExpressionClass::BOUND_CONSTANT) {
+                    if (!TryTransformConstantExpression(*BoundCastExpression::ChildMutable(cast), child_sql)) {
                         return false;
                     }
                 } else {
                     // Keep the child in aggregate context so filter-only functions stay local.
                     if (!TryTransformBoundScalarExpressionInternal(
-                            *cast.child,
+                            *BoundCastExpression::ChildMutable(cast),
                             column_sql_resolver,
                             integral_floating_sql_resolver,
-                            cast.try_cast ? ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD
-                                          : ScalarExpressionContext::AGGREGATE,
+                            BoundCastExpression::IsTryCast(cast)
+                                ? ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD
+                                : ScalarExpressionContext::AGGREGATE,
                             child_sql)) {
                         return false;
                     }
                 }
 
-                const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+                const auto cast_function = BoundCastExpression::IsTryCast(cast) ? "SAFE_CAST" : "CAST";
                 expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
                 return true;
             }
-            if (!IsArithmeticScalarType(expr.return_type)) {
+            if (!IsArithmeticScalarType(expr.GetReturnType())) {
                 return false;
             }
             return TryTransformConstantExpression(expr, expression_sql);
         }
         string cast_type;
-        if (cast.return_type.id() == LogicalTypeId::VARCHAR) {
+        if (cast.GetReturnType().id() == LogicalTypeId::VARCHAR) {
             if (context == ScalarExpressionContext::FILTER) {
-                if (TryTransformFilterListStringExpression(*cast.child,
+                if (TryTransformFilterListStringExpression(*BoundCastExpression::ChildMutable(cast),
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            ScalarExpressionContext::FILTER,
                                                            expression_sql)) {
                     return true;
                 }
-                if (TryTransformFilterStructStringExpression(*cast.child,
+                if (TryTransformFilterStructStringExpression(*BoundCastExpression::ChildMutable(cast),
                                                              column_sql_resolver,
                                                              integral_floating_sql_resolver,
                                                              ScalarExpressionContext::FILTER,
@@ -1090,16 +1138,16 @@ static bool TryTransformBoundScalarExpressionInternal(
                     return true;
                 }
             }
-            if (!IsFilterStringCastSourceType(cast.child->return_type)) {
+            if (!IsFilterStringCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                 return false;
             }
             cast_type = "STRING";
-        } else if (TryGetFilterNumericCastType(cast.return_type, cast_type)) {
-            if (!IsFilterNumericCastSourceType(cast.child->return_type)) {
+        } else if (TryGetFilterNumericCastType(cast.GetReturnType(), cast_type)) {
+            if (!IsFilterNumericCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                 return false;
             }
-        } else if (TryGetFilterTemporalCastType(cast.return_type, cast_type)) {
-            if (!IsFilterTemporalCastSourceType(cast.child->return_type)) {
+        } else if (TryGetFilterTemporalCastType(cast.GetReturnType(), cast_type)) {
+            if (!IsFilterTemporalCastSourceType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
                 return false;
             }
         } else {
@@ -1109,17 +1157,18 @@ static bool TryTransformBoundScalarExpressionInternal(
             return false;
         }
         string child_sql;
-        if (!TryTransformBoundScalarExpressionInternal(*cast.child,
+        if (!TryTransformBoundScalarExpressionInternal(*BoundCastExpression::ChildMutable(cast),
                                                        column_sql_resolver,
                                                        integral_floating_sql_resolver,
                                                        ScalarExpressionContext::FILTER,
                                                        child_sql)) {
             return false;
         }
-        if (cast.child->return_type.id() == LogicalTypeId::BOOLEAN && cast_type != "INT64") {
+        if (BoundCastExpression::ChildMutable(cast)->GetReturnType().id() == LogicalTypeId::BOOLEAN &&
+            cast_type != "INT64") {
             child_sql = "CAST(" + child_sql + " AS INT64)";
         }
-        const auto cast_function = cast.try_cast ? "SAFE_CAST" : "CAST";
+        const auto cast_function = BoundCastExpression::IsTryCast(cast) ? "SAFE_CAST" : "CAST";
         expression_sql = string(cast_function) + "(" + child_sql + " AS " + cast_type + ")";
         return true;
     }
@@ -1134,7 +1183,7 @@ static bool TryTransformBoundScalarExpressionInternal(
                                                       expression_sql);
     case ExpressionClass::BOUND_FUNCTION: {
         auto &function = expr.Cast<BoundFunctionExpression>();
-        const auto function_name = StringUtil::Lower(function.function.name);
+        const auto function_name = StringUtil::Lower(function.Function().GetName().GetIdentifierName());
 
         if (context == ScalarExpressionContext::GROUP_BY) {
             return TryTransformGroupFunctionExpression(expr, column_sql_resolver, expression_sql);
@@ -1142,7 +1191,7 @@ static bool TryTransformBoundScalarExpressionInternal(
 
         // GROUP BY function support is handled above; the remaining rules are for aggregate/filter contexts.
         if (context == ScalarExpressionContext::FILTER &&
-            (expr.return_type.id() == LogicalTypeId::LIST || expr.return_type.id() == LogicalTypeId::ARRAY)) {
+            (expr.GetReturnType().id() == LogicalTypeId::LIST || expr.GetReturnType().id() == LogicalTypeId::ARRAY)) {
             return TryTransformFilterListStringExpression(expr,
                                                           column_sql_resolver,
                                                           integral_floating_sql_resolver,
@@ -1153,15 +1202,15 @@ static bool TryTransformBoundScalarExpressionInternal(
         //
         const bool sin =
             (context == ScalarExpressionContext::AGGREGATE || context == ScalarExpressionContext::FILTER) &&
-            function_name == "sin" && function.children.size() == 1;
+            function_name == "sin" && function.GetChildren().size() == 1;
         if (sin) {
-            if (!IsArithmeticScalarType(function.return_type) ||
-                !IsArithmeticScalarType(function.children[0]->return_type)) {
+            if (!IsArithmeticScalarType(function.GetReturnType()) ||
+                !IsArithmeticScalarType(function.GetChildren()[0]->GetReturnType())) {
                 return false;
             }
 
             string child_sql;
-            if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+            if (!TryTransformBoundScalarExpressionInternal(*function.GetChildren()[0],
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            context,
@@ -1176,10 +1225,10 @@ static bool TryTransformBoundScalarExpressionInternal(
         const bool lower =
             (context == ScalarExpressionContext::AGGREGATE || context == ScalarExpressionContext::FILTER ||
              context == ScalarExpressionContext::AGGREGATE_TRY_TEMPORAL_CAST_CHILD) &&
-            function_name == "lower" && function.children.size() == 1;
+            function_name == "lower" && function.GetChildren().size() == 1;
         if (lower) {
-            if (function.return_type.id() != LogicalTypeId::VARCHAR ||
-                function.children[0]->return_type.id() != LogicalTypeId::VARCHAR) {
+            if (function.GetReturnType().id() != LogicalTypeId::VARCHAR ||
+                function.GetChildren()[0]->GetReturnType().id() != LogicalTypeId::VARCHAR) {
                 return false;
             }
 
@@ -1188,7 +1237,7 @@ static bool TryTransformBoundScalarExpressionInternal(
             const auto lower_child_context = context == ScalarExpressionContext::FILTER
                                                  ? ScalarExpressionContext::FILTER
                                                  : ScalarExpressionContext::AGGREGATE;
-            if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+            if (!TryTransformBoundScalarExpressionInternal(*function.GetChildren()[0],
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            lower_child_context,
@@ -1203,25 +1252,25 @@ static bool TryTransformBoundScalarExpressionInternal(
         const bool abs = (context == ScalarExpressionContext::AGGREGATE || context == ScalarExpressionContext::FILTER ||
                           context == ScalarExpressionContext::GROUP_BY) && //
                          function_name == "abs" &&                         //
-                         function.children.size() == 1;
+                         function.GetChildren().size() == 1;
         if (abs) {
             // Filters may use recursive ABS expressions; GROUP BY currently only accepts ABS(column).
             // Restrict GROUP BY ABS(...) to column references only to keep this grouping profile intentionally narrow.
             if (context == ScalarExpressionContext::GROUP_BY &&
-                function.children[0]->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+                function.GetChildren()[0]->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
                 return false;
             }
 
             // Restrict ABS to arithmetic scalar types only, since BQ ABS does not support e.g. STRING or DATE types.
-            if (!IsArithmeticScalarType(function.return_type) ||
-                !IsArithmeticScalarType(function.children[0]->return_type)) {
+            if (!IsArithmeticScalarType(function.GetReturnType()) ||
+                !IsArithmeticScalarType(function.GetChildren()[0]->GetReturnType())) {
                 return false;
             }
 
             // TODO(group-by-abs): Recurse in the current context so GROUP BY ABS(...) stays narrower than filters.
             // Transform child recursively to handle nested expressions, e.g., ABS(-x) or ABS(CAST(x AS INT64))
             string child_sql;
-            if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+            if (!TryTransformBoundScalarExpressionInternal(*function.GetChildren()[0],
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            context,
@@ -1234,24 +1283,24 @@ static bool TryTransformBoundScalarExpressionInternal(
         }
 
         const bool group_column_plus_constant =
-            context == ScalarExpressionContext::GROUP_BY && function_name == "+" && function.children.size() == 2;
+            context == ScalarExpressionContext::GROUP_BY && function_name == "+" && function.GetChildren().size() == 2;
         if (group_column_plus_constant) {
-            if (!IsArithmeticScalarType(function.return_type) ||
-                !IsArithmeticScalarType(function.children[0]->return_type) ||
-                !IsArithmeticScalarType(function.children[1]->return_type) ||
-                function.children[0]->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+            if (!IsArithmeticScalarType(function.GetReturnType()) ||
+                !IsArithmeticScalarType(function.GetChildren()[0]->GetReturnType()) ||
+                !IsArithmeticScalarType(function.GetChildren()[1]->GetReturnType()) ||
+                function.GetChildren()[0]->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
                 return false;
             }
 
             string left_sql;
             string right_sql;
-            if (!TryTransformBoundScalarExpressionInternal(*function.children[0],
+            if (!TryTransformBoundScalarExpressionInternal(*function.GetChildren()[0],
                                                            column_sql_resolver,
                                                            integral_floating_sql_resolver,
                                                            ScalarExpressionContext::GROUP_BY,
                                                            left_sql) ||
                 !IsDirectGroupColumnSQL(left_sql) ||
-                !TryTransformConstantExpression(*function.children[1], right_sql) || right_sql == "NULL") {
+                !TryTransformConstantExpression(*function.GetChildren()[1], right_sql) || right_sql == "NULL") {
                 return false;
             }
 
@@ -1265,25 +1314,26 @@ static bool TryTransformBoundScalarExpressionInternal(
             return false;
         }
 
-        const bool unary_minus = function_name == "-" && function.children.size() == 1;
-        const bool basic_binary_operator =
-            (function_name == "+" || function_name == "-" || function_name == "*") && function.children.size() == 2;
-        const bool division = function_name == "/" && function.children.size() == 2;
-        const bool modulo = function_name == "%" && function.children.size() == 2;
+        const bool unary_minus = function_name == "-" && function.GetChildren().size() == 1;
+        const bool basic_binary_operator = (function_name == "+" || function_name == "-" || function_name == "*") &&
+                                           function.GetChildren().size() == 2;
+        const bool division = function_name == "/" && function.GetChildren().size() == 2;
+        const bool modulo = function_name == "%" && function.GetChildren().size() == 2;
 
         bool integral_floating_modulo = false;
         bool floating_modulo = false;
         vector<string> child_entries;
         if (modulo && (context == ScalarExpressionContext::FILTER || context == ScalarExpressionContext::AGGREGATE) &&
-            (function.return_type.id() == LogicalTypeId::FLOAT || function.return_type.id() == LogicalTypeId::DOUBLE)) {
+            (function.GetReturnType().id() == LogicalTypeId::FLOAT ||
+             function.GetReturnType().id() == LogicalTypeId::DOUBLE)) {
             string left_sql;
             string right_sql;
-            if (TryTransformFloatingModuloOperand(*function.children[0],
+            if (TryTransformFloatingModuloOperand(*function.GetChildren()[0],
                                                   column_sql_resolver,
                                                   integral_floating_sql_resolver,
                                                   context,
                                                   left_sql) &&
-                TryTransformFloatingModuloOperand(*function.children[1],
+                TryTransformFloatingModuloOperand(*function.GetChildren()[1],
                                                   column_sql_resolver,
                                                   integral_floating_sql_resolver,
                                                   context,
@@ -1294,7 +1344,7 @@ static bool TryTransformBoundScalarExpressionInternal(
                 floating_modulo = true;
             } else if (context == ScalarExpressionContext::FILTER) {
                 child_entries.clear();
-                for (auto &child : function.children) {
+                for (auto &child : function.GetChildren()) {
                     string child_sql;
                     if (!TryTransformIntegralFloatingModuloOperand(*child,
                                                                    column_sql_resolver,
@@ -1310,31 +1360,31 @@ static bool TryTransformBoundScalarExpressionInternal(
                     }
                     child_entries.push_back(std::move(child_sql));
                 }
-                integral_floating_modulo = child_entries.size() == function.children.size();
+                integral_floating_modulo = child_entries.size() == function.GetChildren().size();
             }
         }
         if ((!unary_minus && !basic_binary_operator && !division && !modulo) ||
-            !IsArithmeticScalarType(function.return_type) ||
-            (modulo && !IsModuloScalarType(function.return_type) && !integral_floating_modulo)) {
+            !IsArithmeticScalarType(function.GetReturnType()) ||
+            (modulo && !IsModuloScalarType(function.GetReturnType()) && !integral_floating_modulo)) {
             return false;
         }
 
         if (!integral_floating_modulo) {
             child_entries.clear();
-            child_entries.reserve(function.children.size());
-            for (auto &child : function.children) {
+            child_entries.reserve(function.GetChildren().size());
+            for (auto &child : function.GetChildren()) {
                 auto child_expr = child.get();
-                if (division && child_expr->GetExpressionClass() == ExpressionClass::BOUND_CAST) {
-                    auto &cast = child_expr->Cast<BoundCastExpression>();
-                    if (!cast.try_cast &&
-                        (cast.return_type.id() == LogicalTypeId::FLOAT ||
-                         cast.return_type.id() == LogicalTypeId::DOUBLE) &&
-                        IsArithmeticScalarType(cast.child->return_type)) {
-                        child_expr = cast.child.get();
+                if (division && ClassifySQLExpression(*child_expr) == ExpressionClass::LEGACY_BOUND_CAST) {
+                    auto &cast = child_expr->Cast<BoundFunctionExpression>();
+                    if (!BoundCastExpression::IsTryCast(cast) &&
+                        (cast.GetReturnType().id() == LogicalTypeId::FLOAT ||
+                         cast.GetReturnType().id() == LogicalTypeId::DOUBLE) &&
+                        IsArithmeticScalarType(BoundCastExpression::ChildMutable(cast)->GetReturnType())) {
+                        child_expr = BoundCastExpression::ChildMutable(cast).get();
                     }
                 }
-                if (!IsArithmeticScalarType(child_expr->return_type) ||
-                    (modulo && !IsModuloScalarType(child_expr->return_type))) {
+                if (!IsArithmeticScalarType(child_expr->GetReturnType()) ||
+                    (modulo && !IsModuloScalarType(child_expr->GetReturnType()))) {
                     return false;
                 }
                 string child_sql;
@@ -1379,7 +1429,7 @@ static bool TryTransformBoundFilterExpression(
     string &filter_sql);
 
 static bool TryTransformComparisonFilter(
-    BoundComparisonExpression &comparison,
+    BoundFunctionExpression &comparison,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     string &filter_sql) {
@@ -1390,12 +1440,12 @@ static bool TryTransformComparisonFilter(
 
     string left_sql;
     string right_sql;
-    if (!TryTransformBoundScalarExpressionInternal(*comparison.left,
+    if (!TryTransformBoundScalarExpressionInternal(*BoundComparisonExpression::LeftMutable(comparison),
                                                    column_sql_resolver,
                                                    integral_floating_sql_resolver,
                                                    ScalarExpressionContext::FILTER,
                                                    left_sql) ||
-        !TryTransformBoundScalarExpressionInternal(*comparison.right,
+        !TryTransformBoundScalarExpressionInternal(*BoundComparisonExpression::RightMutable(comparison),
                                                    column_sql_resolver,
                                                    integral_floating_sql_resolver,
                                                    ScalarExpressionContext::FILTER,
@@ -1424,8 +1474,8 @@ static bool TryTransformConjunctionFilter(
     }
 
     vector<string> entries;
-    entries.reserve(conjunction.children.size());
-    for (auto &child : conjunction.children) {
+    entries.reserve(conjunction.GetChildren().size());
+    for (auto &child : conjunction.GetChildren()) {
         string child_sql;
         if (!TryTransformBoundFilterExpression(*child,
                                                column_sql_resolver,
@@ -1442,17 +1492,18 @@ static bool TryTransformConjunctionFilter(
     return true;
 }
 
+template <class OPERATOR>
 static bool TryTransformInFilter(
-    BoundOperatorExpression &op,
+    OPERATOR &op,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     string &filter_sql) {
-    if (op.children.size() < 2) {
+    if (op.GetChildren().size() < 2) {
         return false;
     }
 
     string expression_sql;
-    if (!TryTransformBoundScalarExpressionInternal(*op.children[0],
+    if (!TryTransformBoundScalarExpressionInternal(*op.GetChildren()[0],
                                                    column_sql_resolver,
                                                    integral_floating_sql_resolver,
                                                    ScalarExpressionContext::FILTER,
@@ -1461,10 +1512,10 @@ static bool TryTransformInFilter(
     }
 
     vector<string> literals;
-    literals.reserve(op.children.size() - 1);
-    for (idx_t child_idx = 1; child_idx < op.children.size(); child_idx++) {
+    literals.reserve(op.GetChildren().size() - 1);
+    for (idx_t child_idx = 1; child_idx < op.GetChildren().size(); child_idx++) {
         string literal_sql;
-        if (!TryTransformConstantExpression(*op.children[child_idx], literal_sql) || literal_sql == "NULL") {
+        if (!TryTransformConstantExpression(*op.GetChildren()[child_idx], literal_sql) || literal_sql == "NULL") {
             return false;
         }
         literals.push_back(std::move(literal_sql));
@@ -1473,19 +1524,20 @@ static bool TryTransformInFilter(
     return true;
 }
 
+template <class OPERATOR>
 static bool TryTransformOperatorFilter(
-    BoundOperatorExpression &op,
+    OPERATOR &op,
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     string &filter_sql) {
     switch (op.GetExpressionType()) {
     case ExpressionType::OPERATOR_IS_NULL:
     case ExpressionType::OPERATOR_IS_NOT_NULL: {
-        if (op.children.size() != 1) {
+        if (op.GetChildren().size() != 1) {
             return false;
         }
         string expression_sql;
-        if (!TryTransformBoundScalarExpressionInternal(*op.children[0],
+        if (!TryTransformBoundScalarExpressionInternal(*op.GetChildren()[0],
                                                        column_sql_resolver,
                                                        integral_floating_sql_resolver,
                                                        ScalarExpressionContext::FILTER,
@@ -1509,9 +1561,9 @@ static bool TryTransformBoundFilterExpression(
     const std::function<bool(const ColumnBinding &, string &)> &column_sql_resolver,
     const std::function<bool(const ColumnBinding &, string &)> &integral_floating_sql_resolver,
     string &filter_sql) {
-    switch (expr.GetExpressionClass()) {
-    case ExpressionClass::BOUND_COMPARISON:
-        return TryTransformComparisonFilter(expr.Cast<BoundComparisonExpression>(),
+    switch (ClassifySQLExpression(expr)) {
+    case ExpressionClass::LEGACY_BOUND_COMPARISON:
+        return TryTransformComparisonFilter(expr.Cast<BoundFunctionExpression>(),
                                             column_sql_resolver,
                                             integral_floating_sql_resolver,
                                             filter_sql);
@@ -1520,6 +1572,11 @@ static bool TryTransformBoundFilterExpression(
                                              column_sql_resolver,
                                              integral_floating_sql_resolver,
                                              filter_sql);
+    case ExpressionClass::BOUND_FUNCTION:
+        return TryTransformOperatorFilter(expr.Cast<BoundFunctionExpression>(),
+                                          column_sql_resolver,
+                                          integral_floating_sql_resolver,
+                                          filter_sql);
     case ExpressionClass::BOUND_OPERATOR:
         return TryTransformOperatorFilter(expr.Cast<BoundOperatorExpression>(),
                                           column_sql_resolver,
@@ -1537,7 +1594,7 @@ static bool TryGetLogicalGetFilterColumnName(const LogicalGet &get, idx_t filter
         return false;
     }
 
-    column_name = get.GetColumnName(column_index);
+    column_name = get.GetColumnName(column_index).GetIdentifierName();
     return true;
 }
 
@@ -1578,7 +1635,7 @@ std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
         return ExtractFilters(*child.children[0]);
     case LogicalOperatorType::LOGICAL_GET: {
         auto &get = child.Cast<LogicalGet>();
-        if (get.table_filters.filters.empty()) {
+        if (!get.table_filters.HasFilters()) {
             return string();
         }
         string filter_sql;
@@ -1596,10 +1653,13 @@ std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
 
 string BigquerySQL::TransformFilters(const TableFilterSet &filters,
                                      const std::function<string(idx_t)> &column_name_resolver) {
+    if (filters.HasMultiColumnFilters()) {
+        throw NotImplementedException("BigQuery multi-column scan filters require local evaluation");
+    }
     vector<string> filter_entries;
-    filter_entries.reserve(filters.filters.size());
-    for (auto &filter : filters.filters) {
-        auto entry = TransformFilter(column_name_resolver(filter.first), *filter.second);
+    filter_entries.reserve(filters.FilterCount());
+    for (auto &filter : filters) {
+        auto entry = TransformFilter(column_name_resolver(filter.GetIndex().GetIndex()), filter.Filter());
         if (!entry.empty()) {
             filter_entries.push_back(std::move(entry));
         }
@@ -1668,15 +1728,15 @@ bool BigquerySQL::TryTransformBoundIntegralFloatingExpression(
                                                          ScalarExpressionContext::FILTER,
                                                          expression_sql);
     }
-    if (expr.GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF || !integral_floating_sql_resolver) {
+    if (ClassifySQLExpression(expr) != ExpressionClass::BOUND_COLUMN_REF || !integral_floating_sql_resolver) {
         return false;
     }
     auto &colref = expr.Cast<BoundColumnRefExpression>();
-    return integral_floating_sql_resolver(colref.binding, expression_sql);
+    return integral_floating_sql_resolver(colref.Binding(), expression_sql);
 }
 
 bool BigquerySQL::TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql) {
-    if (get.table_filters.filters.empty()) {
+    if (!get.table_filters.HasFilters()) {
         filter_sql.clear();
         return true;
     }
@@ -1702,10 +1762,13 @@ string BigquerySQL::CreateSubquerySourceSQL(const string &query, const string &a
 }
 
 string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTableInfo &info) {
-    if (info.schema.empty()) {
+    if (info.GetQualifiedName().Schema().GetIdentifierName().empty()) {
         throw BinderException("Schema not specified for AlterTableInfo");
     }
-    const auto &table_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.name);
+    const auto &table_string =
+        BigqueryUtils::FormatTableStringSimple(project_id,
+                                               info.GetQualifiedName().Schema().GetIdentifierName(),
+                                               info.GetQualifiedName().Name().GetIdentifierName());
     std::stringstream stmt;
     stmt << "ALTER TABLE ";
     stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
@@ -1720,8 +1783,8 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
         //     		column_name TO new_column_name
         const auto &rename_info = info.Cast<RenameColumnInfo>();
         stmt << "RENAME COLUMN ";
-        stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.old_name) << " TO ";
-        stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_name);
+        stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.old_name.GetIdentifierName()) << " TO ";
+        stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_name.GetIdentifierName());
         break;
     }
     case AlterTableType::RENAME_TABLE: {
@@ -1729,7 +1792,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
         // ALTER TABLE [IF EXISTS] table_name RENAME TO new_table_name
         const auto &rename_info = info.Cast<RenameTableInfo>();
         stmt << "RENAME TO ";
-        stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_table_name);
+        stmt << BigqueryUtils::WriteQuotedIdentifier(rename_info.new_table_name.GetIdentifierName());
         break;
     }
     case AlterTableType::ADD_COLUMN: {
@@ -1752,7 +1815,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
         if (remove_column_info.if_column_exists) {
             stmt << "IF EXISTS ";
         }
-        stmt << BigqueryUtils::WriteQuotedIdentifier(remove_column_info.removed_column);
+        stmt << BigqueryUtils::WriteQuotedIdentifier(remove_column_info.removed_column.GetIdentifierName());
         break;
     }
     case AlterTableType::ALTER_COLUMN_TYPE: {
@@ -1760,7 +1823,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
         // ALTER TABLE table_name ALTER COLUMN column_name SET DATA TYPE type
         const auto &alter_column_type_info = dynamic_cast<const ChangeColumnTypeInfo *>(&info);
         stmt << "ALTER COLUMN ";
-        stmt << BigqueryUtils::WriteQuotedIdentifier(alter_column_type_info->column_name);
+        stmt << QuoteFilterColumnPath(BigqueryUtils::ToStrings(alter_column_type_info->column_path));
         stmt << " SET DATA TYPE " << BigqueryUtils::LogicalTypeToBigquerySQL(alter_column_type_info->target_type);
         break;
     }
@@ -1769,7 +1832,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
         // ALTER TABLE table_name ALTER COLUMN column_name SET DEFAULT expression
         const auto &set_default_info = dynamic_cast<const SetDefaultInfo *>(&info);
         stmt << "ALTER COLUMN ";
-        stmt << BigqueryUtils::WriteQuotedIdentifier(set_default_info->column_name);
+        stmt << QuoteFilterColumnPath(BigqueryUtils::ToStrings(set_default_info->column_path));
         stmt << " SET DEFAULT " << set_default_info->expression->ToString();
         break;
     }
@@ -1778,7 +1841,7 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
         // ALTER TABLE table_name ALTER COLUMN column_name DROP NOT NULL
         const auto &drop_not_null_info = info.Cast<DropNotNullInfo>();
         stmt << "ALTER COLUMN ";
-        stmt << BigqueryUtils::WriteQuotedIdentifier(drop_not_null_info.column_name);
+        stmt << QuoteFilterColumnPath(BigqueryUtils::ToStrings(drop_not_null_info.column_path));
         stmt << " DROP NOT NULL";
         break;
     }
@@ -1790,7 +1853,8 @@ string BigquerySQL::AlterTableInfoToSQL(const string &project_id, const AlterTab
 }
 
 string BigquerySQL::CreateSchemaInfoToSQL(const string &project_id, const CreateSchemaInfo &info) {
-    const auto &schema_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema);
+    const auto &schema_string =
+        BigqueryUtils::FormatTableStringSimple(project_id, info.GetQualifiedName().Schema().GetIdentifierName());
     std::stringstream query;
     query << "CREATE SCHEMA ";
     query << BigqueryUtils::WriteQuotedIdentifier(schema_string);
@@ -1805,7 +1869,7 @@ string BigquerySQL::CreateSchemaInfoToSQL(const string &project_id, const Create
 }
 
 string BigquerySQL::CreateTableInfoToSQL(const string &project_id, const CreateTableInfo &info) {
-    if (info.schema.empty()) {
+    if (info.GetQualifiedName().Schema().GetIdentifierName().empty()) {
         throw BinderException("Schema not specified for CreateTableInfo");
     }
     std::stringstream stmt;
@@ -1818,7 +1882,9 @@ string BigquerySQL::CreateTableInfoToSQL(const string &project_id, const CreateT
         stmt << "IF NOT EXISTS ";
     }
     // Append the table name
-    auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, info.schema, info.table);
+    auto table_string = BigqueryUtils::FormatTableStringSimple(project_id,
+                                                               info.GetQualifiedName().Schema().GetIdentifierName(),
+                                                               info.GetQualifiedName().Name().GetIdentifierName());
     stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
     stmt << BigqueryColumnsToSQL(info.columns, info.constraints);
 
@@ -1864,7 +1930,9 @@ string BigquerySQL::CreateViewInfoToSQL(const string &project_id, const CreateVi
         stmt << "IF NOT EXISTS ";
     }
     // Append the view name
-    auto table_string = BigqueryUtils::FormatTableStringSimple(info.catalog, info.schema, info.view_name);
+    auto table_string = BigqueryUtils::FormatTableStringSimple(info.GetQualifiedName().Catalog().GetIdentifierName(),
+                                                               info.GetQualifiedName().Schema().GetIdentifierName(),
+                                                               info.GetQualifiedName().Name().GetIdentifierName());
     stmt << BigqueryUtils::WriteQuotedIdentifier(table_string) << " ";
     if (!info.aliases.empty()) {
         stmt << "(";
@@ -1892,12 +1960,13 @@ string BigquerySQL::DropInfoToSQL(const string &project_id, const DropInfo &info
     switch (info.type) {
     case CatalogType::VIEW_ENTRY:
     case CatalogType::TABLE_ENTRY: {
-        auto name = project_id + "." + info.schema + "." + info.name;
+        auto name = project_id + "." + info.GetQualifiedName().Schema().GetIdentifierName() + "." +
+                    info.GetQualifiedName().Name().GetIdentifierName();
         query += BigqueryUtils::WriteQuotedIdentifier(name);
         break;
     }
     case CatalogType::SCHEMA_ENTRY: {
-        auto name = project_id + "." + info.name;
+        auto name = project_id + "." + info.GetQualifiedName().Name().GetIdentifierName();
         query += BigqueryUtils::WriteQuotedIdentifier(name);
         if (info.cascade) {
             query += " CASCADE";
@@ -1919,8 +1988,8 @@ string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &
     }
     auto &proj = lu.children[0]->Cast<LogicalProjection>();
     auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, //
-                                                               lu.table.schema.name,
-                                                               lu.table.name);
+                                                               lu.table.schema.name.GetIdentifierName(),
+                                                               lu.table.name.GetIdentifierName());
 
     string sql = "UPDATE ";
     sql += BigqueryUtils::WriteQuotedIdentifier(table_string);
@@ -1931,19 +2000,19 @@ string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &
         }
 
         auto &col = lu.table.GetColumn(lu.table.GetColumns().PhysicalToLogical(lu.columns[c]));
-        sql += BigqueryUtils::WriteQuotedIdentifier(col.GetName()) + " = ";
-        if (lu.expressions[c]->type == ExpressionType::VALUE_DEFAULT) {
+        sql += BigqueryUtils::WriteQuotedIdentifier(col.GetName().GetIdentifierName()) + " = ";
+        if (lu.expressions[c]->GetExpressionType() == ExpressionType::VALUE_DEFAULT) {
             sql += "DEFAULT";
             continue;
         }
-        if (lu.expressions[c]->type != ExpressionType::BOUND_REF) {
+        if (lu.expressions[c]->GetExpressionType() != ExpressionType::BOUND_REF) {
             throw NotImplementedException("BigQuery UPDATE - Expected a bound reference expression");
         }
         auto &ref = lu.expressions[c]->Cast<BoundReferenceExpression>();
-        if (ref.index >= proj.expressions.size()) {
+        if (ref.Index() >= proj.expressions.size()) {
             throw InternalException("BigQuery UPDATE - Projection reference index out of range");
         }
-        sql += proj.expressions[ref.index]->ToString();
+        sql += proj.expressions[ref.Index()]->ToString();
     }
 
     auto filters = proj.children.empty() ? string() : ExtractFilters(*proj.children[0]);
@@ -1958,8 +2027,8 @@ string BigquerySQL::LogicalUpdateToSQL(const string &project_id, LogicalUpdate &
 
 string BigquerySQL::LogicalDeleteToSQL(const string &project_id, LogicalDelete &ld) {
     auto table_string = BigqueryUtils::FormatTableStringSimple(project_id, //
-                                                               ld.table.schema.name,
-                                                               ld.table.name);
+                                                               ld.table.schema.name.GetIdentifierName(),
+                                                               ld.table.name.GetIdentifierName());
     std::stringstream sql;
     sql << "DELETE FROM ";
     sql << BigqueryUtils::WriteQuotedIdentifier(table_string);
