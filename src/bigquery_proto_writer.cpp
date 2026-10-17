@@ -640,7 +640,7 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const vector<idx_t> &targ
         const auto &binding = column_bindings[binding_idx];
         if (binding.write_kind != BoundWriteKind::SCALAR || !BigqueryUtils::IsGeometryType(binding.col_type)) {
             if (binding.write_kind == BoundWriteKind::SCALAR && SupportsScalarUnifiedWrite(binding.col_type)) {
-                chunk.data[binding.source_col_idx].ToUnifiedFormat(chunk.size(), scalar_formats[binding_idx]);
+                chunk.data[binding.source_col_idx].ToUnifiedFormat(scalar_formats[binding_idx]);
                 has_scalar_fast_path[binding_idx] = true;
             }
             continue;
@@ -650,7 +650,7 @@ void BigqueryProtoWriter::WriteChunk(DataChunk &chunk, const vector<idx_t> &targ
         ConvertGeometryVectorToText(chunk.data[binding.source_col_idx],
                                     chunk.size(),
                                     *geometry_text_vectors[binding_idx]);
-        geometry_text_vectors[binding_idx]->ToUnifiedFormat(chunk.size(), geometry_text_formats[binding_idx]);
+        geometry_text_vectors[binding_idx]->ToUnifiedFormat(geometry_text_formats[binding_idx]);
         has_geometry_text[binding_idx] = true;
     }
 

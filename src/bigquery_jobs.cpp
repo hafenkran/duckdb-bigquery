@@ -104,35 +104,35 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
     int value_idx = 0;
 
     // state
-    output.SetValue(value_idx++, out_idx, Value(job_state));
+    output.data[value_idx++].SetValue(out_idx, Value(job_state));
 
     // job_id, project, location
-    output.SetValue(value_idx++, out_idx, Value(job_ref.job_id()));
-    output.SetValue(value_idx++, out_idx, Value(job_ref.project_id()));
-    output.SetValue(value_idx++, out_idx, Value(job_ref.location().value()));
+    output.data[value_idx++].SetValue(out_idx, Value(job_ref.job_id()));
+    output.data[value_idx++].SetValue(out_idx, Value(job_ref.project_id()));
+    output.data[value_idx++].SetValue(out_idx, Value(job_ref.location().value()));
 
     // creation time
     if (job_stats.creation_time() > 0) {
         auto creation_time = Timestamp::FromEpochMs(job_stats.creation_time());
-        output.SetValue(value_idx++, out_idx, Value::TIMESTAMP(creation_time));
+        output.data[value_idx++].SetValue(out_idx, Value::TIMESTAMP(creation_time));
     } else {
-        output.SetValue(value_idx++, out_idx, Value());
+        output.data[value_idx++].SetValue(out_idx, Value());
     }
 
     // start time
     if (job_stats.start_time() > 0) {
         auto start_time = Timestamp::FromEpochMs(job_stats.start_time());
-        output.SetValue(value_idx++, out_idx, Value::TIMESTAMP(start_time));
+        output.data[value_idx++].SetValue(out_idx, Value::TIMESTAMP(start_time));
     } else {
-        output.SetValue(value_idx++, out_idx, Value());
+        output.data[value_idx++].SetValue(out_idx, Value());
     }
 
     // end time
     if (job_stats.end_time() > 0) {
         auto end_time = Timestamp::FromEpochMs(job_stats.end_time());
-        output.SetValue(value_idx++, out_idx, Value::TIMESTAMP(end_time));
+        output.data[value_idx++].SetValue(out_idx, Value::TIMESTAMP(end_time));
     } else {
-        output.SetValue(value_idx++, out_idx, Value());
+        output.data[value_idx++].SetValue(out_idx, Value());
     }
 
     // duration_ms
@@ -140,38 +140,38 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
         auto duration_ms = job_stats.end_time() - job_stats.start_time();
         auto duration_us = duration_ms * 1000; // from milliseconds to microseconds as Value::INTERVAL expects it
         auto duration_interval = Interval::FromMicro(duration_us);
-        output.SetValue(value_idx++, out_idx, Value::INTERVAL(duration_interval));
+        output.data[value_idx++].SetValue(out_idx, Value::INTERVAL(duration_interval));
     } else {
-        output.SetValue(value_idx++, out_idx, Value());
+        output.data[value_idx++].SetValue(out_idx, Value());
     }
 
     // bytes processed
     if (job_stats.query().has_total_bytes_processed()) {
         const auto total_bytes_processed = job_stats.query().total_bytes_processed().value();
-        output.SetValue(value_idx++, out_idx, Value::BIGINT(total_bytes_processed));
+        output.data[value_idx++].SetValue(out_idx, Value::BIGINT(total_bytes_processed));
     } else {
-        output.SetValue(value_idx++, out_idx, Value());
+        output.data[value_idx++].SetValue(out_idx, Value());
     }
 
     // total slot time
     if (job_stats.query().has_total_slot_ms()) {
         const auto total_slot_ms = job_stats.query().total_slot_ms().value();
-        output.SetValue(value_idx++, out_idx, Value::BIGINT(total_slot_ms));
+        output.data[value_idx++].SetValue(out_idx, Value::BIGINT(total_slot_ms));
     } else {
-        output.SetValue(value_idx++, out_idx, Value());
+        output.data[value_idx++].SetValue(out_idx, Value());
     }
 
     // user email
     const auto &user_email = job.user_email();
-    output.SetValue(value_idx++, out_idx, Value(user_email));
+    output.data[value_idx++].SetValue(out_idx, Value(user_email));
 
     // principal subject
     const auto &principal_subject = job.principal_subject();
-    output.SetValue(value_idx++, out_idx, Value(principal_subject));
+    output.data[value_idx++].SetValue(out_idx, Value(principal_subject));
 
     // job type
     const auto &job_type = job.configuration().job_type();
-    output.SetValue(value_idx++, out_idx, Value(job_type));
+    output.data[value_idx++].SetValue(out_idx, Value(job_type));
 
     // statistics
     std::string json_output;
@@ -179,7 +179,7 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
     if (!status.ok()) {
         throw BinderException("Failed to convert job statistics to JSON");
     }
-    output.SetValue(value_idx++, out_idx, Value(json_output));
+    output.data[value_idx++].SetValue(out_idx, Value(json_output));
 
     // configuration
     std::string configuration_json;
@@ -187,7 +187,7 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
     if (!status.ok()) {
         throw BinderException("Failed to convert job configuration to JSON");
     }
-    output.SetValue(value_idx++, out_idx, Value(configuration_json));
+    output.data[value_idx++].SetValue(out_idx, Value(configuration_json));
 
     // status
     std::string status_json;
@@ -195,7 +195,7 @@ static void MapJobToRow(const T &job, DataChunk &output, idx_t &out_idx) {
     if (!status.ok()) {
         throw BinderException("Failed to convert job status to JSON");
     }
-    output.SetValue(value_idx++, out_idx, Value(status_json));
+    output.data[value_idx++].SetValue(out_idx, Value(status_json));
 }
 
 static unique_ptr<FunctionData> BigQueryListJobsBind(ClientContext &context,

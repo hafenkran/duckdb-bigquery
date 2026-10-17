@@ -40,7 +40,7 @@ SourceResultType BigqueryUpdate::GetDataInternal(ExecutionContext &context,
     gstate.finished = true;
 
     chunk.SetChildCardinality(1);
-    chunk.SetValue(0, 0, Value::BIGINT(gstate.updated_count));
+    chunk.data[0].SetValue(0, Value::BIGINT(gstate.updated_count));
     return SourceResultType::FINISHED;
 }
 

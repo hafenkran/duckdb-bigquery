@@ -318,9 +318,9 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
         bind_data.finished = true;
 
         output.SetChildCardinality(1);
-        output.SetValue(0, 0, Value::BIGINT(response.total_bytes_processed().value()));
-        output.SetValue(1, 0, Value::BOOLEAN(response.cache_hit().value()));
-        output.SetValue(2, 0, response.job_reference().location().value());
+        output.data[0].SetValue(0, Value::BIGINT(response.total_bytes_processed().value()));
+        output.data[1].SetValue(0, Value::BOOLEAN(response.cache_hit().value()));
+        output.data[2].SetValue(0, response.job_reference().location().value());
         output.CheckCardinality(1);
         return;
     }

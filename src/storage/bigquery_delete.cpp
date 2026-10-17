@@ -45,7 +45,7 @@ SourceResultType BigqueryDelete::GetDataInternal(ExecutionContext &context,
     gstate.finished = true;
 
     chunk.SetChildCardinality(1);
-    chunk.SetValue(0, 0, Value::BIGINT(gstate.deleted_count));
+    chunk.data[0].SetValue(0, Value::BIGINT(gstate.deleted_count));
     return SourceResultType::FINISHED;
 }
 

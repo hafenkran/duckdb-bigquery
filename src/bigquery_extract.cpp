@@ -379,29 +379,29 @@ static void BigQueryExtractFunc(ClientContext &context, TableFunctionInput &data
     }
 
     output.SetChildCardinality(1);
-    output.SetValue(0, 0, Value::BOOLEAN(true));
-    output.SetValue(1, 0, Value(job.job_reference().job_id()));
-    output.SetValue(2, 0, Value(job.job_reference().project_id()));
-    output.SetValue(3, 0, Value(job.job_reference().location().value()));
-    output.SetValue(4, 0, Value(BigqueryUtils::FormatTableStringSimple(data.source_table)));
-    output.SetValue(5, 0, StringListValue(data.destination_uris));
-    output.SetValue(6, 0, Value(data.destination_format));
+    output.data[0].SetValue(0, Value::BOOLEAN(true));
+    output.data[1].SetValue(0, Value(job.job_reference().job_id()));
+    output.data[2].SetValue(0, Value(job.job_reference().project_id()));
+    output.data[3].SetValue(0, Value(job.job_reference().location().value()));
+    output.data[4].SetValue(0, Value(BigqueryUtils::FormatTableStringSimple(data.source_table)));
+    output.data[5].SetValue(0, StringListValue(data.destination_uris));
+    output.data[6].SetValue(0, Value(data.destination_format));
 
     if (job.statistics().has_extract()) {
         const auto &extract_stats = job.statistics().extract();
-        output.SetValue(7, 0, Int64ListValue(extract_stats.destination_uri_file_counts()));
+        output.data[7].SetValue(0, Int64ListValue(extract_stats.destination_uri_file_counts()));
 
         if (extract_stats.has_input_bytes()) {
-            output.SetValue(8, 0, Value::BIGINT(extract_stats.input_bytes().value()));
+            output.data[8].SetValue(0, Value::BIGINT(extract_stats.input_bytes().value()));
         } else {
-            output.SetValue(8, 0, Value());
+            output.data[8].SetValue(0, Value());
         }
     } else {
-        output.SetValue(7, 0, Value());
-        output.SetValue(8, 0, Value());
+        output.data[7].SetValue(0, Value());
+        output.data[8].SetValue(0, Value());
     }
 
-    output.SetValue(9, 0, Value(status_json));
+    output.data[9].SetValue(0, Value(status_json));
     output.CheckCardinality(1);
     data.finished = true;
 }

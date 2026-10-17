@@ -10,6 +10,7 @@
 #include "duckdb/common/enums/catalog_type.hpp"
 #include "duckdb/common/index_map.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/parser/keyword_helper.hpp"
 
 #include "duckdb/planner/filter/conjunction_filter.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
@@ -510,7 +511,7 @@ string BigqueryUtils::ReplaceQuotes(string &identifier, char to_replace) {
 }
 
 string BigqueryUtils::WriteQuotedIdentifier(const string &identifier) {
-    return KeywordHelper::WriteQuoted(identifier, '`');
+    return KeywordHelper::WriteQuotedAndEscaped(identifier, '`');
 }
 
 LogicalType BigqueryUtils::CastToBigqueryType(const LogicalType &type) {
@@ -1072,7 +1073,7 @@ void BigqueryUtils::FillChunkFromRestRows(const google::protobuf::RepeatedPtrFie
         for (idx_t col_idx = 0; col_idx < types.size(); col_idx++) {
             const auto &field_val = field_list[static_cast<int>(col_idx)].struct_value().fields().at("v");
             auto value = RestValueToValue(field_val, types[col_idx]);
-            output.SetValue(col_idx, row_idx, value);
+            output.data[col_idx].SetValue(row_idx, value);
         }
     }
     output.CheckCardinality(actual_count);

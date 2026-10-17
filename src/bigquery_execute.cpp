@@ -187,28 +187,27 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
         const auto &job_ref = job.job_reference();
         const auto &query_stats = job.statistics().query();
         output.SetChildCardinality(1);
-        output.SetValue(0, 0, true);
-        output.SetValue(1, 0, Value(job_ref.job_id()));
-        output.SetValue(2, 0, Value(job_ref.project_id()));
-        output.SetValue(3, 0, job_ref.has_location() ? Value(job_ref.location().value()) : Value(LogicalType::VARCHAR));
+        output.data[0].SetValue(0, true);
+        output.data[1].SetValue(0, Value(job_ref.job_id()));
+        output.data[2].SetValue(0, Value(job_ref.project_id()));
+        output.data[3].SetValue(0,
+                                job_ref.has_location() ? Value(job_ref.location().value())
+                                                       : Value(LogicalType::VARCHAR));
         // The query job statistics carry bytes processed and DML-affected rows, but not the
         // result row count. Fetch total_rows via the job's query results, matching the source
         // used by the inline jobs.query path. Anything BigQuery doesn't report stays NULL.
         auto results = data.bq_client->GetQueryResults(job_ref);
-        output.SetValue(4,
-                        0,
-                        results.has_total_rows() ? Value::UBIGINT(results.total_rows().value())
-                                                 : Value(LogicalType::UBIGINT));
-        output.SetValue(5,
-                        0,
-                        query_stats.has_total_bytes_processed()
-                            ? Value::BIGINT(query_stats.total_bytes_processed().value())
-                            : Value(LogicalType::BIGINT));
-        output.SetValue(6,
-                        0,
-                        query_stats.has_num_dml_affected_rows()
-                            ? Value::BIGINT(query_stats.num_dml_affected_rows().value())
-                            : Value(LogicalType::BIGINT));
+        output.data[4].SetValue(0,
+                                results.has_total_rows() ? Value::UBIGINT(results.total_rows().value())
+                                                         : Value(LogicalType::UBIGINT));
+        output.data[5].SetValue(0,
+                                query_stats.has_total_bytes_processed()
+                                    ? Value::BIGINT(query_stats.total_bytes_processed().value())
+                                    : Value(LogicalType::BIGINT));
+        output.data[6].SetValue(0,
+                                query_stats.has_num_dml_affected_rows()
+                                    ? Value::BIGINT(query_stats.num_dml_affected_rows().value())
+                                    : Value(LogicalType::BIGINT));
         output.CheckCardinality(1);
         return;
     }
@@ -218,18 +217,18 @@ static void BigQueryExecuteFunc(ClientContext &context, TableFunctionInput &data
 
     if (!data.dry_run) {
         output.SetChildCardinality(1);
-        output.SetValue(0, 0, true);
-        output.SetValue(1, 0, response.job_reference().job_id());
-        output.SetValue(2, 0, response.job_reference().project_id());
-        output.SetValue(3, 0, response.job_reference().location().value());
-        output.SetValue(4, 0, Value::UBIGINT(response.total_rows().value()));
-        output.SetValue(5, 0, Value::BIGINT(response.total_bytes_processed().value()));
-        output.SetValue(6, 0, Value::BIGINT(response.num_dml_affected_rows().value()));
+        output.data[0].SetValue(0, true);
+        output.data[1].SetValue(0, response.job_reference().job_id());
+        output.data[2].SetValue(0, response.job_reference().project_id());
+        output.data[3].SetValue(0, response.job_reference().location().value());
+        output.data[4].SetValue(0, Value::UBIGINT(response.total_rows().value()));
+        output.data[5].SetValue(0, Value::BIGINT(response.total_bytes_processed().value()));
+        output.data[6].SetValue(0, Value::BIGINT(response.num_dml_affected_rows().value()));
     } else {
         output.SetChildCardinality(1);
-        output.SetValue(0, 0, Value::BIGINT(response.total_bytes_processed().value()));
-        output.SetValue(1, 0, Value::BOOLEAN(response.cache_hit().value()));
-        output.SetValue(2, 0, response.job_reference().location().value());
+        output.data[0].SetValue(0, Value::BIGINT(response.total_bytes_processed().value()));
+        output.data[1].SetValue(0, Value::BOOLEAN(response.cache_hit().value()));
+        output.data[2].SetValue(0, response.job_reference().location().value());
     }
     output.CheckCardinality(1);
 }

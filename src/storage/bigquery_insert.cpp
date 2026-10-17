@@ -123,7 +123,7 @@ SourceResultType BigqueryInsert::GetDataInternal(ExecutionContext &context,
                                                  OperatorSourceInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
     chunk.SetChildCardinality(1);
-    chunk.SetValue(0, 0, Value::BIGINT(gstate.insert_count));
+    chunk.data[0].SetValue(0, Value::BIGINT(gstate.insert_count));
     return SourceResultType::FINISHED;
 }
 

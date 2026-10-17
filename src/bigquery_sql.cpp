@@ -1,6 +1,7 @@
 #include "duckdb.hpp"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/common/sql_identifier.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_columnref_expression.hpp"
@@ -109,15 +110,15 @@ static bool TryTransformFilterLiteral(const Value &value, string &literal_sql) {
     }
     switch (value.type().id()) {
     case LogicalTypeId::DATE:
-        literal_sql = "DATE " + KeywordHelper::WriteQuoted(value.ToString());
+        literal_sql = "DATE " + SQLString::ToString(value.ToString());
         return true;
     case LogicalTypeId::TIME:
-        literal_sql = "TIME " + KeywordHelper::WriteQuoted(value.ToString());
+        literal_sql = "TIME " + SQLString::ToString(value.ToString());
         return true;
     case LogicalTypeId::TIMESTAMP:
         // Both BigQuery DATETIME and TIMESTAMP map to DuckDB TIMESTAMP. A canonical string literal
         // lets BigQuery coerce to the source column's temporal type without assuming either one.
-        literal_sql = KeywordHelper::WriteQuoted(value.ToString());
+        literal_sql = SQLString::ToString(value.ToString());
         return true;
     default:
         break;
@@ -125,7 +126,7 @@ static bool TryTransformFilterLiteral(const Value &value, string &literal_sql) {
     if (value.type().id() == LogicalTypeId::VARCHAR || value.type().id() == LogicalTypeId::STRING_LITERAL) {
         literal_sql = WriteBigQueryStringLiteral(value.ToString());
     } else if (BigqueryUtils::IsValueQuotable(value)) {
-        literal_sql = KeywordHelper::WriteQuoted(value.ToString());
+        literal_sql = SQLString::ToString(value.ToString());
     } else {
         literal_sql = value.ToString();
     }

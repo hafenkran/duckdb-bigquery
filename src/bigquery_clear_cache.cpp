@@ -46,7 +46,7 @@ static void ClearBigqueryCachesFunction(ClientContext &context, TableFunctionInp
     BigqueryClearCacheFunction::ClearBigqueryCaches(context);
     // Emit a single row indicating success
     output.SetChildCardinality(1);
-    output.SetValue(0, 0, Value::BOOLEAN(true));
+    output.data[0].SetValue(0, Value::BOOLEAN(true));
     data.finished = true;
 }
 

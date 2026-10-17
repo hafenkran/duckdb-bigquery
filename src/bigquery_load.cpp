@@ -670,19 +670,19 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
     }
 
     output.SetChildCardinality(1);
-    output.SetValue(0, 0, Value::BOOLEAN(true));
-    output.SetValue(1, 0, Value(job.job_reference().job_id()));
-    output.SetValue(2, 0, Value(job.job_reference().project_id()));
-    output.SetValue(3, 0, Value(job.job_reference().location().value()));
-    output.SetValue(4, 0, Value(BigqueryUtils::FormatTableStringSimple(data.destination_table)));
+    output.data[0].SetValue(0, Value::BOOLEAN(true));
+    output.data[1].SetValue(0, Value(job.job_reference().job_id()));
+    output.data[2].SetValue(0, Value(job.job_reference().project_id()));
+    output.data[3].SetValue(0, Value(job.job_reference().location().value()));
+    output.data[4].SetValue(0, Value(BigqueryUtils::FormatTableStringSimple(data.destination_table)));
 
     if (job.statistics().has_load() && job.statistics().load().has_output_rows()) {
-        output.SetValue(5, 0, Value::UBIGINT(job.statistics().load().output_rows().value()));
+        output.data[5].SetValue(0, Value::UBIGINT(job.statistics().load().output_rows().value()));
     } else {
-        output.SetValue(5, 0, Value());
+        output.data[5].SetValue(0, Value());
     }
 
-    output.SetValue(6, 0, Value(status_json));
+    output.data[6].SetValue(0, Value(status_json));
     output.CheckCardinality(1);
     data.finished = true;
 }
