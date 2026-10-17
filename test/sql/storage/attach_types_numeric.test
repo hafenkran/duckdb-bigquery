@@ -9,16 +9,16 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 ###########################################
 # test multiple numeric types
 ###########################################
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_numerics;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.table_numerics;
 
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.table_numerics AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.table_numerics AS
 SELECT
     bool,
     tinyint,
@@ -33,30 +33,30 @@ SELECT
 FROM test_all_types();
 
 query IIIIIIIIII
-SELECT * FROM bq.${BQ_TEST_DATASET}.table_numerics;
+SELECT * FROM bq.{BQ_TEST_DATASET}.table_numerics;
 ----
 false	-128	-32768	-2147483648	-9223372036854775808	0	0	0	-3.4028235e+38	-1.7976931348623157e+308
 true	127	32767	2147483647	9223372036854775807	255	65535	4294967295	3.4028235e+38	1.7976931348623157e+308
 NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
 
 statement ok
-DROP TABLE bq.${BQ_TEST_DATASET}.table_numerics;
+DROP TABLE bq.{BQ_TEST_DATASET}.table_numerics;
 
 ###########################################
 # HUGEINT, UHUGEINT, UBIGINT (not supported)
 ###########################################
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.hugeint_table (h HUGEINT);
+CREATE TABLE bq.{BQ_TEST_DATASET}.hugeint_table (h HUGEINT);
 ----
 Not implemented Error: HUGEINT not supported in BigQuery.
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.uhugeint_table (h UHUGEINT);
+CREATE TABLE bq.{BQ_TEST_DATASET}.uhugeint_table (h UHUGEINT);
 ----
 Not implemented Error: UHUGEINT not supported in BigQuery.
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.ubigint_table (h UBIGINT);
+CREATE TABLE bq.{BQ_TEST_DATASET}.ubigint_table (h UBIGINT);
 ----
 Not implemented Error: UBIGINT not supported in BigQuery.
 
@@ -65,16 +65,16 @@ Not implemented Error: UBIGINT not supported in BigQuery.
 # NUMERIC test
 ###########################################
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.numeric_table;
 
 statement ok
-CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.numeric_table (
+CREATE OR REPLACE TABLE bq.{BQ_TEST_DATASET}.numeric_table (
 	numeric_column DECIMAL(38, 9),
 	numeric_list DECIMAL(38, 9)[]
 );
 
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.numeric_table
+INSERT INTO bq.{BQ_TEST_DATASET}.numeric_table
 VALUES (
     CAST(12345.678901234 AS DECIMAL(38, 9)),
     [
@@ -85,18 +85,18 @@ VALUES (
 );
 
 query II
-SELECT * FROM bq.${BQ_TEST_DATASET}.numeric_table;
+SELECT * FROM bq.{BQ_TEST_DATASET}.numeric_table;
 ----
 12345.678901234	[123.450000000, 6789.010000000, 234.560000000]
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.numeric_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.numeric_table2;
 
 statement ok
-CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.numeric_table2` AS
+CALL bigquery_execute('{BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.numeric_table2` AS
 SELECT
     CAST(12345.678901234 AS NUMERIC) AS numeric_column,
     [CAST(123.45 AS NUMERIC), CAST(6789.01 AS NUMERIC), CAST(234.56 AS NUMERIC)] AS numeric_list');
@@ -105,12 +105,12 @@ statement ok
 CALL bigquery_clear_cache();
 
 query II
-SELECT * FROM bq.${BQ_TEST_DATASET}.numeric_table2;
+SELECT * FROM bq.{BQ_TEST_DATASET}.numeric_table2;
 ----
 12345.678901234	[123.450000000, 6789.010000000, 234.560000000]
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.numeric_table2;
 
 
 ###########################################
@@ -118,50 +118,50 @@ DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.numeric_table2;
 # BIGNUMERIC (precision 76) exceeds DuckDB's DECIMAL max (38); read as VARCHAR automatically.
 ###########################################
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.bignumeric_table;
 
 query I
-SELECT typeof(big_value) FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT CAST(''12345.678901234'' AS BIGNUMERIC) AS big_value');
+SELECT typeof(big_value) FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT CAST(''12345.678901234'' AS BIGNUMERIC) AS big_value');
 ----
 VARCHAR
 
 statement ok
-CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table` AS
+CALL bigquery_execute('{BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.bignumeric_table` AS
 SELECT
     CAST(12345.678901234 AS BIGNUMERIC) AS numeric_column');
 
 statement ok
-CALL bigquery_execute('${BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.bignumeric_table2` (i INTEGER, big_value BIGNUMERIC)');
+CALL bigquery_execute('{BQ_TEST_PROJECT}', 'CREATE OR REPLACE TABLE `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.bignumeric_table2` (i INTEGER, big_value BIGNUMERIC)');
 
 statement ok
 CALL bigquery_clear_cache();
 
 query I
-SELECT table_name FROM information_schema.tables WHERE table_schema='${BQ_TEST_DATASET}' AND table_name='bignumeric_table';
+SELECT table_name FROM information_schema.tables WHERE table_schema='{BQ_TEST_DATASET}' AND table_name='bignumeric_table';
 ----
 bignumeric_table
 
 # Arrow scan (default) should now work without any settings
 query I
-SELECT typeof(numeric_column) FROM bq.${BQ_TEST_DATASET}.bignumeric_table LIMIT 1;
+SELECT typeof(numeric_column) FROM bq.{BQ_TEST_DATASET}.bignumeric_table LIMIT 1;
 ----
 VARCHAR
 
 query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table;
+SELECT * FROM bq.{BQ_TEST_DATASET}.bignumeric_table;
 ----
 12345.67890123400000000000000000000000000000
 
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.bignumeric_table2 VALUES (1, '98765432109876543210.987654321');
+INSERT INTO bq.{BQ_TEST_DATASET}.bignumeric_table2 VALUES (1, '98765432109876543210.987654321');
 
 query II
-SELECT * FROM bq.${BQ_TEST_DATASET}.bignumeric_table2;
+SELECT * FROM bq.{BQ_TEST_DATASET}.bignumeric_table2;
 ----
 1	98765432109876543210.98765432100000000000000000000000000000
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table2;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.bignumeric_table2;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.bignumeric_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.bignumeric_table;

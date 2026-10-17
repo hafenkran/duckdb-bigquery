@@ -12,20 +12,20 @@ require-env BQ_TEST_DATASET
 
 # Step 1: Create BigQuery table directly from geoparquet file
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.geography_test;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test_extra;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.geography_test_extra;
 
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.geography_test AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.geography_test AS
 SELECT * FROM read_parquet('test/data/cities.geoparquet');
 
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.geography_test_extra AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.geography_test_extra AS
 SELECT * FROM (VALUES
     (1, 'POINT(-122.4194 37.7749)'::GEOMETRY('OGC:CRS84')),
     (2, 'POLYGON((-122.4 37.7, -122.3 37.7, -122.3 37.8, -122.4 37.8, -122.4 37.7))'::GEOMETRY('OGC:CRS84')),
@@ -37,7 +37,7 @@ query II
 SELECT
     typeof(geom) as geom_type,
     st_crs(geom) as crs
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test')
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_test')
 LIMIT 1;
 ----
 GEOMETRY('OGC:CRS84')	OGC:CRS84
@@ -49,7 +49,7 @@ SELECT
     geom,
     typeof(geom) as geom_type,
     st_crs(geom) as crs
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_test_extra')
 ORDER BY id;
 ----
 1	POINT (-122.4194 37.7749)	GEOMETRY('OGC:CRS84')	OGC:CRS84
@@ -61,7 +61,7 @@ query II
 SELECT
     geom,
     st_crs(geom) as crs
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_test_extra')
 WHERE id = 1;
 ----
 POINT (-122.4194 37.7749)	OGC:CRS84
@@ -69,7 +69,7 @@ POINT (-122.4194 37.7749)	OGC:CRS84
 # Test 3: Verify CRS is consistent across all rows
 query I
 SELECT COUNT(DISTINCT st_crs(geom)) as distinct_crs_count
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra');
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_test_extra');
 ----
 1
 
@@ -81,7 +81,7 @@ SELECT
     id,
     geom,
     st_crs(geom) as crs
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_test_extra')
 WHERE id <= 2;
 
 # Verify local table has correct CRS
@@ -95,10 +95,10 @@ ORDER BY id;
 
 # Write back to BigQuery
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_roundtrip;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.geography_roundtrip;
 
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.geography_roundtrip AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.geography_roundtrip AS
 SELECT id, geom FROM local_geoms_roundtrip;
 
 # Verify the round-trip: read back and check CRS is preserved
@@ -108,7 +108,7 @@ SELECT
     geom,
     typeof(geom) as geom_type,
     st_crs(geom) as crs
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_roundtrip')
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_roundtrip')
 ORDER BY id;
 ----
 1	POINT (-122.4194 37.7749)	GEOMETRY('OGC:CRS84')	OGC:CRS84
@@ -116,7 +116,7 @@ ORDER BY id;
 
 # Test 5: Insert new GEOMETRY with CRS into BigQuery table
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.geography_test_extra VALUES (4, 'POINT(10 20)'::GEOMETRY('OGC:CRS84'));
+INSERT INTO bq.{BQ_TEST_DATASET}.geography_test_extra VALUES (4, 'POINT(10 20)'::GEOMETRY('OGC:CRS84'));
 
 # Verify inserted geometry has correct CRS
 query IIII
@@ -125,7 +125,7 @@ SELECT
     geom,
     typeof(geom) as geom_type,
     st_crs(geom) as crs
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_test_extra')
 WHERE id = 4;
 ----
 4	POINT (10 20)	GEOMETRY('OGC:CRS84')	OGC:CRS84
@@ -133,9 +133,9 @@ WHERE id = 4;
 # Test 6: Verify BigQuery stores GEOMETRY as GEOGRAPHY
 query I
 SELECT data_type
-FROM bigquery_query('${BQ_TEST_PROJECT}', '
+FROM bigquery_query('{BQ_TEST_PROJECT}', '
   SELECT data_type
-  FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.INFORMATION_SCHEMA.COLUMNS`
+  FROM `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.INFORMATION_SCHEMA.COLUMNS`
   WHERE table_name = "geography_test_extra" AND column_name = "geom"
 ');
 ----
@@ -147,7 +147,7 @@ SELECT
     id,
     typeof(geom) as duckdb_type,
     st_crs(geom) as crs
-FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.geography_test_extra')
+FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.geography_test_extra')
 ORDER BY id;
 ----
 1	GEOMETRY('OGC:CRS84')	OGC:CRS84
@@ -157,13 +157,13 @@ ORDER BY id;
 
 # Cleanup
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.geography_test;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_test_extra;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.geography_test_extra;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.geography_roundtrip;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.geography_roundtrip;
 
 statement ok
 DROP TABLE IF EXISTS local_geoms_roundtrip;

@@ -13,13 +13,13 @@ FROM bigquery_query(
 	'bigquery-public-data',
 	'SELECT * FROM `bigquery-public-data.geo_us_boundaries.cnecta`',
 	dry_run := true,
-	billing_project := '${BQ_TEST_PROJECT}'
+	billing_project := '{BQ_TEST_PROJECT}'
 );
 ----
 <REGEX>:\d+	<REGEX>:[01]	<REGEX>:.+
 
 statement ok
-ATTACH 'project=bigquery-public-data dataset=geo_us_boundaries billing_project=${BQ_TEST_PROJECT}' AS bq_public (TYPE bigquery, READ_ONLY);
+ATTACH 'project=bigquery-public-data dataset=geo_us_boundaries billing_project={BQ_TEST_PROJECT}' AS bq_public (TYPE bigquery, READ_ONLY);
 
 # An attached database must reuse the billing project configured in ATTACH.
 query III
@@ -39,7 +39,7 @@ FROM bigquery_query(
 	'bq_public',
 	'SELECT 42 AS answer',
 	dry_run := true,
-	billing_project := '${BQ_TEST_PROJECT}'
+	billing_project := '{BQ_TEST_PROJECT}'
 );
 ----
 <REGEX>:Binder Error: Named parameters are not supported for attached databases.*

@@ -11,19 +11,19 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_file_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_file_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_table_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_table_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_csv_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_csv_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_json_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_json_table;
 
 statement ok
 CREATE OR REPLACE TEMP TABLE local_load_source AS
@@ -32,7 +32,7 @@ SELECT * FROM read_parquet('test/data/multiple_row_groups.parquet');
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	labels := MAP {'duckdb_load_label': NULL},
 	location := 'europe-west3'
@@ -43,7 +43,7 @@ Binder Error: Null label values are not allowed in parameter 'labels'
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	timeout_ms := -1
 );
@@ -53,7 +53,7 @@ Invalid Input Error: Timeout must be non-negative
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	timeout_ms := 2147483648
 );
@@ -63,7 +63,7 @@ Invalid Input Error: Timeout must fit in a 32-bit integer
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	api_endpoint := 'http://localhost:9050'
 );
@@ -73,7 +73,7 @@ CALL bigquery_load(
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	source_format := 'PARQUET',
 	csv_field_delimiter := ','
@@ -84,7 +84,7 @@ Binder Error: CSV-specific bigquery_load options require source_format='CSV'
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/load_events.csv',
 	source_format := 'CSV',
 	parquet_enum_as_string := true
@@ -95,7 +95,7 @@ Binder Error: Parquet-specific bigquery_load options require source_format='PARQ
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/load_events.csv',
 	source_format := 'ORC',
 	date_format := 'YYYY-MM-DD'
@@ -106,7 +106,7 @@ Binder Error: Temporal parsing options require source_format='CSV' or source_for
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	hive_partitioning_mode := 'AUTO'
 );
@@ -116,7 +116,7 @@ Binder Error: Hive partitioning options require source_uris
 statement error
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_table := 'local_load_source',
 	source_format := 'CSV'
 );
@@ -128,7 +128,7 @@ CREATE OR REPLACE TEMP TABLE load_file_job AS
 SELECT *
 FROM bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_file := 'test/data/multiple_row_groups.parquet',
 	location := 'europe-west3',
 	timeout_ms := 90000,
@@ -139,9 +139,9 @@ query IIIIIII
 SELECT
 	success,
 	job_id <> '',
-	project_id = '${BQ_TEST_PROJECT}',
+	project_id = '{BQ_TEST_PROJECT}',
 	location <> '',
-	destination_table = '${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table',
+	destination_table = '{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.load_file_table',
 	output_rows > 0,
 	status = '{"state":"DONE"}'
 FROM load_file_job;
@@ -163,7 +163,7 @@ true
 statement ok
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_file_table',
+	'{BQ_TEST_DATASET}.load_file_table',
 	source_table := 'local_load_source',
 	location='europe-west3',
 	timeout_ms := 0
@@ -174,7 +174,7 @@ sleep 5 seconds
 query I
 SELECT (
 	SELECT count(*)
-	FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_file_table`')
+	FROM bigquery_query('bq', 'SELECT * FROM `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.load_file_table`')
 ) = (
 	SELECT count(*) FROM local_load_source
 );
@@ -184,7 +184,7 @@ true
 statement ok
 CALL bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_table_table',
+	'{BQ_TEST_DATASET}.load_table_table',
 	source_table := 'local_load_source',
 	location='europe-west3'
 );
@@ -194,7 +194,7 @@ sleep 2 seconds
 query I
 SELECT (
 	SELECT count(*)
-    FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_table_table`')
+    FROM bigquery_query('bq', 'SELECT * FROM `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.load_table_table`')
 ) = (
 	SELECT count(*) FROM local_load_source
 );
@@ -206,7 +206,7 @@ CREATE OR REPLACE TEMP TABLE load_csv_job AS
 SELECT *
 FROM bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_csv_table',
+	'{BQ_TEST_DATASET}.load_csv_table',
 	source_file := 'test/data/load_events.csv',
 	autodetect := true,
 	csv_skip_leading_rows := 1,
@@ -220,7 +220,7 @@ sleep 5 seconds
 query I
 SELECT (
 	SELECT count(*)
-	FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_csv_table`')
+	FROM bigquery_query('bq', 'SELECT * FROM `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.load_csv_table`')
 ) = 2;
 ----
 true
@@ -241,7 +241,7 @@ CREATE OR REPLACE TEMP TABLE load_json_job AS
 SELECT *
 FROM bigquery_load(
 	'bq',
-	'${BQ_TEST_DATASET}.load_json_table',
+	'{BQ_TEST_DATASET}.load_json_table',
 	source_file := 'test/data/load_events.ndjson',
 	autodetect := true,
 	location := 'europe-west3',
@@ -253,7 +253,7 @@ sleep 5 seconds
 query I
 SELECT (
 	SELECT count(*)
-	FROM bigquery_query('bq', 'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.load_json_table`')
+	FROM bigquery_query('bq', 'SELECT * FROM `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.load_json_table`')
 ) = 2;
 ----
 true
@@ -269,13 +269,13 @@ WHERE job_id = (SELECT job_id FROM load_json_job)
 true
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_file_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_file_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_table_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_table_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_csv_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_csv_table;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.load_json_table;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.load_json_table;

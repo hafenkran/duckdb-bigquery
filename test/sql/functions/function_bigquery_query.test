@@ -12,16 +12,16 @@ statement ok
 SET bq_debug_show_queries = true;
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.test_cities;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.test_cities;
 
 statement ok
-DROP VIEW IF EXISTS bq.${BQ_TEST_DATASET}.test_cities_view;
+DROP VIEW IF EXISTS bq.{BQ_TEST_DATASET}.test_cities_view;
 
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.test_cities AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.test_cities AS
 SELECT *
 FROM (
     VALUES
@@ -43,15 +43,15 @@ FROM (
 cities(name, id, country_code);
 
 statement ok
-CALL bigquery_execute('bq', 'CREATE VIEW ${BQ_TEST_DATASET}.test_cities_view AS SELECT * FROM ${BQ_TEST_DATASET}.test_cities');
+CALL bigquery_execute('bq', 'CREATE VIEW {BQ_TEST_DATASET}.test_cities_view AS SELECT * FROM {BQ_TEST_DATASET}.test_cities');
 
 query III
-SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view;', dry_run=true);
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT * FROM {BQ_TEST_DATASET}.test_cities_view;', dry_run=true);
 ----
 0	false	<REGEX>:.+
 
 query I
-SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view');
+SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM {BQ_TEST_DATASET}.test_cities_view');
 ----
 14
 
@@ -59,7 +59,7 @@ statement ok
 SET bq_query_timeout_ms = 0;
 
 query I
-SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view');
+SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM {BQ_TEST_DATASET}.test_cities_view');
 ----
 14
 
@@ -67,28 +67,28 @@ statement ok
 SET bq_query_timeout_ms = 90000;
 
 query I
-SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view', timeout_ms := 0);
+SELECT count(*) FROM bigquery_query('bq', 'SELECT * FROM {BQ_TEST_DATASET}.test_cities_view', timeout_ms := 0);
 ----
 14
 
 query I
-SELECT name FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT * FROM ${BQ_TEST_DATASET}.test_cities_view ORDER BY name ASC LIMIT 1', timeout_ms := 90000);
+SELECT name FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT * FROM {BQ_TEST_DATASET}.test_cities_view ORDER BY name ASC LIMIT 1', timeout_ms := 90000);
 ----
 Amsterdam
 
 query I
-SELECT x FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x', 42);
+SELECT x FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT ? AS x', 42);
 ----
 42
 
 statement error
-SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x');
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT ? AS x');
 ----
 <REGEX>:Binder Error: .+
 
 statement ok
 PREPARE bq_query_params_stmt AS
-SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x, ? AS y', ?, ?);
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT ? AS x, ? AS y', ?, ?);
 
 query IT
 EXECUTE bq_query_params_stmt(42, 'abc');
@@ -96,25 +96,25 @@ EXECUTE bq_query_params_stmt(42, 'abc');
 42	abc
 
 statement error
-SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT ? AS x', [1,2,3]);
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT ? AS x', [1,2,3]);
 ----
 <REGEX>:Binder Error: Unsupported DuckDB type for BigQuery query parameter .+: .+
 
 statement error
-SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 1 AS x', timeout_ms := -1);
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT 1 AS x', timeout_ms := -1);
 ----
 Invalid Input Error: Timeout must be non-negative
 
 statement error
-SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', 'SELECT 1 AS x', timeout_ms := 2147483648);
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT 1 AS x', timeout_ms := 2147483648);
 ----
 Invalid Input Error: Timeout must fit in a 32-bit integer
 
 statement ok
-CALL bigquery_execute('bq', 'DROP VIEW ${BQ_TEST_DATASET}.test_cities_view;');
+CALL bigquery_execute('bq', 'DROP VIEW {BQ_TEST_DATASET}.test_cities_view;');
 
 statement ok
-DROP TABLE bq.${BQ_TEST_DATASET}.test_cities;
+DROP TABLE bq.{BQ_TEST_DATASET}.test_cities;
 
 statement ok
 SET bq_debug_show_queries = false;

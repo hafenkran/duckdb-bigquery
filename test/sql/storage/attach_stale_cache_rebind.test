@@ -9,24 +9,24 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.stale_cache_rebind`');
+FROM bigquery_execute('{BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.stale_cache_rebind`');
 
 sleep 2 seconds
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq_stale_cache (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq_stale_cache (TYPE bigquery);
 
 statement ok
-CREATE OR REPLACE TABLE bq_stale_cache.${BQ_TEST_DATASET}.stale_cache_rebind (i INTEGER);
+CREATE OR REPLACE TABLE bq_stale_cache.{BQ_TEST_DATASET}.stale_cache_rebind (i INTEGER);
 
 statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'ALTER TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.stale_cache_rebind` ADD COLUMN j INT64');
+FROM bigquery_execute('{BQ_TEST_PROJECT}', 'ALTER TABLE `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.stale_cache_rebind` ADD COLUMN j INT64');
 
 statement ok
-EXPLAIN SELECT j FROM bq_stale_cache.${BQ_TEST_DATASET}.stale_cache_rebind;
+EXPLAIN SELECT j FROM bq_stale_cache.{BQ_TEST_DATASET}.stale_cache_rebind;
 
 statement ok
 DETACH bq_stale_cache;
 
 statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.stale_cache_rebind`');
+FROM bigquery_execute('{BQ_TEST_PROJECT}', 'DROP TABLE IF EXISTS `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.stale_cache_rebind`');
