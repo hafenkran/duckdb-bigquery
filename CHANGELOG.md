@@ -9,6 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Updated the extension toolchain to DuckDB v1.5.6.
 
+### Fixed
+
+- Restored column defaults and `NOT NULL` metadata in `DESCRIBE` for attached
+  BigQuery tables on DuckDB 2.0.
+
 ## [0.12.0] - 2026-07-22 ([compare][0.12.0 diff])
 
 ### Added

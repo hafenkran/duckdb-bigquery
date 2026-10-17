@@ -14,6 +14,7 @@
 #include "bigquery_settings.hpp"
 #include "bigquery_sql.hpp"
 #include "bigquery_utils.hpp"
+#include "storage/bigquery_table_entry.hpp"
 
 #include <arrow/c/bridge.h>
 #include <arrow/util/iterator.h>
@@ -431,6 +432,11 @@ static BindInfo BigqueryScanGetBindInfo(TableFunctionGetBindInfoInput &input) {
     return info;
 }
 
+static optional_ptr<TableCatalogEntry> BigqueryScanGetTableEntry(optional_ptr<const FunctionData> bind_data_p) {
+    const auto &bind_data = bind_data_p->Cast<BigqueryScanBindData>();
+    return bind_data.bq_table_entry.get_mutable();
+}
+
 static unique_ptr<NodeStatistics> BigqueryScanCardinality(ClientContext &, const FunctionData *bind_data_p) {
     auto &bind_data = bind_data_p->Cast<BigqueryScanBindData>();
     return make_uniq<NodeStatistics>(bind_data.estimated_row_count, bind_data.estimated_row_count);
@@ -473,6 +479,7 @@ BigqueryScanFunction::BigqueryScanFunction()
     table_scan_progress = BigqueryScanProgress;
     get_partition_data = BigqueryScanGetPartitionData;
     get_bind_info = BigqueryScanGetBindInfo;
+    get_table_entry = BigqueryScanGetTableEntry;
 
     TypedKwargs options;
     options.Add("billing_project", LogicalType::VARCHAR);
