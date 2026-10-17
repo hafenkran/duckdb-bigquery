@@ -1,3 +1,4 @@
+#include "duckdb/planner/table_filter_set.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/arrow/arrow.hpp"
 #include "duckdb/common/arrow/arrow_wrapper.hpp"
@@ -29,7 +30,7 @@ namespace bigquery {
 unique_ptr<FunctionData> BigqueryScanFunction::BigqueryScanBind(ClientContext &context,
                                                                 TableFunctionBindInput &input,
                                                                 vector<LogicalType> &return_types,
-                                                                vector<string> &names) {
+                                                                vector<Identifier> &names) {
     if (input.inputs.empty()) {
         throw BinderException("bigquery_scan: table name must be provided");
     }
@@ -76,7 +77,7 @@ unique_ptr<FunctionData> BigqueryScanFunction::BigqueryScanBind(ClientContext &c
                                                  mapped_bq_types,
                                                  &columns);
 
-    bind_data->names = names;
+    bind_data->names = BigqueryUtils::ToStrings(names);
     bind_data->all_types = return_types;
     if (!mapped_bq_types.empty()) {
         bind_data->mapped_bq_types = std::move(mapped_bq_types);
@@ -102,7 +103,7 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
     }
 
     string filter_string = bind_data.filter_condition;
-    if (input.filters && !input.filters->filters.empty()) {
+    if (input.filters && input.filters->HasFilters()) {
         auto pushed_filters = BigquerySQL::TransformFilters(*input.filters, [&](idx_t filter_idx) -> string {
             if (filter_idx >= input.column_ids.size()) {
                 throw InternalException("BigQuery filter column index out of range");
@@ -126,13 +127,7 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
     auto bq_arrow_reader =
         bind_data.bq_client->CreateArrowReader(bind_data.table_ref, max_read_streams, selected_fields, filter_string);
 
-    auto factory = make_shared_ptr<BigqueryStreamFactory>(bq_arrow_reader);
-    auto factory_dependency = bind_data.GetFactoryDependency();
-    if (!factory_dependency) {
-        throw InternalException("Factory dependency not initialized");
-    }
-    factory_dependency->factory = factory;
-    bind_data.stream_factory_ptr = reinterpret_cast<uintptr_t>(factory.get());
+    bind_data.factory = make_shared_ptr<BigqueryStreamFactory>(bq_arrow_reader);
 
     auto gstate = make_uniq<BigqueryScanGlobalState>();
     const idx_t requested_read_streams = MaxValue<idx_t>(1, max_read_streams);
@@ -310,7 +305,7 @@ void BigqueryScanFunction::BigqueryScanExecute(ClientContext &ctx, TableFunction
 
     if (gstate.CanRemoveFilterColumns()) {
         state.all_columns.Reset();
-        state.all_columns.SetCardinality(output_size);
+        state.all_columns.SetChildCardinality(output_size);
 
         ensure_column_id_coverage(state.all_columns);
         bool arrow_scan_is_projected = !state.column_ids.empty() && state.column_ids.size() < data.names.size();
@@ -357,7 +352,7 @@ void BigqueryScanFunction::BigqueryScanExecute(ClientContext &ctx, TableFunction
             }
         }
     } else {
-        output.SetCardinality(output_size);
+        output.SetChildCardinality(output_size);
 
         bool geometry_cast_needed = false;
         if (!data.requires_cast) {
@@ -386,14 +381,14 @@ void BigqueryScanFunction::BigqueryScanExecute(ClientContext &ctx, TableFunction
                 for (idx_t col_idx = 0; col_idx < output.ColumnCount(); col_idx++) {
                     output.data[col_idx].Sequence(NumericCast<int64_t>(rowid_start), 1, output_size);
                 }
-                output.SetCardinality(output_size);
+                output.CheckCardinality(output_size);
                 output.Verify();
                 state.chunk_offset += output.size();
                 return;
             }
 
             state.all_columns.Reset();
-            state.all_columns.SetCardinality(output_size);
+            state.all_columns.SetChildCardinality(output_size);
             ensure_column_id_coverage(state.all_columns);
             bool arrow_scan_is_projected = !state.column_ids.empty() && state.column_ids.size() < data.names.size();
             ArrowTableFunction::ArrowToDuckDB(state,
@@ -410,7 +405,7 @@ void BigqueryScanFunction::BigqueryScanExecute(ClientContext &ctx, TableFunction
         }
     }
 
-    output.SetCardinality(output_size);
+    output.CheckCardinality(output_size);
     output.Verify();
     state.chunk_offset += output.size();
 
@@ -426,11 +421,12 @@ static InsertionOrderPreservingMap<string> BigqueryScanToString(TableFunctionToS
     return result;
 }
 
-static BindInfo BigqueryScanGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+static BindInfo BigqueryScanGetBindInfo(TableFunctionGetBindInfoInput &input) {
+    const auto bind_data_p = input.bind_data;
     auto &bind_data = bind_data_p->Cast<BigqueryScanBindData>();
     BindInfo info(ScanType::EXTERNAL);
     if (bind_data.bq_table_entry) {
-        info.table = bind_data.bq_table_entry.get_mutable();
+        info.InsertOption("table", Value(bind_data.TableString()));
     }
     return info;
 }
@@ -478,10 +474,12 @@ BigqueryScanFunction::BigqueryScanFunction()
     get_partition_data = BigqueryScanGetPartitionData;
     get_bind_info = BigqueryScanGetBindInfo;
 
-    named_parameters["billing_project"] = LogicalType::VARCHAR;
-    named_parameters["api_endpoint"] = LogicalType::VARCHAR;
-    named_parameters["grpc_endpoint"] = LogicalType::VARCHAR;
-    named_parameters["filter"] = LogicalType::VARCHAR;
+    TypedKwargs options;
+    options.Add("billing_project", LogicalType::VARCHAR);
+    options.Add("api_endpoint", LogicalType::VARCHAR);
+    options.Add("grpc_endpoint", LogicalType::VARCHAR);
+    options.Add("filter", LogicalType::VARCHAR);
+    GetSignature().AddTypedKwargs("options", std::move(options));
 }
 
 } // namespace bigquery

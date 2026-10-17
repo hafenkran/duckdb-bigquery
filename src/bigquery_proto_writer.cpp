@@ -64,7 +64,7 @@ string GeometryToBigqueryText(const string_t &input_geom) {
     NormalizeGeography(input_geom, normalized_geom, normalized_geom_storage);
 
     auto text_vector = Vector(LogicalType(LogicalTypeId::VARCHAR));
-    auto text = Geometry::ToString(text_vector, normalized_geom);
+    auto text = Geometry::ToString(StringVector::GetStringHeap(text_vector), normalized_geom);
     return text.GetString();
 }
 
@@ -73,7 +73,7 @@ void ConvertGeometryVectorToText(Vector &source, idx_t count, Vector &result) {
         string normalized_geom_storage;
         string_t normalized_geom;
         NormalizeGeography(input_geom, normalized_geom, normalized_geom_storage);
-        return Geometry::ToString(result, normalized_geom);
+        return Geometry::ToString(StringVector::GetStringHeap(result), normalized_geom);
     });
 }
 
@@ -284,7 +284,7 @@ void ValidateDateRange(const duckdb::date_t &value) {
 void ValidateTimeRange(const duckdb::dtime_t &value) {
     auto constexpr kTimeRangeMin = 0;
     auto constexpr kTimeRangeMax = 86399999999999;
-    if (value.micros < kTimeRangeMin || value.micros > kTimeRangeMax) {
+    if (value.value < kTimeRangeMin || value.value > kTimeRangeMax) {
         throw InternalException("Time is out of the valid BigQuery range (00:00:00 to 23:59:59.999999)");
     }
 }
@@ -312,8 +312,8 @@ void ValidateIntervalRange(const duckdb::interval_t &value) { // TODO
 BigqueryProtoWriter::BigqueryProtoWriter(BigqueryTableEntry *entry, const google::cloud::Options &options) {
     auto &bq_catalog = dynamic_cast<BigqueryCatalog &>(entry->catalog);
     auto project_id = bq_catalog.GetProjectID();
-    auto dataset_id = entry->schema.name;
-    auto table_id = entry->name;
+    auto dataset_id = entry->schema.name.GetIdentifierName();
+    auto table_id = entry->name.GetIdentifierName();
     table_string = BigqueryUtils::FormatTableString(project_id, dataset_id, table_id);
     enable_inflight_request_windowing = BigquerySettings::EnableInflightRequestWindowing();
 
@@ -435,10 +435,11 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
 
             if (child_type.id() == LogicalTypeId::STRUCT) {
                 auto &child_types = StructType::GetChildTypes(child_type);
-                auto nested_type_name = CreateNestedMessage(desc_proto, column.GetName(), child_types);
+                auto nested_type_name =
+                    CreateNestedMessage(desc_proto, column.GetName().GetIdentifierName(), child_types);
 
                 auto *field_desc_proto = desc_proto->add_field();
-                field_desc_proto->set_name(column.GetName());
+                field_desc_proto->set_name(column.GetName().GetIdentifierName());
                 field_desc_proto->set_number(num++);
                 field_desc_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
                 field_desc_proto->set_type_name(nested_type_name);
@@ -448,7 +449,7 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
                 // Set the field as a repeated message for the LIST of STRUCTS
                 auto proto_type = BigqueryUtils::LogicalTypeToProtoType(child_type);
                 auto *field_desc_proto = desc_proto->add_field();
-                field_desc_proto->set_name(column.GetName());
+                field_desc_proto->set_name(column.GetName().GetIdentifierName());
                 field_desc_proto->set_number(num++);
                 field_desc_proto->set_type(proto_type);
                 field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_REPEATED);
@@ -457,10 +458,10 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
         }
         case LogicalTypeId::STRUCT: {
             auto &child_types = StructType::GetChildTypes(column_type);
-            auto nested_type_name = CreateNestedMessage(desc_proto, column.GetName(), child_types);
+            auto nested_type_name = CreateNestedMessage(desc_proto, column.GetName().GetIdentifierName(), child_types);
 
             auto *field_desc_proto = desc_proto->add_field();
-            field_desc_proto->set_name(column.GetName());
+            field_desc_proto->set_name(column.GetName().GetIdentifierName());
             field_desc_proto->set_number(num++);
             field_desc_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_MESSAGE);
             field_desc_proto->set_type_name(nested_type_name);
@@ -471,7 +472,7 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
         default: {
             auto proto_type = BigqueryUtils::LogicalTypeToProtoType(column.GetType());
             auto *field_desc_proto = desc_proto->add_field();
-            field_desc_proto->set_name(column.GetName());
+            field_desc_proto->set_name(column.GetName().GetIdentifierName());
             field_desc_proto->set_number(num++);
             field_desc_proto->set_type(proto_type);
             field_desc_proto->set_label(google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
@@ -514,7 +515,7 @@ void BigqueryProtoWriter::InitMessageDescriptor(BigqueryTableEntry *entry) {
 
 string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProto *parent_proto,
                                                 const std::string &field_name,
-                                                const std::vector<std::pair<std::string, LogicalType>> &child_types) {
+                                                const child_list_t<LogicalType> &child_types) {
     std::string nested_type_name = field_name + "Msg";
     nested_type_name[0] = std::toupper(nested_type_name[0]);
 
@@ -523,7 +524,7 @@ string BigqueryProtoWriter::CreateNestedMessage(google::protobuf::DescriptorProt
 
     int nested_field_num = 1;
     for (const auto &child : child_types) {
-        const std::string &child_name = child.first;
+        const std::string &child_name = child.first.GetIdentifierName();
         const LogicalType &child_type = child.second;
 
         auto *child_field = nested_desc->add_field();

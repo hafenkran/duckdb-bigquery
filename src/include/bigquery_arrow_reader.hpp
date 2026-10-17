@@ -20,13 +20,13 @@ namespace bigquery {
 
 struct BigqueryArrowReader;
 
-class BigqueryStreamFactory {
+class BigqueryStreamFactory : public ArrowScanFactory {
 public:
     explicit BigqueryStreamFactory(shared_ptr<BigqueryArrowReader> reader) : reader(std::move(reader)) {
     }
 
-    static unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t factory_ptr, ArrowStreamParameters &parameters);
-    static void GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema);
+    unique_ptr<ArrowArrayStreamWrapper> ProduceStream(ArrowStreamParameters &parameters) override;
+    void GetSchema(ArrowSchema &schema) override;
 
     shared_ptr<BigqueryArrowReader> GetArrowReader() {
         return reader;
@@ -34,7 +34,7 @@ public:
 
 private:
     shared_ptr<BigqueryArrowReader> reader;
-    std::atomic<idx_t> next_stream{0};
+    shared_ptr<atomic<idx_t>> next_stream = make_shared_ptr<atomic<idx_t>>(0);
 };
 
 struct BigqueryArrowReader {
