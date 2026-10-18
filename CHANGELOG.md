@@ -11,6 +11,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Fixed UPDATE and DELETE filters using the wrong source columns after DuckDB
+  reorders or prunes scan projections. Unsupported multi-column DML filters now
+  raise an error.
 - Restored STRUCT field filter pushdown for DuckDB 2.0 expression filters,
   including nested fields and positional extraction.
 - Preserved required scan predicates when DuckDB combines them with optional

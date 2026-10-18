@@ -1646,9 +1646,16 @@ static bool TryTransformBoundFilterExpression(
 }
 
 static bool TryGetLogicalGetFilterColumnName(const LogicalGet &get, idx_t filter_column_idx, string &column_name) {
-    ColumnIndex column_index(filter_column_idx);
-    if (!column_index.HasPrimaryIndex() || column_index.HasChildren() || column_index.IsVirtualColumn() ||
-        column_index.IsRowIdColumn() || column_index.IsEmptyColumn() || filter_column_idx >= get.names.size()) {
+    const auto &column_ids = get.GetColumnIds();
+    if (filter_column_idx >= column_ids.size()) {
+        return false;
+    }
+
+    const auto &column_index = column_ids[filter_column_idx];
+    // FULL_READ child indexes describe requested fields; the filter expression still uses the root STRUCT.
+    if (!column_index.HasPrimaryIndex() || column_index.IsPushdownExtract() || column_index.IsVirtualColumn() ||
+        column_index.IsRowIdColumn() || column_index.IsEmptyColumn() ||
+        column_index.GetPrimaryIndex() >= get.names.size()) {
         return false;
     }
 
@@ -1693,7 +1700,7 @@ std::string BigquerySQL::ExtractFilters(LogicalOperator &child) {
         return ExtractFilters(*child.children[0]);
     case LogicalOperatorType::LOGICAL_GET: {
         auto &get = child.Cast<LogicalGet>();
-        if (!get.table_filters.HasFilters()) {
+        if (!get.table_filters.HasFilters() && !get.table_filters.HasMultiColumnFilters()) {
             return string();
         }
         string filter_sql;
@@ -1794,7 +1801,7 @@ bool BigquerySQL::TryTransformBoundIntegralFloatingExpression(
 }
 
 bool BigquerySQL::TryTransformLogicalGetFilters(const LogicalGet &get, string &filter_sql) {
-    if (!get.table_filters.HasFilters()) {
+    if (!get.table_filters.HasFilters() && !get.table_filters.HasMultiColumnFilters()) {
         filter_sql.clear();
         return true;
     }

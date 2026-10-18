@@ -13,6 +13,7 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/filter/expression_filter.hpp"
 #include "duckdb/planner/filter/table_filter_functions.hpp"
+#include "duckdb/planner/operator/logical_get.hpp"
 
 using namespace duckdb;
 using namespace duckdb::bigquery;
@@ -57,6 +58,18 @@ static unique_ptr<Expression> StructField(Connection &connection,
     }
     auto functions = StructExtractFun::GetFunctions();
     return binder.BindScalarFunction(functions.GetFunctionByOffset(0), std::move(arguments));
+}
+
+static unique_ptr<LogicalGet> FilterGet(const LogicalType &customer_type, vector<ColumnIndex> column_ids) {
+    TableFunction function(Identifier("filter_translation_test"), {}, nullptr);
+    auto get =
+        make_uniq<LogicalGet>(TableIndex(0),
+                              BoundTableFunction(function),
+                              nullptr,
+                              vector<LogicalType>{LogicalType::INTEGER, LogicalType::INTEGER, customer_type},
+                              vector<Identifier>{Identifier("id"), Identifier("marker"), Identifier("customer_info")});
+    get->SetColumnIds(std::move(column_ids));
+    return get;
 }
 
 static void RequireEquivalentFilter(Connection &connection, unique_ptr<Expression> expression, const string &expected) {
@@ -170,4 +183,92 @@ TEST_CASE("STRUCT scan filters use schema field names for named and positional e
         CHECK(BigquerySQL::TransformFilter("customer.info", null_filter) ==
               "`customer.info`.`address`.`postal.code` IS NULL");
     }
+}
+
+TEST_CASE("DML STRUCT filters resolve reordered and pruned scan projections", "[bigquery][filter]") {
+    DuckDB database(nullptr);
+    Connection connection(database);
+    const auto customer_type = LogicalType::STRUCT(
+        {{Identifier("name"), LogicalType::VARCHAR},
+         {Identifier("address"), LogicalType::STRUCT({{Identifier("city"), LogicalType::VARCHAR}})}});
+    const vector<pair<vector<ColumnIndex>, idx_t>> projections = {
+        {{ColumnIndex(0), ColumnIndex(1), ColumnIndex(2)}, 2},
+        {{ColumnIndex(1), ColumnIndex(2)}, 1},
+        {{ColumnIndex(2)}, 0},
+        {{ColumnIndex(2), ColumnIndex(0)}, 0},
+        {{ColumnIndex(1), ColumnIndex(2, {ColumnIndex(0), ColumnIndex(1, {ColumnIndex(0)})})}, 1}};
+
+    for (const auto &projection : projections) {
+        for (const bool nested : {false, true}) {
+            CAPTURE(projection.second, nested);
+            auto get = FilterGet(customer_type, projection.first);
+            auto column = make_uniq<BoundReferenceExpression>(customer_type, 0ULL);
+            auto field = nested
+                             ? StructField(connection, StructField(connection, std::move(column), 1, false), 0, false)
+                             : StructField(connection, std::move(column), 0, false);
+            auto predicate = BoundComparisonExpression::Create(
+                ExpressionType::COMPARE_EQUAL,
+                std::move(field),
+                make_uniq<BoundConstantExpression>(Value(nested ? "New York" : "Bob Johnson")));
+            get->table_filters.PushFilter(ProjectionIndex(projection.second),
+                                          make_uniq<ExpressionFilter>(std::move(predicate)));
+            const string expected = nested ? "(`customer_info`.`address`.`city` = \"New York\")"
+                                           : "(`customer_info`.`name` = \"Bob Johnson\")";
+            string filter_sql;
+            REQUIRE(BigquerySQL::TryTransformLogicalGetFilters(*get, filter_sql));
+            CHECK(filter_sql == expected);
+            CHECK(BigquerySQL::ExtractFilters(*get) == expected);
+        }
+    }
+}
+
+TEST_CASE("DML preserves every required filter after projection remapping", "[bigquery][filter]") {
+    auto get = FilterGet(LogicalType::INTEGER, {ColumnIndex(1), ColumnIndex(0)});
+    get->table_filters.PushFilter(
+        ProjectionIndex(0),
+        ExpressionFilter::CreateComparisonFilter(ExpressionType::COMPARE_LESSTHAN, Value::INTEGER(10)));
+    get->table_filters.PushFilter(
+        ProjectionIndex(1),
+        ExpressionFilter::CreateComparisonFilter(ExpressionType::COMPARE_GREATERTHAN, Value::INTEGER(0)));
+    string filter_sql;
+    REQUIRE(BigquerySQL::TryTransformLogicalGetFilters(*get, filter_sql));
+    CHECK(filter_sql == "(`marker` < 10) AND (`id` > 0)");
+}
+
+TEST_CASE("DML rejects unsupported scan projections instead of losing filters", "[bigquery][filter]") {
+    const auto customer_type = LogicalType::STRUCT({{Identifier("name"), LogicalType::VARCHAR}});
+    ColumnIndex extracted_field(2, {ColumnIndex(0)});
+    extracted_field.SetPushdownExtractType(customer_type);
+    const vector<pair<vector<ColumnIndex>, idx_t>> projections = {{{}, 0},
+                                                                  {{ColumnIndex(2)}, 1},
+                                                                  {{ColumnIndex(3)}, 0},
+                                                                  {{ColumnIndex(COLUMN_IDENTIFIER_ROW_ID)}, 0},
+                                                                  {{ColumnIndex(COLUMN_IDENTIFIER_EMPTY)}, 0},
+                                                                  {{ColumnIndex(COLUMN_IDENTIFIER_ROW_NUMBER)}, 0},
+                                                                  {{ColumnIndex(string("customer_info"))}, 0},
+                                                                  {{extracted_field}, 0}};
+    for (idx_t index = 0; index < projections.size(); index++) {
+        CAPTURE(index);
+        const auto &projection = projections[index];
+        auto get = FilterGet(customer_type, projection.first);
+        get->table_filters.PushFilter(
+            ProjectionIndex(projection.second),
+            ExpressionFilter::CreateComparisonFilter(ExpressionType::COMPARE_LESSTHAN, Value::INTEGER(10)));
+        string filter_sql;
+        CHECK_FALSE(BigquerySQL::TryTransformLogicalGetFilters(*get, filter_sql));
+        CHECK_THROWS_AS(BigquerySQL::ExtractFilters(*get), NotImplementedException);
+    }
+}
+
+TEST_CASE("DML rejects filters that only exist in the multi-column filter set", "[bigquery][filter]") {
+    auto get = FilterGet(LogicalType::INTEGER, {ColumnIndex(0), ColumnIndex(1)});
+    auto predicate = BoundComparisonExpression::Create(ExpressionType::COMPARE_EQUAL,
+                                                       make_uniq<BoundReferenceExpression>(LogicalType::INTEGER, 0ULL),
+                                                       make_uniq<BoundReferenceExpression>(LogicalType::INTEGER, 1ULL));
+    get->table_filters.PushMultiColumnFilter(
+        make_uniq<ExpressionFilter>(std::move(predicate),
+                                    vector<ProjectionIndex>{ProjectionIndex(0), ProjectionIndex(1)}));
+    string filter_sql;
+    CHECK_FALSE(BigquerySQL::TryTransformLogicalGetFilters(*get, filter_sql));
+    CHECK_THROWS_AS(BigquerySQL::ExtractFilters(*get), NotImplementedException);
 }
