@@ -190,6 +190,10 @@ endfunction()
 link_libraries_to_extension(${EXTENSION_NAME})
 link_libraries_to_extension(${LOADABLE_EXTENSION_NAME})
 
+if(BUILD_UNITTESTS)
+    add_subdirectory(test)
+endif()
+
 # Install targets
 install(
     TARGETS ${EXTENSION_NAME}

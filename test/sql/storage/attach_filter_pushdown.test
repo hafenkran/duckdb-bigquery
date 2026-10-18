@@ -63,6 +63,40 @@ SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown WHERE i < 5000 ORDER BY i DES
 4999
 4998
 
+# Required OR branches must survive the additional optional Top-N filter.
+query I
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown
+WHERE i < 3 OR i > 9997
+ORDER BY i DESC LIMIT 4;
+----
+9999
+9998
+2
+1
+
+query I
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown
+WHERE i < 5000 AND (i < 3 OR i > 4997)
+ORDER BY i DESC LIMIT 4;
+----
+4999
+4998
+2
+1
+
+statement ok
+INSERT INTO bq.{BQ_TEST_DATASET}.filter_pushdown VALUES (NULL);
+
+# NULLS FIRST adds an IS NULL branch to the optional dynamic filter.
+query I
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown
+WHERE i < 3 OR i IS NULL
+ORDER BY i DESC NULLS FIRST LIMIT 3;
+----
+NULL
+2
+1
+
 statement ok
 CREATE TABLE bq.{BQ_TEST_DATASET}.filter_pushdown_struct(
     id INTEGER,

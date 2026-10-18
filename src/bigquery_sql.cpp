@@ -176,6 +176,38 @@ static string TransformComparisonOperator(ExpressionType type) {
 
 static string TransformFilterPath(const vector<string> &column_path, const TableFilter &filter);
 
+// A null result imposes no constraint. Dropping an optional child widens OR to TRUE but preserves the other AND children.
+static unique_ptr<Expression> RemoveOptionalFilterExpressions(unique_ptr<Expression> expression) {
+    if (ExpressionFilter::IsOptionalExpression(*expression)) {
+        return nullptr;
+    }
+    if (expression->GetExpressionClass() != ExpressionClass::BOUND_CONJUNCTION) {
+        return expression;
+    }
+
+    auto &conjunction = expression->Cast<BoundConjunctionExpression>();
+    const bool is_or = conjunction.GetExpressionType() == ExpressionType::CONJUNCTION_OR;
+    vector<unique_ptr<Expression>> required_children;
+    for (auto &child : conjunction.GetChildrenMutable()) {
+        auto required_child = RemoveOptionalFilterExpressions(std::move(child));
+        if (!required_child) {
+            if (is_or) {
+                return nullptr;
+            }
+            continue;
+        }
+        required_children.push_back(std::move(required_child));
+    }
+    if (required_children.empty()) {
+        return nullptr;
+    }
+    if (required_children.size() == 1) {
+        return std::move(required_children[0]);
+    }
+    conjunction.GetChildrenMutable() = std::move(required_children);
+    return expression;
+}
+
 // An empty result means the filter imposes no constraint (e.g. an untranslatable optional filter).
 static string CreateFilterExpression(const vector<string> &column_path,
                                      const vector<unique_ptr<TableFilter>> &filters,
@@ -209,7 +241,10 @@ static string TransformFilterPath(const vector<string> &column_path, const Table
             *expression_filter.expr,
             [&](const BoundReferenceExpression &expr) { column_type = expr.GetReturnType(); });
         BoundColumnRefExpression column(column_type, ColumnBinding(TableIndex(0), ProjectionIndex(0)));
-        auto expression = filter.ToExpression(column);
+        auto expression = RemoveOptionalFilterExpressions(filter.ToExpression(column));
+        if (!expression) {
+            return string();
+        }
         string sql;
         if (!BigquerySQL::TryTransformBoundFilter(
                 *expression,

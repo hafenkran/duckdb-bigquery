@@ -11,6 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Preserved required scan predicates when DuckDB combines them with optional
+  filters, including nested `AND` and `OR` expressions.
 - Fixed GoogleSQL column definitions combining `DEFAULT` and `NOT NULL` when
   creating attached BigQuery tables.
 - Prevented executor crashes and leaked staging files when `bigquery_load`
