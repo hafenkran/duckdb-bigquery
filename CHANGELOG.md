@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Updated the extension toolchain to DuckDB v1.5.6.
+- Updated the extension toolchain to DuckDB 2.0 (`v2.0-cyanoptera`).
 
 ### Fixed
 
@@ -24,6 +24,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   materializes local source tables on DuckDB 2.0.
 - Restored column defaults and `NOT NULL` metadata in `DESCRIBE` for attached
   BigQuery tables on DuckDB 2.0.
+
+## [0.12.2] - 2026-10-15 ([compare][0.12.2 diff])
+
+### Added
+
+- Added the `SECRET` option to `ATTACH ... (TYPE bigquery)` to select named
+  credentials, allowing separate identities for attachments to the same
+  BigQuery project ([#223]).
+- Enabled Linux musl builds for x86-64 and ARM64 ([#226]).
+
+### Changed
+
+- Updated the extension toolchain to DuckDB v1.5.6 ([#224]).
+
+### Fixed
+
+- Fixed dependency builds with the macOS 27 SDK and Apple clang 21 ([#222]).
+- Fixed vcpkg overlay path separators on Unix systems while preserving
+  Windows path handling ([11d52ae6]).
+
+## [0.12.1] - 2026-09-29 ([compare][0.12.1 diff])
+
+### Added
+
+- Added a MkDocs documentation site with installation, authentication, user
+  guides, and function reference pages ([#215]).
+- Added function descriptions, parameter names, examples, and categories to
+  `duckdb_functions()` for BigQuery function discovery ([#220]).
+
+### Changed
+
+- Updated the extension toolchain to DuckDB v1.5.5 ([#214]).
+- Streamlined the README and consolidated troubleshooting and compatibility
+  guidance in the documentation site ([#217]).
+
+### Fixed
+
+- Ignored optional scan filters that cannot be translated to BigQuery SQL,
+  fixing failures for `ORDER BY ... LIMIT` queries with experimental filter
+  pushdown enabled ([#221]).
 
 ## [0.12.0] - 2026-07-22 ([compare][0.12.0 diff])
 
@@ -219,7 +259,9 @@ bundle detection ([#49], [#51], [#52], [#53]).
 Introduced `bigquery_query`, `bigquery_jobs`, and faster BigQuery catalog
 loading.
 
-[Unreleased]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.12.2
+[0.12.1]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.12.1
 [0.12.0]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.12.0
 [0.11.0]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.11.0
 [0.10.0]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.10.0
@@ -250,6 +292,8 @@ loading.
 [0.1.1]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.1.0
 
+[0.12.2 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.1...v0.12.2
+[0.12.1 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.0...v0.12.1
 [0.12.0 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.11.0...v0.12.0
 [0.11.0 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.10.0...v0.11.0
 [0.10.0 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.9.0...v0.10.0
@@ -378,3 +422,13 @@ loading.
 [#209]: https://github.com/hafenkran/duckdb-bigquery/pull/209
 [#210]: https://github.com/hafenkran/duckdb-bigquery/pull/210
 [#211]: https://github.com/hafenkran/duckdb-bigquery/pull/211
+[#214]: https://github.com/hafenkran/duckdb-bigquery/pull/214
+[#215]: https://github.com/hafenkran/duckdb-bigquery/pull/215
+[#217]: https://github.com/hafenkran/duckdb-bigquery/pull/217
+[#220]: https://github.com/hafenkran/duckdb-bigquery/pull/220
+[#221]: https://github.com/hafenkran/duckdb-bigquery/pull/221
+[#222]: https://github.com/hafenkran/duckdb-bigquery/pull/222
+[#223]: https://github.com/hafenkran/duckdb-bigquery/pull/223
+[#224]: https://github.com/hafenkran/duckdb-bigquery/pull/224
+[#226]: https://github.com/hafenkran/duckdb-bigquery/pull/226
+[11d52ae6]: https://github.com/hafenkran/duckdb-bigquery/commit/11d52ae6c32d617b68f399a183b76c2a61c007d0
