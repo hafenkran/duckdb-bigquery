@@ -129,8 +129,12 @@ for details.
 
 - **[REST query results](user-guide/reading-and-queries.md#bigquery-query)**<br>
   The optional `use_rest_api := true` path is intended for small, simple
-  results. BigQuery rejects result arrays containing `NULL` elements, and
-  optional job creation can still create a query job.
+  results and requests `JOB_CREATION_OPTIONAL`. The decoder preserves `NULL`
+  array elements returned in a successful REST response. Queries rejected
+  by BigQuery under its
+  [array-result rules](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#array_type)
+  still fail with the server's error. Optional job creation can still create
+  a query job.
 
 - **[BIGNUMERIC](concepts/data-types.md#bignumeric-and-arrays)**<br>
   BigQuery `BIGNUMERIC` exceeds DuckDB's maximum decimal precision and is read

@@ -245,11 +245,14 @@ simple result sets:
 
 The REST path decodes BigQuery `ARRAY` and `STRUCT` results recursively as
 DuckDB `LIST` and `STRUCT` values. BigQuery does not expose native `MAP` or
-union result types, and it rejects final query results whose arrays contain
-`NULL` elements. With `JOB_CREATION_OPTIONAL`, BigQuery prioritizes returning
-results inline but may still create a job, for example for long-running
-queries or large results. A local timeout stops waiting in DuckDB but does not
-guarantee remote cancellation. Inspect submitted work with `bigquery_jobs` as
+union result types. The decoder preserves element types, order, and `NULL`
+elements returned in a successful REST response. Queries rejected by BigQuery
+under its
+[array-result rules](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#array_type)
+still fail with the server's error. With `JOB_CREATION_OPTIONAL`, BigQuery
+prioritizes returning results inline but may still create a job, for example
+for long-running queries or large results. A local timeout stops waiting in
+DuckDB but does not guarantee remote cancellation. Inspect submitted work with `bigquery_jobs` as
 described under
 [Executing & Monitoring Jobs](jobs-and-transfers.md#monitor-jobs), and review
 [Billing and Costs](../index.md#billing-and-costs) before running expensive
