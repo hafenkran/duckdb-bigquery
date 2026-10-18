@@ -4,6 +4,8 @@
 #include "bigquery_sql.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/function/function_binder.hpp"
+#include "duckdb/function/scalar/struct_functions.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
@@ -35,6 +37,26 @@ static unique_ptr<Expression> Optional(bool selectivity_optional) {
         return CreateSelectivityOptionalFilterExpression(std::move(child), LogicalType::INTEGER, 0.5f, 100);
     }
     return CreateOptionalFilterExpression(std::move(child), LogicalType::INTEGER);
+}
+
+static unique_ptr<Expression> StructField(Connection &connection,
+                                          unique_ptr<Expression> input,
+                                          idx_t index,
+                                          bool by_index) {
+    auto key =
+        by_index
+            ? Value::BIGINT(index + 1)
+            : Value(StringUtil::Upper(StructType::GetChildName(input->GetReturnType(), index).GetIdentifierName()));
+    vector<unique_ptr<Expression>> arguments;
+    arguments.push_back(std::move(input));
+    arguments.push_back(make_uniq<BoundConstantExpression>(std::move(key)));
+    FunctionBinder binder(*connection.context);
+    if (by_index) {
+        return binder.BindScalarFunction(make_shared_ptr<ScalarFunction>(StructExtractAtFun::GetFunction()),
+                                         std::move(arguments));
+    }
+    auto functions = StructExtractFun::GetFunctions();
+    return binder.BindScalarFunction(functions.GetFunctionByOffset(0), std::move(arguments));
 }
 
 static void RequireEquivalentFilter(Connection &connection, unique_ptr<Expression> expression, const string &expected) {
@@ -113,4 +135,39 @@ TEST_CASE("Required unsupported scan filters still fail beside optional filters"
     unsupported->GetChildrenMutable().push_back(Comparison(ExpressionType::COMPARE_LESSTHAN, 5000));
     ExpressionFilter filter(Conjunction(ExpressionType::CONJUNCTION_AND, std::move(unsupported), Optional(false)));
     REQUIRE_THROWS_AS(BigquerySQL::TransformFilter("i", filter), NotImplementedException);
+}
+
+TEST_CASE("STRUCT scan filters use schema field names for named and positional extracts", "[bigquery][filter]") {
+    DuckDB database(nullptr);
+    Connection connection(database);
+    const auto address_type = LogicalType::STRUCT(
+        {{Identifier("city"), LogicalType::VARCHAR}, {Identifier("postal.code"), LogicalType::VARCHAR}});
+    const auto customer_type =
+        LogicalType::STRUCT({{Identifier("name"), LogicalType::VARCHAR}, {Identifier("address"), address_type}});
+    auto column = make_uniq<BoundReferenceExpression>(customer_type, 0ULL);
+
+    for (const bool by_index : {false, true}) {
+        CAPTURE(by_index);
+        auto name = StructField(connection, column->Copy(), 0, by_index);
+        ExpressionFilter name_filter(
+            BoundComparisonExpression::Create(ExpressionType::COMPARE_EQUAL,
+                                              std::move(name),
+                                              make_uniq<BoundConstantExpression>(Value("Alice Smith"))));
+        CHECK(BigquerySQL::TransformFilter("customer_info", name_filter) ==
+              "(`customer_info`.`name` = \"Alice Smith\")");
+
+        auto city = StructField(connection, StructField(connection, column->Copy(), 1, by_index), 0, by_index);
+        ExpressionFilter city_filter(
+            BoundComparisonExpression::Create(ExpressionType::COMPARE_EQUAL,
+                                              std::move(city),
+                                              make_uniq<BoundConstantExpression>(Value("Los Angeles"))));
+        CHECK(BigquerySQL::TransformFilter("customer_info", city_filter) ==
+              "(`customer_info`.`address`.`city` = \"Los Angeles\")");
+
+        auto postal_code = StructField(connection, StructField(connection, column->Copy(), 1, by_index), 1, by_index);
+        ExpressionFilter null_filter(
+            ExpressionFilter::CreateNullCheckExpression(std::move(postal_code), ExpressionType::OPERATOR_IS_NULL));
+        CHECK(BigquerySQL::TransformFilter("customer.info", null_filter) ==
+              "`customer.info`.`address`.`postal.code` IS NULL");
+    }
 }

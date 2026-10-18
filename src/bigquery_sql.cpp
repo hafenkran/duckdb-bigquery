@@ -2,6 +2,7 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/sql_identifier.hpp"
+#include "duckdb/function/scalar/struct_utils.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_columnref_expression.hpp"
@@ -1220,6 +1221,27 @@ static bool TryTransformBoundScalarExpressionInternal(
     case ExpressionClass::BOUND_FUNCTION: {
         auto &function = expr.Cast<BoundFunctionExpression>();
         const auto function_name = StringUtil::Lower(function.Function().GetName().GetIdentifierName());
+
+        if (context == ScalarExpressionContext::FILTER &&
+            (function_name == "struct_extract" || function_name == "struct_extract_at")) {
+            vector<StructExtractPathEntry> path;
+            const auto &base = PeelStructExtractPath(function, path);
+            if (path.empty() || base.GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+                return false;
+            }
+            string field_sql;
+            if (!column_sql_resolver(base.Cast<BoundColumnRefExpression>().Binding(), field_sql)) {
+                return false;
+            }
+            for (const auto &entry : path) {
+                if (entry.child_name.GetIdentifierName().empty()) {
+                    return false;
+                }
+                field_sql += "." + BigqueryUtils::WriteQuotedIdentifier(entry.child_name.GetIdentifierName());
+            }
+            expression_sql = std::move(field_sql);
+            return true;
+        }
 
         if (context == ScalarExpressionContext::GROUP_BY) {
             return TryTransformGroupFunctionExpression(expr, column_sql_resolver, expression_sql);

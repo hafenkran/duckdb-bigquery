@@ -126,6 +126,21 @@ SELECT id FROM bq.{BQ_TEST_DATASET}.filter_pushdown_struct WHERE customer_info.a
 ----
 2
 
+query I
+SELECT id FROM bq.{BQ_TEST_DATASET}.filter_pushdown_struct
+WHERE customer_info.name = 'Alice Smith' AND customer_info.address.city = 'Seattle'
+ORDER BY id;
+----
+3
+
+query I
+SELECT id FROM bq.{BQ_TEST_DATASET}.filter_pushdown_struct
+WHERE customer_info.name = 'Bob Johnson' OR customer_info.address.city = 'Seattle'
+ORDER BY id;
+----
+2
+3
+
 statement ok
 DROP TABLE bq.{BQ_TEST_DATASET}.filter_pushdown_struct;
 

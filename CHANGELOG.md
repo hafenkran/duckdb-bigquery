@@ -11,6 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Restored STRUCT field filter pushdown for DuckDB 2.0 expression filters,
+  including nested fields and positional extraction.
 - Preserved required scan predicates when DuckDB combines them with optional
   filters, including nested `AND` and `OR` expressions.
 - Fixed GoogleSQL column definitions combining `DEFAULT` and `NOT NULL` when
