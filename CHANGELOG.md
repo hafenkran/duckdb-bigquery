@@ -11,6 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Fixed GoogleSQL column definitions combining `DEFAULT` and `NOT NULL` when
+  creating attached BigQuery tables.
 - Prevented executor crashes and leaked staging files when `bigquery_load`
   materializes local source tables on DuckDB 2.0.
 - Restored column defaults and `NOT NULL` metadata in `DESCRIBE` for attached

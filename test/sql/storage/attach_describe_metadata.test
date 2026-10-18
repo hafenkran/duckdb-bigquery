@@ -11,24 +11,31 @@ require-env BQ_TEST_DATASET
 statement ok
 ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq_describe (TYPE bigquery);
 
+# Match BigQuery INT64 before and after reloading the local catalog metadata.
 statement ok
 CREATE OR REPLACE TABLE bq_describe.{BQ_TEST_DATASET}.describe_metadata (
-	i INTEGER NOT NULL DEFAULT 100,
-	j VARCHAR
+	i BIGINT NOT NULL DEFAULT 100,
+	j VARCHAR,
+	default_only BIGINT DEFAULT 200,
+	not_null_only BIGINT NOT NULL
 );
 
 query TTT rowsort
 SELECT name, CASE WHEN "notnull" THEN 'NO' ELSE 'YES' END, dflt_value
 FROM pragma_table_info('bq_describe.{BQ_TEST_DATASET}.describe_metadata');
 ----
+default_only	YES	200
 i	NO	100
 j	YES	NULL
+not_null_only	NO	NULL
 
 query IIIIII
 DESCRIBE bq_describe.{BQ_TEST_DATASET}.describe_metadata;
 ----
 i	BIGINT	NO	NULL	100	NULL
 j	VARCHAR	YES	NULL	NULL	NULL
+default_only	BIGINT	YES	NULL	200	NULL
+not_null_only	BIGINT	NO	NULL	NULL	NULL
 
 query IIIIII
 DESCRIBE SELECT j AS projected_j, i AS projected_i
@@ -49,6 +56,8 @@ FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.describe_metadata');
 ----
 i	BIGINT	YES	NULL	NULL	NULL
 j	VARCHAR	YES	NULL	NULL	NULL
+default_only	BIGINT	YES	NULL	NULL	NULL
+not_null_only	BIGINT	YES	NULL	NULL	NULL
 
 query IIIIII
 DESCRIBE SELECT *
@@ -68,6 +77,29 @@ FROM bigquery_query(
 );
 ----
 query_i	BIGINT	YES	NULL	NULL	NULL
+
+# Reload metadata from BigQuery so defaults and nullability are checked beyond the local CREATE TABLE cache.
+query I
+SELECT * FROM bigquery_clear_cache();
+----
+true
+
+query TTT rowsort
+SELECT name, CASE WHEN "notnull" THEN 'NO' ELSE 'YES' END, dflt_value
+FROM pragma_table_info('bq_describe.{BQ_TEST_DATASET}.describe_metadata');
+----
+default_only	YES	200
+i	NO	100
+j	YES	NULL
+not_null_only	NO	NULL
+
+query IIIIII
+DESCRIBE bq_describe.{BQ_TEST_DATASET}.describe_metadata;
+----
+i	BIGINT	NO	NULL	100	NULL
+j	VARCHAR	YES	NULL	NULL	NULL
+default_only	BIGINT	YES	NULL	200	NULL
+not_null_only	BIGINT	NO	NULL	NULL	NULL
 
 statement ok
 DROP TABLE bq_describe.{BQ_TEST_DATASET}.describe_metadata;

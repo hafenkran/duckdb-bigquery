@@ -2090,16 +2090,16 @@ string BigquerySQL::BigqueryColumnsToSQL(const ColumnList &columns, const vector
         str << "`" << column.Name() << "` ";
         str << BigqueryUtils::LogicalTypeToBigquerySQL(column.Type());
 
-        bool is_not_null = columns_not_null.find(column.Logical()) != columns_not_null.end();
-        if (is_not_null) {
-            str << " NOT NULL";
-        }
-
         // In BigQuery, primary key and unique constraints are handled differently
         // and might not be specified directly in the CREATE TABLE statement like MySQL
         // You would typically handle them with OPTIONS or in separate management operations
         if (column.HasDefaultValue()) {
             str << " DEFAULT (" << column.DefaultValue().ToString() << ")";
+        }
+
+        bool is_not_null = columns_not_null.find(column.Logical()) != columns_not_null.end();
+        if (is_not_null) {
+            str << " NOT NULL";
         }
     }
 
