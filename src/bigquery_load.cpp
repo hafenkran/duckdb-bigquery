@@ -510,28 +510,45 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
         auto physical_plan = physical_planner.Plan(std::move(logical_plan));
 
         Executor executor(context);
-        executor.Initialize(physical_plan->Root());
+        try {
+            executor.Initialize(physical_plan->Root());
 
-        while (true) {
-            auto execution_result = executor.ExecuteTask();
-            if (execution_result == QueryResultState::EXECUTION_ERROR) {
-                executor.ThrowException();
+            while (true) {
+                // Worker errors also interrupt the context; let ExecuteTask report the original error.
+                if (context.IsInterrupted() && !executor.HasError()) {
+                    throw InterruptException();
+                }
+                auto execution_result = executor.ExecuteTask();
+                if (execution_result == QueryResultState::EXECUTION_ERROR) {
+                    executor.ThrowException();
+                }
+                if (execution_result == QueryResultState::FINISHED) {
+                    break;
+                }
+                if (execution_result == QueryResultState::READY) {
+                    // COPY has no streaming consumer; READY does not mean the file is complete.
+                    throw InternalException("Source table materialization unexpectedly requires result consumption");
+                }
+                if (execution_result == QueryResultState::BLOCKED ||
+                    execution_result == QueryResultState::NO_TASKS_AVAILABLE) {
+                    if (!executor.HasTaskInProgress()) {
+                        executor.WaitForTask();
+                    }
+                }
             }
-            if (execution_result == QueryResultState::BLOCKED) {
-                executor.WaitForTask();
-                continue;
-            }
-            if (execution_result == QueryResultState::READY || execution_result == QueryResultState::FINISHED) {
-                break;
-            }
-        }
 
-        if (executor.HasResultCollector()) {
-            auto result = executor.GetResult();
-            if (result->HasError()) {
-                result->ThrowError();
+            if (executor.HasResultCollector()) {
+                auto result = executor.GetResult();
+                if (result->HasError()) {
+                    result->ThrowError();
+                }
             }
+        } catch (...) {
+            executor.CancelTasks();
+            throw;
         }
+        // FINISHED marks pipeline completion; workers may still hold task references.
+        executor.CancelTasks();
 
         return temp_file_path;
     } catch (std::exception &ex) {

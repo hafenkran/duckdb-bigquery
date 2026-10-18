@@ -1,0 +1,92 @@
+# name: test/sql/functions/function_bigquery_load_materialization.test
+# description: Local source_table materialization completes tasks and survives errors without BigQuery requests
+# group: [functions]
+
+require bigquery
+
+require parquet
+
+statement ok
+SET threads=4;
+
+statement ok
+CREATE TEMP TABLE load_materialization_source AS
+SELECT i, CASE WHEN i % 3 = 0 THEN NULL ELSE 'value-' || i END AS payload
+FROM range(100000) t(i);
+
+# EXPLAIN runs source_table binding and Parquet staging without submitting a load job.
+# Repetition covers the race between pipeline completion and worker task destruction.
+loop iteration 0 16
+
+statement ok
+EXPLAIN SELECT * FROM bigquery_load(
+    'materialization-test-project',
+    'test_dataset.target',
+    source_table := 'load_materialization_source'
+);
+
+endloop
+
+statement ok
+CREATE TEMP VIEW load_materialization_error AS
+SELECT CAST(CASE WHEN i >= 50000 THEN 'invalid-materialization-value' ELSE i::VARCHAR END AS BIGINT) AS i
+FROM load_materialization_source;
+
+loop failure_iteration 0 4
+
+statement error
+EXPLAIN SELECT * FROM bigquery_load(
+    'materialization-test-project',
+    'test_dataset.target',
+    source_table := 'load_materialization_error'
+);
+----
+<REGEX>:.*Failed to materialize DuckDB source table for bigquery_load:.*invalid-materialization-value.*
+
+# A failed COPY must leave the connection and a subsequent materialization usable.
+query I
+SELECT 42;
+----
+42
+
+statement ok
+EXPLAIN SELECT * FROM bigquery_load(
+    'materialization-test-project',
+    'test_dataset.target',
+    source_table := 'load_materialization_source'
+);
+
+endloop
+
+statement error
+EXPLAIN SELECT * FROM bigquery_load(
+    'materialization-test-project',
+    'test_dataset.target',
+    source_table := 'missing_materialization_source'
+);
+----
+<REGEX>:.*Failed to materialize DuckDB source table for bigquery_load:.*missing_materialization_source.*
+
+statement ok
+CREATE TEMP TABLE load_materialization_empty AS
+SELECT * FROM load_materialization_source WHERE false;
+
+statement ok
+EXPLAIN SELECT * FROM bigquery_load(
+    'materialization-test-project',
+    'test_dataset.target',
+    source_table := 'load_materialization_empty'
+);
+
+statement ok
+SET threads=1;
+
+statement ok
+EXPLAIN SELECT * FROM bigquery_load(
+    'materialization-test-project',
+    'test_dataset.target',
+    source_table := 'load_materialization_source'
+);
+
+statement ok
+RESET threads;

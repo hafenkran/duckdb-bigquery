@@ -11,6 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Prevented executor crashes and leaked staging files when `bigquery_load`
+  materializes local source tables on DuckDB 2.0.
 - Restored column defaults and `NOT NULL` metadata in `DESCRIBE` for attached
   BigQuery tables on DuckDB 2.0.
 
