@@ -649,12 +649,27 @@ static unique_ptr<LogicalOperator> CreateAggregateQueryGet(LogicalAggregate &agg
     return std::move(result);
 }
 
-static void RewriteAggregate(unique_ptr<LogicalOperator> &node, vector<ReplacementBinding> &binding_replacements) {
+static bool HasDistinctAggregate(const LogicalAggregate &aggregate) {
+    for (auto &expr : aggregate.expressions) {
+        if (expr->GetExpressionClass() == ExpressionClass::BOUND_AGGREGATE &&
+            expr->Cast<BoundAggregateExpression>().GetAggregateType() == AggregateType::DISTINCT) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void RewriteAggregate(unique_ptr<LogicalOperator> &node,
+                             vector<ReplacementBinding> &binding_replacements,
+                             bool only_distinct) {
     if (node->type != LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
         return;
     }
 
     auto &aggregate = node->Cast<LogicalAggregate>();
+    if (only_distinct && !HasDistinctAggregate(aggregate)) {
+        return;
+    }
     BigqueryAggregateSource source;
     vector<string> names;
     vector<LogicalType> types;
@@ -675,28 +690,39 @@ static void RewriteAggregate(unique_ptr<LogicalOperator> &node, vector<Replaceme
 }
 
 static void RewriteBigqueryAggregates(unique_ptr<LogicalOperator> &node,
-                                      vector<ReplacementBinding> &binding_replacements) {
+                                      vector<ReplacementBinding> &binding_replacements,
+                                      bool only_distinct) {
     if (!node || !BigquerySettings::EnableAggregatePushdown()) {
         return;
     }
 
     for (auto &child : node->children) {
-        RewriteBigqueryAggregates(child, binding_replacements);
+        RewriteBigqueryAggregates(child, binding_replacements, only_distinct);
     }
-    RewriteAggregate(node, binding_replacements);
+    RewriteAggregate(node, binding_replacements, only_distinct);
 }
 
-} // namespace
-
-void BigqueryOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
-    (void)input;
+static void OptimizeBigqueryAggregates(unique_ptr<LogicalOperator> &plan, bool only_distinct) {
     vector<ReplacementBinding> binding_replacements;
-    RewriteBigqueryAggregates(plan, binding_replacements);
+    RewriteBigqueryAggregates(plan, binding_replacements, only_distinct);
     if (!binding_replacements.empty()) {
         ColumnBindingReplacer replacer;
         replacer.replacement_bindings = std::move(binding_replacements);
         replacer.VisitOperator(*plan);
     }
+}
+
+} // namespace
+
+void BigqueryOptimizer::PreOptimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
+    (void)input;
+    // DuckDB 2.0 lowers DISTINCT into multiple aggregate stages before the regular extension optimizer hook.
+    OptimizeBigqueryAggregates(plan, true);
+}
+
+void BigqueryOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
+    (void)input;
+    OptimizeBigqueryAggregates(plan, false);
 }
 
 } // namespace bigquery

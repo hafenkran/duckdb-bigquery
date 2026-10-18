@@ -7,6 +7,7 @@ namespace bigquery {
 
 class BigqueryOptimizer {
 public:
+    static void PreOptimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan);
     static void Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan);
 };
 

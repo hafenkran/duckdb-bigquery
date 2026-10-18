@@ -11,6 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Restored DISTINCT aggregate pushdown on DuckDB 2.0 by translating supported
+  aggregates before DuckDB splits them into multiple aggregation stages.
 - Fixed UPDATE and DELETE filters using the wrong source columns after DuckDB
   reorders or prunes scan projections. Unsupported multi-column DML filters now
   raise an error.

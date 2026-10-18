@@ -227,6 +227,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     // Register BigQuery optimizer extension, which rewrites supported aggregates to bigquery_query queries
     OptimizerExtension bigquery_optimizer;
+    bigquery_optimizer.pre_optimize_function = bigquery::BigqueryOptimizer::PreOptimize;
     bigquery_optimizer.optimize_function = bigquery::BigqueryOptimizer::Optimize;
     OptimizerExtension::Register(config, std::move(bigquery_optimizer));
 

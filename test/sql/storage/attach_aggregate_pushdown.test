@@ -1105,6 +1105,17 @@ EXPLAIN SELECT COUNT(DISTINCT i) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<!REGEX>:.*UNGROUPED_AGGREGATE.*
 
+# DISTINCT must be pushed before DuckDB splits it into separate aggregation stages.
+query II
+EXPLAIN SELECT COUNT(DISTINCT i) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT COUNT(DISTINCT i) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*GROUP_BY.*
+
 query II
 EXPLAIN SELECT COUNT(DISTINCT TRY_CAST(s AS INTEGER)) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
 ----
@@ -1298,6 +1309,24 @@ ORDER BY b;
 false	0
 true	3
 
+query II
+EXPLAIN SELECT b, COUNT(*), COUNT(DISTINCT j)
+FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown
+WHERE i > 1
+GROUP BY b;
+----
+physical_plan	<REGEX>:.*BIGQUERY_QUERY.*
+
+query III
+SELECT b, COUNT(*), COUNT(DISTINCT j)
+FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown
+WHERE i > 1
+GROUP BY b
+ORDER BY b;
+----
+false	1	0
+true	2	2
+
 query III
 SELECT b, COUNT(DISTINCT LOWER(s)), COUNT(DISTINCT CAST([[i]] AS VARCHAR))
 FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown
@@ -1434,6 +1463,17 @@ query II
 EXPLAIN SELECT COUNT(DISTINCT 1) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
 ----
 physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+# A supported DISTINCT aggregate must not bypass an unsupported aggregate in the same node.
+query II
+EXPLAIN SELECT COUNT(DISTINCT b), LIST(i) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<REGEX>:.*BIGQUERY_SCAN.*
+
+query II
+EXPLAIN SELECT COUNT(DISTINCT b), LIST(i) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
+----
+physical_plan	<!REGEX>:.*BIGQUERY_QUERY.*
 
 query II
 EXPLAIN SELECT COUNT(DISTINCT [[i]]) FROM bq.{BQ_TEST_DATASET}.aggregate_pushdown;
