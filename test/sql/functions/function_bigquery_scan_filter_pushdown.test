@@ -13,6 +13,9 @@ statement ok
 SET bq_enable_aggregate_pushdown = false;
 
 statement ok
+SET profiling_renderer_settings = MAP {'operator_casing': 'upper'};
+
+statement ok
 FROM bigquery_execute('{BQ_TEST_PROJECT}', '
     CREATE OR REPLACE TABLE `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test` AS
     SELECT 1 AS a, "BER" AS station_abbr, TIMESTAMP "2026-10-17 00:00:00" AS reference_timestamp

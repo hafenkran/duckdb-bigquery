@@ -15,6 +15,9 @@ statement ok
 PRAGMA explain_output='physical_only';
 
 statement ok
+SET profiling_renderer_settings = MAP {'operator_casing': 'upper'};
+
+statement ok
 CREATE OR REPLACE TABLE bq.{BQ_TEST_DATASET}.dml_no_scan_plan (i INTEGER);
 
 query II
