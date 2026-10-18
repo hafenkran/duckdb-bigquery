@@ -388,8 +388,6 @@ jobs:
           OPENSSL_USE_STATIC_LIBS=true
           DUCKDB_PLATFORM=${{ matrix.duckdb_arch }}
           DUCKDB_GIT_VERSION=${{ inputs.duckdb_version }}
-          ENABLE_EXTENSION_AUTOINSTALL=1
-          ENABLE_EXTENSION_AUTOLOADING=1
           EXTENSION_NAME=${{ inputs.extension_name }}
           EXTENSION_CANONICAL=${{ inputs.extension_canonical }}
           LINUX_CI_IN_DOCKER=1
@@ -744,7 +742,7 @@ jobs:
       - name: Build extension
         shell: bash
         run: |
-          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} ENABLE_EXTENSION_AUTOINSTALL=1 ENABLE_EXTENSION_AUTOLOADING=1 make ${{ inputs.build_type }}
+          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} make ${{ inputs.build_type }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ inputs.upload_test_bundle && matrix.osx_build_arch == 'arm64' }}
@@ -1016,8 +1014,6 @@ jobs:
           DUCKDB_PLATFORM: ${{ matrix.duckdb_arch }}
           EXTENSION_NAME: ${{ inputs.extension_name }}
           EXTENSION_CANONICAL: ${{ inputs.extension_canonical }}
-          ENABLE_EXTENSION_AUTOINSTALL: 1
-          ENABLE_EXTENSION_AUTOLOADING: 1
           DUCKDB_PLATFORM_RTOOLS: ${{ (matrix.duckdb_arch == 'windows_amd64_rtools' || matrix.duckdb_arch == 'windows_amd64_mingw') && 1 || 0 }}
           EXT_FLAGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         shell: cmd
@@ -1268,7 +1264,7 @@ jobs:
 
       - name: Build Wasm module
         run: |
-          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} ENABLE_EXTENSION_AUTOINSTALL=1 ENABLE_EXTENSION_AUTOLOADING=1 make ${{ matrix.duckdb_arch }}
+          EXTENSION_NAME=${{ inputs.extension_name }} EXTENSION_CANONICAL=${{ inputs.extension_canonical }} make ${{ matrix.duckdb_arch }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.upload_all_extensions }}

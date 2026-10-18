@@ -37,6 +37,9 @@ endif
 # Include the Makefile from extension-ci-tools
 include extension-ci-tools/makefiles/duckdb_extension.Makefile
 
+# DuckDB 2.0 configures automatic extension loading and installation at runtime.
+BUILD_FLAGS := $(filter-out -DENABLE_EXTENSION_AUTOLOADING=% -DENABLE_EXTENSION_AUTOINSTALL=%,$(BUILD_FLAGS))
+
 .PHONY: lint
 lint:
 	python3 ./scripts/run-clang-tidy.py $(MAKEFILE_DIR)/src/* \
