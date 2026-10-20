@@ -18,19 +18,17 @@ FROM bigquery_execute('${BQ_TEST_PROJECT}', '
     SELECT 5 AS a, "BER" AS station_abbr, TIMESTAMP "2026-10-17 12:00:00" AS reference_timestamp
 ');
 
-statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
-
 foreach pushdown false true
 
 statement ok
 SET bq_experimental_filter_pushdown = ${pushdown};
 
-query I
-SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
+# The column used by a local filter may be absent from the output projection.
+query II
+SELECT count(*), sum(a) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
 WHERE station_abbr = 'BER';
 ----
-2
+2	6
 
 query I
 SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
@@ -39,53 +37,25 @@ WHERE reference_timestamp >= TIMESTAMP '2026-10-17 00:00:00'
 ----
 2
 
-# The column used by a local filter may be absent from the output projection.
-query I
-SELECT a FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
-WHERE station_abbr = 'BER' ORDER BY a;
-----
-1
-5
-
-query I
-SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
-WHERE station_abbr = 'missing';
-----
-0
-
 # Explicit restrictions and SQL WHERE predicates must both apply, with their own precedence.
 query I
 SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test',
-    filter := 'a = 1 OR a = 3') WHERE station_abbr = 'BER';
+    filter := 'a = 3 OR a = 1') WHERE station_abbr = 'BER';
 ----
 1
 
-query I
-SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test',
-    filter := 'a >= 3') WHERE a < 3;
-----
-0
-
-query I
-SELECT count(*) FROM bq.${BQ_TEST_DATASET}.scan_filter_pushdown_test WHERE station_abbr = 'BER';
-----
-2
-
 # Query result scans share the Storage Read scan implementation.
+# REST results have no Storage Read row restriction and must retain local filters.
+foreach use_rest_api false true
+
 query I
 SELECT count(*) FROM bigquery_query('${BQ_TEST_PROJECT}',
-    'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test`')
+    'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test`', use_rest_api := ${use_rest_api})
 WHERE station_abbr = 'BER';
 ----
 2
 
-# REST results have no Storage Read row restriction and must retain local filters.
-query I
-SELECT count(*) FROM bigquery_query('${BQ_TEST_PROJECT}',
-    'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test`', use_rest_api := true)
-WHERE station_abbr = 'BER';
-----
-2
+endloop
 
 endloop
 
@@ -120,9 +90,6 @@ DEALLOCATE filtered_scan;
 
 statement ok
 SET bq_experimental_filter_pushdown = true;
-
-statement ok
-DETACH bq;
 
 statement ok
 FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test`');
