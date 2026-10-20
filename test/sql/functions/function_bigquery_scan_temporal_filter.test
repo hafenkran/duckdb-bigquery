@@ -1,0 +1,152 @@
+# name: test/sql/functions/function_bigquery_scan_temporal_filter.test
+# description: Timestamp filters work for both BigQuery DATETIME and TIMESTAMP columns
+# group: [functions]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter` AS
+    SELECT *, DATE(dt) AS event_date, TIME(dt) AS event_time, STRUCT(dt AS reference_timestamp) AS nested
+    FROM (
+        SELECT 1 AS id, DATETIME "2026-10-14 23:59:59.999999" AS dt, TIMESTAMP "2026-10-14 23:59:59.999999+00" AS ts
+        UNION ALL
+        SELECT 2, DATETIME "2026-10-15 00:00:00", TIMESTAMP "2026-10-15 00:00:00+00"
+        UNION ALL
+        SELECT 3, DATETIME "2026-10-15 12:34:56.123456", TIMESTAMP "2026-10-15 12:34:56.123456+00"
+        UNION ALL
+        SELECT 4, DATETIME "2026-10-16 00:00:00", TIMESTAMP "2026-10-16 00:00:00+00"
+        UNION ALL
+        SELECT 5, NULL, NULL
+    )
+');
+
+statement ok
+SET bq_experimental_filter_pushdown = true;
+
+query I
+SELECT count(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE dt >= TIMESTAMP '2026-10-15 00:00:00'
+  AND dt < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+query I
+SELECT count(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE ts >= TIMESTAMP '2026-10-15 00:00:00'
+  AND ts < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+query I
+SELECT id FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE dt = TIMESTAMP '2026-10-15 12:34:56.123456';
+----
+3
+
+query I
+SELECT id FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE dt IN (TIMESTAMP '2026-10-14 23:59:59.999999', TIMESTAMP '2026-10-15 00:00:00', TIMESTAMP '2026-10-15 12:34:56.123456')
+ORDER BY id;
+----
+1
+2
+3
+
+query I
+SELECT id FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE nested.reference_timestamp = TIMESTAMP '2026-10-15 12:34:56.123456';
+----
+3
+
+query I
+SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE event_date = DATE '2026-10-15';
+----
+2
+
+query I
+SELECT id FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE event_time = TIME '12:34:56.123456';
+----
+3
+
+query I
+SELECT count(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter',
+    filter := 'dt >= DATETIME ''2026-10-15 00:00:00'' AND dt < DATETIME ''2026-10-16 00:00:00''');
+----
+2
+
+query I
+SELECT count(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter',
+    filter := 'dt >= DATETIME ''2026-10-15 00:00:00''')
+WHERE dt < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+statement ok
+ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+
+query I
+SELECT count(*) FROM bq.${BQ_TEST_DATASET}.scan_temporal_filter
+WHERE dt >= TIMESTAMP '2026-10-15 00:00:00'
+  AND dt < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+statement ok
+SET bq_experimental_filter_pushdown = false;
+
+query I
+SELECT count(*) FROM bq.${BQ_TEST_DATASET}.scan_temporal_filter
+WHERE dt >= TIMESTAMP '2026-10-15 00:00:00'
+  AND dt < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+query I
+SELECT count(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE dt >= TIMESTAMP '2026-10-15 00:00:00'
+  AND dt < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+statement ok
+DETACH bq;
+
+statement ok
+SET bq_experimental_filter_pushdown = true;
+
+query I
+SELECT count(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE dt >= TIMESTAMP '2026-10-15 00:00:00'
+  AND dt < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+statement ok
+SET bq_experimental_filter_pushdown = false;
+
+query I
+SELECT count(*)
+FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_temporal_filter')
+WHERE dt >= TIMESTAMP '2026-10-15 00:00:00'
+  AND dt < TIMESTAMP '2026-10-16 00:00:00';
+----
+2
+
+statement ok
+SET bq_experimental_filter_pushdown = true;
+
+statement ok
+FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_DATASET}.scan_temporal_filter`');
