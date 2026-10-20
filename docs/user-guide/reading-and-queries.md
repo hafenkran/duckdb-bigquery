@@ -47,8 +47,17 @@ SELECT a, b, c
 DuckDB executes the surrounding SQL and reads the table through the BigQuery
 Storage Read API. Projected columns are pushed into the read session.
 Eligible DuckDB filters can be pushed down with
-`bq_experimental_filter_pushdown`. The function also accepts an explicit
-trusted Storage Read `filter` string:
+`bq_experimental_filter_pushdown`. Pushed comparisons against DuckDB `TIMESTAMP`
+constants use canonical string literals, which BigQuery coerces to the source
+column's `DATETIME` or `TIMESTAMP` type. This also applies to timestamp values
+in `IN` filters and nested struct fields. See the
+[GoogleSQL literal conversion rules](https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/conversion_rules#literal_coercion).
+
+With `bq_experimental_filter_pushdown = false`, DuckDB evaluates `WHERE`
+predicates locally. An explicit `filter` still applies remotely; when pushdown
+is enabled, it is combined with pushed `WHERE` predicates using `AND`.
+
+The function also accepts an explicit trusted Storage Read `filter` string:
 
 ```sql
 -- Apply an explicit Storage Read row restriction.

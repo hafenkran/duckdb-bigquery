@@ -101,7 +101,9 @@ static bool TryTransformFilterLiteral(const Value &value, string &literal_sql) {
         literal_sql = "TIME " + KeywordHelper::WriteQuoted(value.ToString());
         return true;
     case LogicalTypeId::TIMESTAMP:
-        literal_sql = "TIMESTAMP " + KeywordHelper::WriteQuoted(value.ToString());
+        // Both BigQuery DATETIME and TIMESTAMP map to DuckDB TIMESTAMP. A canonical string literal
+        // lets BigQuery coerce to the source column's temporal type without assuming either one.
+        literal_sql = KeywordHelper::WriteQuoted(value.ToString());
         return true;
     default:
         break;

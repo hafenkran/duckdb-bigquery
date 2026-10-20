@@ -41,7 +41,11 @@ unique_ptr<FunctionData> BigqueryScanFunction::BigqueryScanBind(ClientContext &c
     }
 
     auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
-    input.table_function.filter_pushdown = BigquerySettings::ExperimentalFilterPushdown();
+
+    Value filter_pushdown;
+    if (context.TryGetCurrentSetting("bq_experimental_filter_pushdown", filter_pushdown)) {
+        input.table_function.filter_pushdown = BooleanValue::Get(filter_pushdown);
+    }
 
     auto bind_data = make_uniq<BigqueryScanBindData>();
     bind_data->table_ref = table_ref;
