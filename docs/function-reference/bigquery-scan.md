@@ -60,8 +60,10 @@ SELECT
 
 DuckDB pushes projected columns into the Storage Read session. With
 `bq_experimental_filter_pushdown=true`, eligible DuckDB filters are translated
-to Storage Read row restrictions. The explicit `filter` argument is passed as
-trusted
+to Storage Read row restrictions. With the setting disabled, DuckDB applies
+the `WHERE` filters locally. The explicit `filter` argument always restricts
+the Storage Read session and is combined with any SQL `WHERE` filters. It is
+passed as trusted
 [`TableReadOptions.row_restriction`](https://cloud.google.com/bigquery/docs/reference/storage/rpc/google.cloud.bigquery.storage.v1#google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions)
 text and is not a parameterized DuckDB expression.
 
