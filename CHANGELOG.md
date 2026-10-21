@@ -5,12 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-21 ([compare][0.13.0 diff])
+
 ### Changed
 
-- Updated the extension toolchain to DuckDB 2.0 (`v2.0-cyanoptera`).
+- Updated the extension toolchain to DuckDB 2.0 (`v2.0-cyanoptera`); source
+  builds now require C++17 ([#229]).
+- Clarified REST query array decoding, including preservation of `NULL`
+  elements returned in successful responses ([#229]).
 
 ### Fixed
 
+- Preserved SQL `WHERE` filters when experimental filter pushdown is disabled
+  and combined explicit Storage Read filters with pushed predicates ([#230]).
+- Fixed temporal filter pushdown for BigQuery `DATETIME` and `TIMESTAMP`
+  columns, including `IN` predicates and nested STRUCT fields ([#231]).
+- Respected the current connection's `bq_experimental_filter_pushdown`
+  setting when binding scans ([#231]).
 - Restored DISTINCT aggregate pushdown on DuckDB 2.0 by translating supported
   aggregates before DuckDB splits them into multiple aggregation stages.
 - Fixed UPDATE and DELETE filters using the wrong source columns after DuckDB
@@ -26,6 +37,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   materializes local source tables on DuckDB 2.0.
 - Restored column defaults and `NOT NULL` metadata in `DESCRIBE` for attached
   BigQuery tables on DuckDB 2.0.
+- Fixed Windows builds with DuckDB 2.0 ([#229]).
 
 ## [0.12.2] - 2026-10-15 ([compare][0.12.2 diff])
 
@@ -261,7 +273,8 @@ bundle detection ([#49], [#51], [#52], [#53]).
 Introduced `bigquery_query`, `bigquery_jobs`, and faster BigQuery catalog
 loading.
 
-[Unreleased]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.13.0
 [0.12.2]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.12.2
 [0.12.1]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.12.1
 [0.12.0]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.12.0
@@ -294,6 +307,7 @@ loading.
 [0.1.1]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hafenkran/duckdb-bigquery/releases/tag/v0.1.0
 
+[0.13.0 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.2...v0.13.0
 [0.12.2 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.1...v0.12.2
 [0.12.1 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.12.0...v0.12.1
 [0.12.0 diff]: https://github.com/hafenkran/duckdb-bigquery/compare/v0.11.0...v0.12.0
@@ -433,4 +447,7 @@ loading.
 [#223]: https://github.com/hafenkran/duckdb-bigquery/pull/223
 [#224]: https://github.com/hafenkran/duckdb-bigquery/pull/224
 [#226]: https://github.com/hafenkran/duckdb-bigquery/pull/226
+[#229]: https://github.com/hafenkran/duckdb-bigquery/pull/229
+[#230]: https://github.com/hafenkran/duckdb-bigquery/pull/230
+[#231]: https://github.com/hafenkran/duckdb-bigquery/pull/231
 [11d52ae6]: https://github.com/hafenkran/duckdb-bigquery/commit/11d52ae6c32d617b68f399a183b76c2a61c007d0
