@@ -48,7 +48,7 @@ struct BigqueryStreamState {
     shared_ptr<BigqueryArrowReader> reader;
     unique_ptr<google::cloud::bigquery_storage_v1::BigQueryReadClient> read_client;
     shared_ptr<google::cloud::bigquery::storage::v1::ReadStream> stream;
-    BigqueryStreamFactory *factory;
+    shared_ptr<atomic<idx_t>> next_stream;
 
     google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse> range;
     google::cloud::StreamRange<google::cloud::bigquery::storage::v1::ReadRowsResponse>::iterator it;
@@ -98,11 +98,9 @@ static std::shared_ptr<arrow::RecordBatch> ConvertDecimal256ToString(
     return changed ? arrow::RecordBatch::Make(target_schema, batch->num_rows(), std::move(columns)) : batch;
 }
 
-unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t factory_ptr, ArrowStreamParameters &) {
-    auto *factory = reinterpret_cast<BigqueryStreamFactory *>(factory_ptr);
-    auto &reader = factory->reader;
+unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::ProduceStream(ArrowStreamParameters &) {
 
-    const idx_t first_idx = factory->next_stream.fetch_add(1);
+    const idx_t first_idx = next_stream->fetch_add(1);
     auto bq_stream = reader->GetStream(first_idx);
 
     auto modified_schema = SchemaWithDecimal256AsString(reader->GetSchema());
@@ -121,7 +119,7 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
     auto st = std::make_shared<BigqueryStreamState>();
     st->reader = reader;
     st->read_client = reader->CreateReadClient();
-    st->factory = factory;
+    st->next_stream = next_stream;
     st->stream = bq_stream;
 
     auto iter = arrow::MakeFunctionIterator([st, modified_schema]() -> arrow::Result<BatchPtr> {
@@ -133,7 +131,7 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
             }
 
             if (st->it == st->range.end()) {
-                const idx_t next = st->factory->next_stream.fetch_add(1);
+                const idx_t next = st->next_stream->fetch_add(1);
                 st->stream = st->reader->GetStream(next);
                 if (!st->stream) {
                     return nullptr;
@@ -190,9 +188,7 @@ unique_ptr<ArrowArrayStreamWrapper> BigqueryStreamFactory::Produce(uintptr_t fac
     return wrapper;
 }
 
-void BigqueryStreamFactory::GetSchema(ArrowArrayStream *factory_ptr, ArrowSchema &schema) {
-    auto *factory = reinterpret_cast<BigqueryStreamFactory *>(factory_ptr);
-    auto &reader = factory->reader;
+void BigqueryStreamFactory::GetSchema(ArrowSchema &schema) {
 
     auto arrow_schema = SchemaWithDecimal256AsString(reader->GetSchema());
     auto status = arrow::ExportSchema(*arrow_schema, &schema);

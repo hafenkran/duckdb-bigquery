@@ -9,13 +9,13 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.table_arrays;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.table_arrays;
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.table_arrays AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.table_arrays AS
 SELECT
     nested_int_array
 FROM test_all_types();
@@ -23,7 +23,7 @@ FROM test_all_types();
 Nested lists or arrays are not supported in BigQuery.
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.table_arrays AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.table_arrays AS
 SELECT
     fixed_nested_int_array
 FROM test_all_types();
@@ -31,7 +31,7 @@ FROM test_all_types();
 Nested lists or arrays are not supported in BigQuery.
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.table_arrays AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.table_arrays AS
 SELECT
     fixed_nested_varchar_array
 FROM test_all_types();
@@ -39,7 +39,7 @@ FROM test_all_types();
 Nested lists or arrays are not supported in BigQuery.
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.table_arrays AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.table_arrays AS
 SELECT
     fixed_array_of_int_list
 FROM test_all_types();
@@ -47,7 +47,7 @@ FROM test_all_types();
 Nested lists or arrays are not supported in BigQuery.
 
 statement error
-CREATE TABLE bq.${BQ_TEST_DATASET}.table_arrays AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.table_arrays AS
 SELECT
     list_of_fixed_int_array
 FROM test_all_types();

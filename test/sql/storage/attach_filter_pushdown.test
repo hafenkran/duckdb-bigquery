@@ -9,30 +9,30 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.filter_pushdown;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.filter_pushdown;
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.filter_pushdown_struct;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.filter_pushdown_struct;
 
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.filter_pushdown(i INTEGER);
+CREATE TABLE bq.{BQ_TEST_DATASET}.filter_pushdown(i INTEGER);
 
 statement ok
 SET bq_experimental_filter_pushdown=true
 
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.filter_pushdown FROM range(10000)
+INSERT INTO bq.{BQ_TEST_DATASET}.filter_pushdown FROM range(10000)
 
 query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i=5252
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown WHERE i=5252
 ----
 5252
 
 query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i>5000 AND i<=5006;
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown WHERE i>5000 AND i<=5006;
 ----
 5001
 5002
@@ -42,7 +42,7 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i>5000 AND i<=5006;
 5006
 
 query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i IN (2222, 3333, 4444, 5555);
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown WHERE i IN (2222, 3333, 4444, 5555);
 ----
 2222
 3333
@@ -51,20 +51,54 @@ SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i IN (2222, 3333, 4444
 
 # Top-N pushes an optional dynamic filter into the scan; it must be ignored rather than rejected
 query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown ORDER BY i DESC LIMIT 3;
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown ORDER BY i DESC LIMIT 3;
 ----
 9999
 9998
 9997
 
 query I
-SELECT * FROM bq.${BQ_TEST_DATASET}.filter_pushdown WHERE i < 5000 ORDER BY i DESC LIMIT 2;
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown WHERE i < 5000 ORDER BY i DESC LIMIT 2;
 ----
 4999
 4998
 
+# Required OR branches must survive the additional optional Top-N filter.
+query I
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown
+WHERE i < 3 OR i > 9997
+ORDER BY i DESC LIMIT 4;
+----
+9999
+9998
+2
+1
+
+query I
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown
+WHERE i < 5000 AND (i < 3 OR i > 4997)
+ORDER BY i DESC LIMIT 4;
+----
+4999
+4998
+2
+1
+
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.filter_pushdown_struct(
+INSERT INTO bq.{BQ_TEST_DATASET}.filter_pushdown VALUES (NULL);
+
+# NULLS FIRST adds an IS NULL branch to the optional dynamic filter.
+query I
+SELECT * FROM bq.{BQ_TEST_DATASET}.filter_pushdown
+WHERE i < 3 OR i IS NULL
+ORDER BY i DESC NULLS FIRST LIMIT 3;
+----
+NULL
+2
+1
+
+statement ok
+CREATE TABLE bq.{BQ_TEST_DATASET}.filter_pushdown_struct(
     id INTEGER,
     customer_info STRUCT(
         name VARCHAR,
@@ -76,24 +110,39 @@ CREATE TABLE bq.${BQ_TEST_DATASET}.filter_pushdown_struct(
 );
 
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.filter_pushdown_struct VALUES
+INSERT INTO bq.{BQ_TEST_DATASET}.filter_pushdown_struct VALUES
     (1, {'name': 'Alice Smith', 'address': {'city': 'New York', 'zip_code': '10001'}}),
     (2, {'name': 'Bob Johnson', 'address': {'city': 'Los Angeles', 'zip_code': '90001'}}),
     (3, {'name': 'Alice Smith', 'address': {'city': 'Seattle', 'zip_code': '98101'}});
 
 query I
-SELECT id FROM bq.${BQ_TEST_DATASET}.filter_pushdown_struct WHERE customer_info.name = 'Alice Smith' ORDER BY id;
+SELECT id FROM bq.{BQ_TEST_DATASET}.filter_pushdown_struct WHERE customer_info.name = 'Alice Smith' ORDER BY id;
 ----
 1
 3
 
 query I
-SELECT id FROM bq.${BQ_TEST_DATASET}.filter_pushdown_struct WHERE customer_info.address.city = 'Los Angeles';
+SELECT id FROM bq.{BQ_TEST_DATASET}.filter_pushdown_struct WHERE customer_info.address.city = 'Los Angeles';
 ----
 2
 
-statement ok
-DROP TABLE bq.${BQ_TEST_DATASET}.filter_pushdown_struct;
+query I
+SELECT id FROM bq.{BQ_TEST_DATASET}.filter_pushdown_struct
+WHERE customer_info.name = 'Alice Smith' AND customer_info.address.city = 'Seattle'
+ORDER BY id;
+----
+3
+
+query I
+SELECT id FROM bq.{BQ_TEST_DATASET}.filter_pushdown_struct
+WHERE customer_info.name = 'Bob Johnson' OR customer_info.address.city = 'Seattle'
+ORDER BY id;
+----
+2
+3
 
 statement ok
-DROP TABLE bq.${BQ_TEST_DATASET}.filter_pushdown;
+DROP TABLE bq.{BQ_TEST_DATASET}.filter_pushdown_struct;
+
+statement ok
+DROP TABLE bq.{BQ_TEST_DATASET}.filter_pushdown;

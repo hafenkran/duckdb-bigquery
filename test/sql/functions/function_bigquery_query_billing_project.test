@@ -14,13 +14,13 @@ statement ok
 SET bq_debug_show_queries = true;
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.test_billing_query;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.test_billing_query;
 
 statement ok
-CREATE TABLE bq.${BQ_TEST_DATASET}.test_billing_query AS
+CREATE TABLE bq.{BQ_TEST_DATASET}.test_billing_query AS
 SELECT *
 FROM (
     VALUES
@@ -33,13 +33,13 @@ test_table(name, value);
 # Test bigquery_query with billing_project parameter - should work correctly
 query I
 SELECT count(*) FROM bigquery_query(
-    '${BQ_TEST_PROJECT}',
-    'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.test_billing_query`',
-    billing_project='${BQ_TEST_BILLING_PROJECT}'
+    '{BQ_TEST_PROJECT}',
+    'SELECT * FROM `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.test_billing_query`',
+    billing_project='{BQ_TEST_BILLING_PROJECT}'
 );
 ----
 3
 
 # Clean up test table
 statement ok
-DROP TABLE IF EXISTS bq.${BQ_TEST_DATASET}.test_billing_query;
+DROP TABLE IF EXISTS bq.{BQ_TEST_DATASET}.test_billing_query;

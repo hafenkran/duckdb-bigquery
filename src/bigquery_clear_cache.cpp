@@ -16,7 +16,7 @@ struct BigqueryClearCacheFunctionData : public TableFunctionData {
 static unique_ptr<FunctionData> BigQueryClearCacheBind(ClientContext &context,
                                                        TableFunctionBindInput &input,
                                                        vector<LogicalType> &return_types,
-                                                       vector<string> &names) {
+                                                       vector<Identifier> &names) {
     auto result = make_uniq<BigqueryClearCacheFunctionData>();
     return_types.push_back(LogicalType::BOOLEAN);
     names.push_back("success");
@@ -45,8 +45,8 @@ static void ClearBigqueryCachesFunction(ClientContext &context, TableFunctionInp
     }
     BigqueryClearCacheFunction::ClearBigqueryCaches(context);
     // Emit a single row indicating success
-    output.SetCardinality(1);
-    output.SetValue(0, 0, Value::BOOLEAN(true));
+    output.SetChildCardinality(1);
+    output.data[0].SetValue(0, Value::BOOLEAN(true));
     data.finished = true;
 }
 

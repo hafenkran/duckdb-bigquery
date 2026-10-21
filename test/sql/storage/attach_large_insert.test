@@ -9,10 +9,10 @@ require-env BQ_TEST_PROJECT
 require-env BQ_TEST_DATASET
 
 statement ok
-ATTACH 'project=${BQ_TEST_PROJECT} dataset=${BQ_TEST_DATASET}' AS bq (TYPE bigquery);
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq (TYPE bigquery);
 
 statement ok
-CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.large_json_insert (
+CREATE OR REPLACE TABLE bq.{BQ_TEST_DATASET}.large_json_insert (
     id INTEGER,
     payload_a STRING,
     payload_b STRING,
@@ -22,7 +22,7 @@ CREATE OR REPLACE TABLE bq.${BQ_TEST_DATASET}.large_json_insert (
 );
 
 statement ok
-INSERT INTO bq.${BQ_TEST_DATASET}.large_json_insert
+INSERT INTO bq.{BQ_TEST_DATASET}.large_json_insert
 SELECT
     i,
     '{"payload_a":"' || repeat('A', 100000) || '"}',
@@ -33,9 +33,9 @@ SELECT
 FROM range(100) tbl(i);
 
 query I
-SELECT COUNT(*) FROM bq.${BQ_TEST_DATASET}.large_json_insert;
+SELECT COUNT(*) FROM bq.{BQ_TEST_DATASET}.large_json_insert;
 ----
 100
 
 statement ok
-DROP TABLE bq.${BQ_TEST_DATASET}.large_json_insert;
+DROP TABLE bq.{BQ_TEST_DATASET}.large_json_insert;

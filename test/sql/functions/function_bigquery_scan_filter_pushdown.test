@@ -13,8 +13,11 @@ statement ok
 SET bq_enable_aggregate_pushdown = false;
 
 statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', '
-    CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test` AS
+SET profiling_renderer_settings = MAP {'operator_casing': 'upper'};
+
+statement ok
+FROM bigquery_execute('{BQ_TEST_PROJECT}', '
+    CREATE OR REPLACE TABLE `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test` AS
     SELECT 1 AS a, "BER" AS station_abbr, TIMESTAMP "2026-10-17 00:00:00" AS reference_timestamp
     UNION ALL
     SELECT 3 AS a, "HAM" AS station_abbr, TIMESTAMP "2026-10-18 00:00:00" AS reference_timestamp
@@ -25,17 +28,17 @@ FROM bigquery_execute('${BQ_TEST_PROJECT}', '
 foreach pushdown false true
 
 statement ok
-SET bq_experimental_filter_pushdown = ${pushdown};
+SET bq_experimental_filter_pushdown = {pushdown};
 
 # The column used by a local filter may be absent from the output projection.
 query II
-SELECT count(*), sum(a) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
+SELECT count(*), sum(a) FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test')
 WHERE station_abbr = 'BER';
 ----
 2	6
 
 query I
-SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
+SELECT count(*) FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test')
 WHERE reference_timestamp >= TIMESTAMP '2026-10-17 00:00:00'
   AND reference_timestamp < TIMESTAMP '2026-10-18 00:00:00';
 ----
@@ -43,7 +46,7 @@ WHERE reference_timestamp >= TIMESTAMP '2026-10-17 00:00:00'
 
 # Explicit restrictions and SQL WHERE predicates must both apply, with their own precedence.
 query I
-SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test',
+SELECT count(*) FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test',
     filter := 'a = 3 OR a = 1') WHERE station_abbr = 'BER';
 ----
 1
@@ -53,8 +56,8 @@ SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_f
 foreach use_rest_api false true
 
 query I
-SELECT count(*) FROM bigquery_query('${BQ_TEST_PROJECT}',
-    'SELECT * FROM `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test`', use_rest_api := ${use_rest_api})
+SELECT count(*) FROM bigquery_query('{BQ_TEST_PROJECT}',
+    'SELECT * FROM `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test`', use_rest_api := {use_rest_api})
 WHERE station_abbr = 'BER';
 ----
 2
@@ -67,7 +70,7 @@ statement ok
 SET bq_experimental_filter_pushdown = false;
 
 query II
-EXPLAIN SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
+EXPLAIN SELECT count(*) FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test')
 WHERE station_abbr = 'BER';
 ----
 physical_plan	<REGEX>:.*FILTER.*
@@ -78,7 +81,7 @@ SET bq_experimental_filter_pushdown = true;
 # Changing the setting after PREPARE must not discard filters already owned by the scan.
 statement ok
 PREPARE filtered_scan AS
-SELECT count(*) FROM bigquery_scan('${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test')
+SELECT count(*) FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test')
 WHERE station_abbr = 'BER';
 
 statement ok
@@ -96,4 +99,4 @@ statement ok
 SET bq_experimental_filter_pushdown = true;
 
 statement ok
-FROM bigquery_execute('${BQ_TEST_PROJECT}', 'DROP TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test`');
+FROM bigquery_execute('{BQ_TEST_PROJECT}', 'DROP TABLE `{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.scan_filter_pushdown_test`');

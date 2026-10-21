@@ -1,3 +1,4 @@
+#include "duckdb/execution/physical_plan_generator.hpp"
 
 #include "duckdb.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
@@ -43,8 +44,8 @@ SourceResultType BigqueryDelete::GetDataInternal(ExecutionContext &context,
     gstate.deleted_count = bq_client->ExecuteDmlQuery(query, BigqueryDmlStatementType::DML_DELETE);
     gstate.finished = true;
 
-    chunk.SetCardinality(1);
-    chunk.SetValue(0, 0, Value::BIGINT(gstate.deleted_count));
+    chunk.SetChildCardinality(1);
+    chunk.data[0].SetValue(0, Value::BIGINT(gstate.deleted_count));
     return SourceResultType::FINISHED;
 }
 
@@ -54,7 +55,7 @@ string BigqueryDelete::GetName() const {
 
 InsertionOrderPreservingMap<string> BigqueryDelete::ParamsToString() const {
     InsertionOrderPreservingMap<string> result;
-    result["Table Name"] = table.name;
+    result["Table Name"] = table.name.GetIdentifierName();
     return result;
 }
 

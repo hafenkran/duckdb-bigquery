@@ -1,5 +1,6 @@
 #include "duckdb.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
+#include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/storage/database_size.hpp"
 
 #include "storage/bigquery_catalog.hpp"
@@ -56,8 +57,8 @@ void BigqueryCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
             }
 
             CreateSchemaInfo info;
-            info.catalog = config.project_id;
-            info.schema = config.dataset_id;
+            info.SetCatalog(Identifier(config.project_id));
+            info.SetSchema(Identifier(config.dataset_id));
             default_dataset = make_uniq<BigquerySchemaEntry>(*this, info, dataset_ref, table_infos_vec);
         }
         callback(*default_dataset);
@@ -82,7 +83,7 @@ optional_ptr<SchemaCatalogEntry> BigqueryCatalog::LookupSchema(CatalogTransactio
                                                                OnEntryNotFound if_not_found) {
     const auto &schema_name = schema_lookup.GetEntryName();
     if (schema_name == DEFAULT_SCHEMA) {
-        return GetSchema(transaction, GetDefaultDatasetID(), if_not_found);
+        return GetSchema(transaction, Identifier(GetDefaultDatasetID()), if_not_found);
     }
 
     if (IsInvalidSchema(schema_name)) {
@@ -145,9 +146,9 @@ string BigqueryCatalog::GetDBPath() {
     return config.project_id;
 };
 
-string BigqueryCatalog::GetDefaultSchema() const {
+optional<Identifier> BigqueryCatalog::GetDefaultSchema() const {
     if (config.HasDatasetId()) {
-        return config.dataset_id;
+        return Identifier(config.dataset_id);
     }
     return Catalog::GetDefaultSchema();
 }

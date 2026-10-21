@@ -14,7 +14,8 @@ struct BigqueryTableInfo {
         create_info->columns.SetAllowDuplicates(true);
     }
     BigqueryTableInfo(const string &project_id, const string &dataset_id, const string &table_id) {
-        create_info = make_uniq<CreateTableInfo>(project_id, dataset_id, table_id);
+        create_info = make_uniq<CreateTableInfo>(
+            QualifiedName(Identifier(project_id), Identifier(dataset_id), Identifier(table_id)));
         create_info->columns.SetAllowDuplicates(true);
     }
     explicit BigqueryTableInfo(const BigqueryTableRef &table_ref)
@@ -25,7 +26,7 @@ struct BigqueryTableInfo {
     }
 
     const string &GetTableName() const {
-        return create_info->table;
+        return create_info->GetTableName().GetIdentifierName();
     }
 
     unique_ptr<CreateTableInfo> create_info;
@@ -35,11 +36,18 @@ struct BigqueryTableInfo {
 
 
 class BigqueryTableEntry : public TableCatalogEntry {
+private:
+    ColumnList columns;
+
 public:
     BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info);
     BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, BigqueryTableInfo &info);
 
 public:
+    const ColumnList &GetColumns() const override {
+        return columns;
+    }
+
     unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, column_t column_id) override;
 
     TableFunction GetScanFunction(ClientContext &context, unique_ptr<FunctionData> &bind_data) override;

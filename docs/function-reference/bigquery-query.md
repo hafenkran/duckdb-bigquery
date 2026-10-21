@@ -88,16 +88,19 @@ With `use_rest_api := true`, results are decoded inline through
 [`jobs.query`](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query).
 The REST path decodes BigQuery `ARRAY` and `STRUCT` results recursively as
 DuckDB `LIST` and `STRUCT` values. BigQuery does not expose native `MAP` or
-union result types, and it rejects final query results whose arrays contain
-`NULL` elements. BigQuery can still create a job under its
+union result types. The decoder preserves element types, order, and `NULL`
+elements returned in a successful REST response. Queries rejected by BigQuery
+under its
+[array-result rules](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#array_type)
+still fail with the server's error. BigQuery can still create a job under its
 [`JOB_CREATION_OPTIONAL` behavior](https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query#JobCreationMode).
 
 ## Errors and Timeouts
 
 Typical errors include invalid GoogleSQL, a placeholder count or type mismatch,
 missing job or source-object permissions, an unusable billing project,
-conflicting catalog options, malformed REST result shapes, and result arrays
-containing `NULL` elements.
+conflicting catalog options, malformed REST result shapes, and server
+rejections of result arrays containing `NULL` elements.
 
 `timeout_ms` stops local waiting but does not guarantee cancellation. Inspect
 timed-out work with [`bigquery_jobs`](bigquery-jobs.md).

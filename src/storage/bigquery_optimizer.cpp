@@ -28,7 +28,7 @@ static constexpr const char *BQ_AGGREGATE_COLUMN_PREFIX = "__duckdb_bq_aggr_";
 static constexpr const char *BQ_GROUP_COLUMN_PREFIX = "__duckdb_bq_group_";
 
 struct BigqueryAggregateSource {
-    idx_t table_index = DConstants::INVALID_INDEX;
+    TableIndex table_index;
     vector<std::optional<string>> column_names;
     vector<std::optional<string>> column_sql;
     vector<std::optional<string>> filter_column_sql;
@@ -69,7 +69,7 @@ static bool TryGetScanBindingColumnName(const LogicalGet &get, idx_t binding_col
         return false;
     }
 
-    column_name = get.GetColumnName(column_index);
+    column_name = get.GetColumnName(column_index).GetIdentifierName();
     return true;
 }
 
@@ -275,7 +275,7 @@ static bool TryResolveProjection(LogicalProjection &projection, BigqueryAggregat
     for (auto &expr : projection.expressions) {
         string column_name;
         if (expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
-            !TryResolveColumnName(source, expr->Cast<BoundColumnRefExpression>().binding, column_name)) {
+            !TryResolveColumnName(source, expr->Cast<BoundColumnRefExpression>().Binding(), column_name)) {
             projected_names.emplace_back();
         } else {
             projected_names.push_back(std::move(column_name));
@@ -415,19 +415,19 @@ static bool IsStringAggFunction(const string &function_name) {
 }
 
 static bool TryStringAggSQL(const BigqueryAggregateSource &source,
-                            const BoundAggregateExpression &aggregate,
+                            const BoundAggregateExpression &aggregate_expr,
                             const string &function_name,
                             bool is_distinct,
                             string &aggregate_sql) {
     // DuckDB erases explicit STRING_AGG delimiters into bind data, so only the default delimiter is safe here.
-    if (!IsStringAggFunction(function_name) || !is_distinct || aggregate.children.size() != 1 ||
-        !aggregate.function.original_arguments.empty()) {
+    if (!IsStringAggFunction(function_name) || !is_distinct || aggregate_expr.GetChildren().size() != 1 ||
+        (aggregate_expr.Function().GetLogicalArguments() != aggregate_expr.Function().GetArguments())) {
         return false;
     }
 
-    auto &argument = *aggregate.children[0];
-    if (argument.return_type.id() != LogicalTypeId::VARCHAR || BigqueryUtils::IsGeographyType(argument.return_type) ||
-        IsNakedDistinctConstant(argument)) {
+    auto &argument = *aggregate_expr.GetChildren()[0];
+    if (argument.GetReturnType().id() != LogicalTypeId::VARCHAR ||
+        BigqueryUtils::IsGeographyType(argument.GetReturnType()) || IsNakedDistinctConstant(argument)) {
         return false;
     }
 
@@ -440,41 +440,41 @@ static bool TryStringAggSQL(const BigqueryAggregateSource &source,
 }
 
 static bool TryAggregateSQL(const BigqueryAggregateSource &source,
-                            const BoundAggregateExpression &aggregate,
+                            const BoundAggregateExpression &aggregate_expr,
                             string &aggregate_sql) {
-    if (aggregate.filter || aggregate.order_bys) {
+    if (aggregate_expr.GetFilter() || aggregate_expr.GetOrderBys()) {
         return false;
     }
-    const bool is_distinct = aggregate.aggr_type == AggregateType::DISTINCT;
-    if (!is_distinct && aggregate.aggr_type != AggregateType::NON_DISTINCT) {
+    const bool is_distinct = aggregate_expr.GetAggregateType() == AggregateType::DISTINCT;
+    if (!is_distinct && aggregate_expr.GetAggregateType() != AggregateType::NON_DISTINCT) {
         return false;
     }
-    if (!IsRestScalarType(aggregate.return_type)) {
+    if (!IsRestScalarType(aggregate_expr.GetReturnType())) {
         return false;
     }
 
-    const auto function_name = StringUtil::Lower(aggregate.function.name);
+    const auto function_name = StringUtil::Lower(aggregate_expr.Function().GetName().GetIdentifierName());
     if (function_name == "count_star") {
-        if (is_distinct || !aggregate.children.empty()) {
+        if (is_distinct || !aggregate_expr.GetChildren().empty()) {
             return false;
         }
         aggregate_sql = "COUNT(*)";
         return true;
     }
     if (function_name == "count") {
-        if (aggregate.children.empty()) {
+        if (aggregate_expr.GetChildren().empty()) {
             if (is_distinct) {
                 return false;
             }
             aggregate_sql = "COUNT(*)";
             return true;
         }
-        if (aggregate.children.size() != 1) {
+        if (aggregate_expr.GetChildren().size() != 1) {
             return false;
         }
-        auto &argument = *aggregate.children[0];
+        auto &argument = *aggregate_expr.GetChildren()[0];
         if (is_distinct) {
-            if (!IsDistinctAggregateArgumentType(argument.return_type)) {
+            if (!IsDistinctAggregateArgumentType(argument.GetReturnType())) {
                 return false;
             }
             if (IsNakedDistinctConstant(argument)) {
@@ -488,7 +488,7 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
             return true;
         }
         if (argument.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT &&
-            !argument.Cast<BoundConstantExpression>().value.IsNull()) {
+            !argument.Cast<BoundConstantExpression>().GetValue().IsNull()) {
             aggregate_sql = "COUNT(*)";
             return true;
         }
@@ -499,7 +499,7 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
         aggregate_sql = "COUNT(" + argument_sql + ")";
         return true;
     }
-    if (TryStringAggSQL(source, aggregate, function_name, is_distinct, aggregate_sql)) {
+    if (TryStringAggSQL(source, aggregate_expr, function_name, is_distinct, aggregate_sql)) {
         return true;
     }
 
@@ -520,12 +520,12 @@ static bool TryAggregateSQL(const BigqueryAggregateSource &source,
         return false;
     }
 
-    if (aggregate.children.size() != 1) {
+    if (aggregate_expr.GetChildren().size() != 1) {
         return false;
     }
-    auto &argument = *aggregate.children[0];
+    auto &argument = *aggregate_expr.GetChildren()[0];
     if (is_distinct) {
-        if (!IsDistinctAggregateArgumentType(argument.return_type) || IsNakedDistinctConstant(argument)) {
+        if (!IsDistinctAggregateArgumentType(argument.GetReturnType()) || IsNakedDistinctConstant(argument)) {
             return false;
         }
     }
@@ -545,7 +545,7 @@ static bool HasSingleCompleteGroupingSet(const LogicalAggregate &aggregate) {
         return false;
     }
     for (idx_t group_idx = 0; group_idx < aggregate.groups.size(); group_idx++) {
-        if (aggregate.grouping_sets[0].find(group_idx) == aggregate.grouping_sets[0].end()) {
+        if (aggregate.grouping_sets[0].find(ProjectionIndex(group_idx)) == aggregate.grouping_sets[0].end()) {
             return false;
         }
     }
@@ -575,7 +575,7 @@ static bool TryBuildAggregateQuery(LogicalAggregate &aggregate,
     types.reserve(aggregate.groups.size() + aggregate.expressions.size());
     for (idx_t group_idx = 0; group_idx < aggregate.groups.size(); group_idx++) {
         auto &group = aggregate.groups[group_idx];
-        if (!IsRestScalarType(group->return_type)) {
+        if (!IsRestScalarType(group->GetReturnType())) {
             return false;
         }
         string group_sql;
@@ -587,7 +587,7 @@ static bool TryBuildAggregateQuery(LogicalAggregate &aggregate,
         select_entries.push_back(group_sql + " AS " + internal_name);
         group_entries.push_back(std::move(group_sql));
         names.push_back(internal_name);
-        types.push_back(group->return_type);
+        types.push_back(group->GetReturnType());
     }
     for (idx_t aggregate_idx = 0; aggregate_idx < aggregate.expressions.size(); aggregate_idx++) {
         auto &expr = aggregate.expressions[aggregate_idx];
@@ -601,8 +601,8 @@ static bool TryBuildAggregateQuery(LogicalAggregate &aggregate,
         }
         const auto internal_name = string(BQ_AGGREGATE_COLUMN_PREFIX) + to_string(aggregate_idx);
         select_entries.push_back(aggregate_sql + " AS " + internal_name);
-        names.push_back(expr->GetAlias().empty() ? internal_name : expr->GetAlias());
-        types.push_back(expr->return_type);
+        names.push_back(expr->GetAlias().empty() ? internal_name : expr->GetAlias().GetIdentifierName());
+        types.push_back(expr->GetReturnType());
     }
 
     query = "SELECT " + StringUtil::Join(select_entries, ", ") + " FROM " + source.source_sql;
@@ -637,10 +637,10 @@ static unique_ptr<LogicalOperator> CreateAggregateQueryGet(LogicalAggregate &agg
     auto function = BigqueryQueryFunction();
     const auto table_index = grouped ? aggregate.group_index : aggregate.aggregate_index;
     auto result = make_uniq<LogicalGet>(table_index,
-                                        std::move(function),
+                                        BoundTableFunction(function),
                                         std::move(bind_data),
                                         std::move(types),
-                                        std::move(names));
+                                        BigqueryUtils::ToIdentifiers(names));
     for (idx_t col_idx = 0; col_idx < result->returned_types.size(); col_idx++) {
         result->AddColumnId(col_idx);
     }
@@ -649,12 +649,27 @@ static unique_ptr<LogicalOperator> CreateAggregateQueryGet(LogicalAggregate &agg
     return std::move(result);
 }
 
-static void RewriteAggregate(unique_ptr<LogicalOperator> &node, vector<ReplacementBinding> &binding_replacements) {
+static bool HasDistinctAggregate(const LogicalAggregate &aggregate) {
+    for (auto &expr : aggregate.expressions) {
+        if (expr->GetExpressionClass() == ExpressionClass::BOUND_AGGREGATE &&
+            expr->Cast<BoundAggregateExpression>().GetAggregateType() == AggregateType::DISTINCT) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void RewriteAggregate(unique_ptr<LogicalOperator> &node,
+                             vector<ReplacementBinding> &binding_replacements,
+                             bool only_distinct) {
     if (node->type != LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
         return;
     }
 
     auto &aggregate = node->Cast<LogicalAggregate>();
+    if (only_distinct && !HasDistinctAggregate(aggregate)) {
+        return;
+    }
     BigqueryAggregateSource source;
     vector<string> names;
     vector<LogicalType> types;
@@ -666,36 +681,48 @@ static void RewriteAggregate(unique_ptr<LogicalOperator> &node, vector<Replaceme
     const auto group_count = aggregate.groups.size();
     if (group_count > 0) {
         for (idx_t aggregate_idx = 0; aggregate_idx < aggregate.expressions.size(); aggregate_idx++) {
-            binding_replacements.emplace_back(ColumnBinding(aggregate.aggregate_index, aggregate_idx),
-                                              ColumnBinding(aggregate.group_index, group_count + aggregate_idx));
+            binding_replacements.emplace_back(
+                ColumnBinding(aggregate.aggregate_index, ProjectionIndex(aggregate_idx)),
+                ColumnBinding(aggregate.group_index, ProjectionIndex(group_count + aggregate_idx)));
         }
     }
     node = CreateAggregateQueryGet(aggregate, source, std::move(names), std::move(types), std::move(query));
 }
 
 static void RewriteBigqueryAggregates(unique_ptr<LogicalOperator> &node,
-                                      vector<ReplacementBinding> &binding_replacements) {
+                                      vector<ReplacementBinding> &binding_replacements,
+                                      bool only_distinct) {
     if (!node || !BigquerySettings::EnableAggregatePushdown()) {
         return;
     }
 
     for (auto &child : node->children) {
-        RewriteBigqueryAggregates(child, binding_replacements);
+        RewriteBigqueryAggregates(child, binding_replacements, only_distinct);
     }
-    RewriteAggregate(node, binding_replacements);
+    RewriteAggregate(node, binding_replacements, only_distinct);
 }
 
-} // namespace
-
-void BigqueryOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
-    (void)input;
+static void OptimizeBigqueryAggregates(unique_ptr<LogicalOperator> &plan, bool only_distinct) {
     vector<ReplacementBinding> binding_replacements;
-    RewriteBigqueryAggregates(plan, binding_replacements);
+    RewriteBigqueryAggregates(plan, binding_replacements, only_distinct);
     if (!binding_replacements.empty()) {
         ColumnBindingReplacer replacer;
         replacer.replacement_bindings = std::move(binding_replacements);
         replacer.VisitOperator(*plan);
     }
+}
+
+} // namespace
+
+void BigqueryOptimizer::PreOptimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
+    (void)input;
+    // DuckDB 2.0 lowers DISTINCT into multiple aggregate stages before the regular extension optimizer hook.
+    OptimizeBigqueryAggregates(plan, true);
+}
+
+void BigqueryOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
+    (void)input;
+    OptimizeBigqueryAggregates(plan, false);
 }
 
 } // namespace bigquery

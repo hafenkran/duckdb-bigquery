@@ -22,7 +22,7 @@ struct AttachFunctionData : public TableFunctionData {
 static unique_ptr<FunctionData> AttachBind(ClientContext &context,
                                            TableFunctionBindInput &input,
                                            vector<LogicalType> &return_types,
-                                           vector<string> &names) {
+                                           vector<Identifier> &names) {
     auto table_string = input.inputs[0].GetValue<string>();
     auto dataset_ref = BigqueryUtils::ParseTableString(table_string);
     if (!dataset_ref.table_id.empty()) {
@@ -56,7 +56,7 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
         auto tables_ref = client.GetTables(data.dataset_id);
         for (auto &table_ref : tables_ref) {
             auto table = BigqueryUtils::FormatTableStringSimple(table_ref);
-            dconn.TableFunction("bigquery_scan", {Value(table)})->CreateView(table, data.overwrite, false);
+            dconn.TableFunction("bigquery_scan", {Value(table)})->CreateView(Identifier(table), data.overwrite, false);
         }
     }
 
@@ -65,7 +65,9 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 
 BigqueryAttachFunction::BigqueryAttachFunction()
     : TableFunction("bigquery_attach", {LogicalType::VARCHAR}, AttachFunction, AttachBind) {
-    named_parameters["overwrite"] = LogicalTypeId::BOOLEAN;
+    TypedKwargs options;
+    options.Add("overwrite", LogicalTypeId::BOOLEAN);
+    GetSignature().AddTypedKwargs("options", std::move(options));
 }
 
 } // namespace bigquery

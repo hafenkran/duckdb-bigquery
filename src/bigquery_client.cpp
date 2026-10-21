@@ -961,7 +961,8 @@ google::cloud::bigquery::v2::Job BigqueryClient::LoadDuckDBTable(const string &t
     try {
         auto copy_query =
             "COPY (SELECT * FROM " + relation_name + ") TO '" + escaped_temp_file_path + "' (FORMAT PARQUET)";
-        auto result = context->Query(copy_query, QueryResultOutputType::FORCE_MATERIALIZED);
+        auto result = context->Query(copy_query, QueryParameters());
+        result->Complete();
         if (result->HasError()) {
             result->ThrowError("Failed to materialize DuckDB source table for bigquery_load: ");
         }
@@ -1063,10 +1064,11 @@ void BigqueryClient::CreateDataset(const CreateSchemaInfo &info, const BigqueryD
     ExecuteQuery(query, dataset_ref.location);
 
     // Check if dataset exists with an exponential backoff retry
-    auto op = [this, &info]() -> bool { return DatasetExists(info.schema); };
+    auto op = [this, &info]() -> bool { return DatasetExists(info.GetQualifiedName().Schema().GetIdentifierName()); };
     auto success = RetryOperation(op, 10, 1000);
     if (!success) {
-        throw InternalException("Failed to verify that \"%s\" has been successfully created", info.schema);
+        throw InternalException("Failed to verify that \"%s\" has been successfully created",
+                                info.GetQualifiedName().Schema().GetIdentifierName());
     }
 }
 
@@ -1075,10 +1077,14 @@ void BigqueryClient::CreateTable(const CreateTableInfo &info, const BigqueryTabl
     ExecuteQuery(query);
 
     // Check if the table exists with an exponential backoff retry
-    auto op = [this, &info]() -> bool { return TableExists(info.schema, info.table); };
+    auto op = [this, &info]() -> bool {
+        return TableExists(info.GetQualifiedName().Schema().GetIdentifierName(),
+                           info.GetQualifiedName().Name().GetIdentifierName());
+    };
     auto success = RetryOperation(op, 10, 1000);
     if (!success) {
-        throw InternalException("Failed to verify that \"%s\" has been successfully created", info.table);
+        throw InternalException("Failed to verify that \"%s\" has been successfully created",
+                                info.GetQualifiedName().Name().GetIdentifierName());
     }
 }
 
@@ -1153,13 +1159,13 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
         // Create the ColumnDefinition
         auto column_type = BigqueryUtils::FieldSchemaToLogicalType(field);
 
-        ColumnDefinition column(field.name(), std::move(column_type));
+        ColumnDefinition column(Identifier(field.name()), std::move(column_type));
         // column.SetComment(std::move(field.description));
 
         const auto &default_value_expr = field.default_value_expression();
         const auto &default_value = default_value_expr.value();
         if (!default_value.empty() && default_value != "\"\"") {
-            auto expressions = Parser::ParseExpressionList(default_value);
+            auto expressions = Parser::GetBuiltinParser().ParseExpressionList(default_value);
             if (expressions.empty()) {
                 throw InternalException("Expression list is empty");
             }
@@ -1171,7 +1177,7 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
         // The default value is NULLABLE.
         const auto &mode = field.mode();
         if (mode == "REQUIRED") {
-            auto field_name = field.name();
+            auto field_name = Identifier(field.name());
             auto field_index = res_columns.GetColumnIndex(field_name);
             res_constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
@@ -1183,7 +1189,7 @@ void BigqueryClient::MapTableSchema(const google::cloud::bigquery::v2::TableSche
             int max_length = std::stoi(match[1]);
 
             auto constraint_str = "length(" + field.name() + ") <= " + std::to_string(max_length);
-            auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+            auto parsed_expressions = Parser::GetBuiltinParser().ParseExpressionList(constraint_str);
 
             auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
             res_constraints.push_back(std::move(check_constraint));
@@ -1284,7 +1290,9 @@ shared_ptr<BigqueryProtoWriter> BigqueryClient::CreateProtoWriter(BigqueryTableE
     }
 
     // Check if dataset exists with an exponential backoff retry
-    auto op = [this, &entry]() -> bool { return TableExists(entry->schema.name, entry->name); };
+    auto op = [this, &entry]() -> bool {
+        return TableExists(entry->schema.name.GetIdentifierName(), entry->name.GetIdentifierName());
+    };
     auto success = RetryOperation(op, 10, 1000);
     if (!success) {
         throw InternalException("Failed to verify that \"%s.%s\" exists.", entry->schema.name, entry->name);
@@ -2051,10 +2059,10 @@ void BigqueryClient::MapInformationSchemaRows(
             continue;
         }
 
-        ColumnDefinition column(column_name, std::move(column_type));
+        ColumnDefinition column(Identifier(column_name), std::move(column_type));
 
         if (!column_default.empty() && column_default != "\"\"" && column_default != "NULL") {
-            auto expressions = Parser::ParseExpressionList(column_default);
+            auto expressions = Parser::GetBuiltinParser().ParseExpressionList(column_default);
             if (expressions.empty()) {
                 throw InternalException("Expression list is empty");
             }
@@ -2062,13 +2070,15 @@ void BigqueryClient::MapInformationSchemaRows(
         }
 
         if (table_infos.find(table_string) == table_infos.end()) {
-            table_infos[table_string] = CreateTableInfo(project_id, dataset_name, table_name);
+            table_infos[table_string] = CreateTableInfo(
+                QualifiedName(Identifier(project_id), Identifier(dataset_name), Identifier(table_name)));
         }
 
         table_infos[table_string].columns.AddColumn(std::move(column));
 
         if (is_nullable == "NO") {
-            auto field_index = table_infos[table_string].columns.GetColumnIndex(column_name);
+            Identifier lookup_name(column_name);
+            auto field_index = table_infos[table_string].columns.GetColumnIndex(lookup_name);
             table_infos[table_string].constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(field_index)));
         }
 
@@ -2080,7 +2090,7 @@ void BigqueryClient::MapInformationSchemaRows(
                 int max_length = std::stoi(match[1]);
 
                 auto constraint_str = "length(" + column_name + ") <= " + std::to_string(max_length);
-                auto parsed_expressions = Parser::ParseExpressionList(constraint_str);
+                auto parsed_expressions = Parser::GetBuiltinParser().ParseExpressionList(constraint_str);
 
                 auto check_constraint = make_uniq<CheckConstraint>(std::move(parsed_expressions[0]));
                 table_infos[table_name].constraints.push_back(std::move(check_constraint));

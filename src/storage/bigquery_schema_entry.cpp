@@ -30,11 +30,11 @@ optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateTable(CatalogTransaction t
                                                             BoundCreateTableInfo &info) {
     BigqueryTransaction::CheckReadWrite(transaction.GetContext(), catalog, "create tables");
     auto &create_table_info = info.Base();
-    auto table_name = create_table_info.table;
+    auto table_name = create_table_info.GetQualifiedName().Name().GetIdentifierName();
     if (create_table_info.on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
         DropInfo drop_info;
-        drop_info.catalog = create_table_info.catalog;
-        drop_info.name = table_name;
+        drop_info.SetCatalog(Identifier(create_table_info.GetQualifiedName().Catalog().GetIdentifierName()));
+        drop_info.SetName(Identifier(table_name));
         drop_info.type = CatalogType::TABLE_ENTRY;
         drop_info.cascade = false;
         drop_info.if_not_found = OnEntryNotFound::RETURN_NULL;
@@ -61,15 +61,15 @@ optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateView(CatalogTransaction tr
     }
     if (info.on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT ||
         info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
-        auto current_entry = GetEntry(transaction, CatalogType::VIEW_ENTRY, info.view_name);
+        auto current_entry = GetEntry(transaction, CatalogType::VIEW_ENTRY, info.GetQualifiedName().Name());
         if (current_entry) {
             if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
                 return current_entry;
             }
             // CREATE OR REPLACE
             DropInfo drop_info;
-            drop_info.catalog = info.schema;
-            drop_info.name = info.view_name;
+            drop_info.SetCatalog(Identifier(info.GetQualifiedName().Schema().GetIdentifierName()));
+            drop_info.SetName(Identifier(info.GetQualifiedName().Name().GetIdentifierName()));
             drop_info.type = CatalogType::VIEW_ENTRY;
             drop_info.cascade = false;
             drop_info.if_not_found = OnEntryNotFound::RETURN_NULL;
@@ -79,7 +79,7 @@ optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateView(CatalogTransaction tr
     auto &bq_transaction = BigqueryTransaction::Get(transaction.GetContext(), catalog);
     auto bqclient = bq_transaction.GetBigqueryClient();
     bqclient->ExecuteQuery(info.sql);
-    return tables.RefreshTable(transaction.GetContext(), info.view_name);
+    return tables.RefreshTable(transaction.GetContext(), info.GetQualifiedName().Name().GetIdentifierName());
 }
 
 optional_ptr<CatalogEntry> BigquerySchemaEntry::CreateSequence(CatalogTransaction transaction,
@@ -140,7 +140,7 @@ void BigquerySchemaEntry::Scan(CatalogType type, const std::function<void(Catalo
 
 void BigquerySchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
     BigqueryTransaction::CheckReadWrite(context, catalog, "drop entries");
-    info.schema = name;
+    info.SetSchema(Identifier(name));
     GetCatalogSet(info.type).DropEntry(context, info);
 }
 

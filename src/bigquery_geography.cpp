@@ -23,7 +23,7 @@ static BoundCastInfo BindGeographyCast(BindCastInput &input, const LogicalType &
 void RegisterGeographyCast(DatabaseInstance &db) {
     auto &casts = DBConfig::GetConfig(db).GetCastFunctions();
     LogicalType source = LogicalType(LogicalTypeId::VARCHAR);
-    source.SetAlias("GEOGRAPHY");
+    source = source.WithAlias("GEOGRAPHY");
     // BigQuery uses WGS84 (OGC:CRS84) as the default CRS for GEOGRAPHY.
     LogicalType target = LogicalType::GEOMETRY("OGC:CRS84");
     casts.RegisterCastFunction(source, target, BindGeographyCast);

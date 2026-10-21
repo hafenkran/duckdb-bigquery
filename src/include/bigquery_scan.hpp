@@ -15,16 +15,8 @@
 namespace duckdb {
 namespace bigquery {
 
-struct FactoryDependency final : public DependencyItem {
-    explicit FactoryDependency(shared_ptr<BigqueryStreamFactory> ptr) : DependencyItem(), factory(std::move(ptr)) {
-    }
-
-    shared_ptr<BigqueryStreamFactory> factory;
-};
-
 struct BigqueryScanBindData : public ArrowScanFunctionData {
-    BigqueryScanBindData()
-        : ArrowScanFunctionData(&BigqueryStreamFactory::Produce, 0, make_shared_ptr<FactoryDependency>(nullptr)) {
+    BigqueryScanBindData() : ArrowScanFunctionData(nullptr) {
     }
 
     BigqueryScanBindData(const BigqueryScanBindData &) = delete;
@@ -46,10 +38,6 @@ struct BigqueryScanBindData : public ArrowScanFunctionData {
 
     idx_t estimated_row_count = 1;
     bool requires_cast = false;
-
-    shared_ptr<FactoryDependency> GetFactoryDependency() {
-        return dependency ? shared_ptr_cast<DependencyItem, FactoryDependency>(dependency) : nullptr;
-    }
 
     bool RequiresQueryExec() const {
         return !query.empty();
@@ -85,7 +73,7 @@ struct BigqueryScanFunction : public TableFunction {
     static unique_ptr<FunctionData> BigqueryScanBind(ClientContext &context,
                                                      TableFunctionBindInput &input,
                                                      vector<LogicalType> &return_types,
-                                                     vector<string> &names);
+                                                     vector<Identifier> &names);
     static unique_ptr<GlobalTableFunctionState> BigqueryScanInitGlobalState(ClientContext &context,
                                                                             TableFunctionInitInput &input);
     static unique_ptr<LocalTableFunctionState> BigqueryScanInitLocalState(ExecutionContext &context,

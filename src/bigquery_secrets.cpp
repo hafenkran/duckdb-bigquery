@@ -20,7 +20,7 @@ namespace bigquery {
 
 namespace {
 
-case_insensitive_set_t BigquerySecretRedactKeys() {
+identifier_set_t BigquerySecretRedactKeys() {
     return {kAccessToken,
             kServiceAccountJson,
             kServiceAccountPath,
@@ -77,7 +77,7 @@ void ValidateAuthorizedUserCredentialsJson(const string &value) {
 // BigquerySecret Implementation
 //===--------------------------------------------------------------------===//
 
-BigquerySecret::BigquerySecret(const vector<string> &prefix_paths, const string &provider, const string &name)
+BigquerySecret::BigquerySecret(const vector<string> &prefix_paths, const Identifier &provider, const Identifier &name)
     : KeyValueSecret(prefix_paths, "bigquery", provider, name) {
     serializable = true;
     redact_keys = BigquerySecretRedactKeys();
@@ -353,7 +353,7 @@ unique_ptr<BaseSecret> CreateBigquerySecretFunction(ClientContext &context, Crea
                                    kExternalAccountJson};
 
     for (const auto &method : auth_methods) {
-        if (bigquery_secret->TrySetValue(method, input)) {
+        if (bigquery_secret->TrySetValue(Identifier(method), input)) {
             auth_methods_count++;
         }
     }

@@ -20,11 +20,11 @@ namespace duckdb {
 namespace bigquery {
 
 BigqueryTableEntry::BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info)
-    : TableCatalogEntry(catalog, schema, info) {
+    : TableCatalogEntry(catalog, schema, info), columns(info.columns.Copy()) {
 }
 
 BigqueryTableEntry::BigqueryTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, BigqueryTableInfo &info)
-    : TableCatalogEntry(catalog, schema, *info.create_info) {
+    : TableCatalogEntry(catalog, schema, *info.create_info), columns(info.create_info->columns.Copy()) {
 }
 
 unique_ptr<BaseStatistics> BigqueryTableEntry::GetStatistics(ClientContext &context, column_t column_id) {
@@ -37,7 +37,8 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     auto bigquery_transaction = dynamic_cast<BigqueryTransaction *>(catalog_transaction.transaction.get());
 
     auto result = make_uniq<BigqueryScanBindData>();
-    result->table_ref = BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name, name);
+    result->table_ref =
+        BigqueryTableRef(bigquery_catalog.GetProjectID(), schema.name.GetIdentifierName(), name.GetIdentifierName());
     result->bq_client = bigquery_transaction->GetBigqueryClient();
     result->bq_catalog = &bigquery_catalog;
     result->bq_table_entry = *this;
@@ -49,7 +50,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
         throw BinderException("Arrow schema export failed: " + status.ToString());
     }
 
-    vector<string> physical_names;
+    vector<Identifier> physical_names;
     vector<LogicalType> physical_return_types;
     vector<LogicalType> util_mapped_bq_types;
     BigqueryUtils::PopulateAndMapArrowTableTypes(context,
@@ -69,7 +70,7 @@ TableFunction BigqueryTableEntry::GetScanFunction(ClientContext &context, unique
     user_names.reserve(columns.LogicalColumnCount());
     for (auto &col : columns.Logical()) {
         user_return_types.push_back(col.GetType());
-        user_names.push_back(col.GetName());
+        user_names.push_back(col.GetName().GetIdentifierName());
     }
 
     if (user_return_types.size() != physical_return_types.size()) {

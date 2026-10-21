@@ -19,7 +19,7 @@ optional_ptr<CatalogEntry> BigquerySchemaSet::CreateSchema(ClientContext &contex
 
     BigqueryDatasetRef dataset_ref;
     dataset_ref.project_id = bq_catalog.config.project_id;
-    dataset_ref.dataset_id = info.schema;
+    dataset_ref.dataset_id = info.GetQualifiedName().Schema().GetIdentifierName();
     dataset_ref.location = BigquerySettings::DefaultLocation();
 
     bqclient->CreateDataset(info, dataset_ref);
@@ -46,13 +46,14 @@ void BigquerySchemaSet::LoadEntries(ClientContext &, BigqueryTransaction &transa
 
         std::map<std::string, vector<CreateTableInfo>> tables_by_schema;
         for (auto &table_info : table_infos) {
-            tables_by_schema[table_info.second.schema].push_back(std::move(table_info.second));
+            tables_by_schema[table_info.second.GetQualifiedName().Schema().GetIdentifierName()].push_back(
+                std::move(table_info.second));
         }
 
         for (auto &dataset : datasets) {
             CreateSchemaInfo info;
-            info.catalog = dataset.project_id;
-            info.schema = dataset.dataset_id;
+            info.SetCatalog(Identifier(dataset.project_id));
+            info.SetSchema(Identifier(dataset.dataset_id));
 
             vector<CreateTableInfo> &table_infos = tables_by_schema[dataset.dataset_id];
             auto schema = make_shared_ptr<BigquerySchemaEntry>(catalog, info, dataset, table_infos);
@@ -62,8 +63,8 @@ void BigquerySchemaSet::LoadEntries(ClientContext &, BigqueryTransaction &transa
         vector<BigqueryDatasetRef> datasets = bqclient->GetDatasets();
         for (auto dataset : datasets) {
             CreateSchemaInfo info;
-            info.catalog = dataset.project_id;
-            info.schema = dataset.dataset_id;
+            info.SetCatalog(Identifier(dataset.project_id));
+            info.SetSchema(Identifier(dataset.dataset_id));
 
             auto schema = make_shared_ptr<BigquerySchemaEntry>(catalog, info, dataset);
             CreateEntry(transaction, std::move(schema));

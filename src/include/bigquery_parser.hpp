@@ -46,7 +46,7 @@ struct BigqueryParseData : ParserExtensionParseData {
     }
 };
 
-ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const std::string &query);
+ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const vector<SimpleToken> &tokens);
 
 ParserExtensionPlanResult BigqueryPlan(ParserExtensionInfo *info,
                                        ClientContext &context,

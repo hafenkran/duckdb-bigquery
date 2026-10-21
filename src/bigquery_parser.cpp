@@ -1,3 +1,4 @@
+#include "duckdb/main/database_manager.hpp"
 
 #include "duckdb.hpp"
 #include "duckdb/common/enums/statement_type.hpp"
@@ -346,7 +347,17 @@ static BigqueryClauseParseResult ExtractBigqueryClauses(const string &query) {
     return result;
 }
 
-ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const string &query) {
+ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const vector<SimpleToken> &tokens) {
+    string query;
+    idx_t consumed = 0;
+    for (const auto &token : tokens) {
+        query += token.text + " ";
+        consumed++;
+        if (token.text == ";") {
+            break;
+        }
+    }
+
     if (!BigquerySettings::ExperimentalEnableSqlParser()) {
         return ParserExtensionParseResult();
     }
@@ -356,7 +367,7 @@ ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const string
         return ParserExtensionParseResult();
     }
 
-    Parser parser;
+    auto parser = Parser::GetBuiltinParser();
     parser.ParseQuery(clause_result.cleaned_query);
 
     auto statements = std::move(parser.statements);
@@ -390,11 +401,13 @@ ParserExtensionParseResult BigqueryParse(ParserExtensionInfo *info, const string
         }
     }
 
-    return ParserExtensionParseResult(
+    auto result = ParserExtensionParseResult(
         make_uniq_base<ParserExtensionParseData, BigqueryParseData>(std::move(statements[0]),
                                                                     clause_result.options,
                                                                     clause_result.partition_by,
                                                                     clause_result.cluster_by));
+    result.consumed_tokens = NumericCast<int64_t>(consumed);
+    return result;
 }
 
 ParserExtensionPlanResult BigqueryPlan(ParserExtensionInfo *,
@@ -438,9 +451,9 @@ BoundStatement BigqueryBind(ClientContext &context,
                 auto &info = *create_stmt.info;
 
                 if (options_map.size() > 0) {
-                    string &catalog_name = info.catalog;
+                    const auto &catalog_name = info.GetQualifiedName().Catalog();
                     auto &database_manager = DatabaseManager::Get(context);
-                    auto database = database_manager.GetDatabase(context, catalog_name);
+                    auto database = database_manager.GetDatabase(context, Identifier(catalog_name));
                     if (!database) {
                         throw BinderException("OPTIONS clause used on non-BigQuery catalog %s", catalog_name);
                     }
