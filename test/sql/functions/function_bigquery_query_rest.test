@@ -169,12 +169,13 @@ SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
 
 # Type coverage: ARRAY with NULL elements
 # BigQuery rejects query results that contain ARRAY values with NULL elements.
-statement error
+# Wrap nullable values in non-NULL STRUCT elements for a valid ARRAY result.
+query I
 SELECT * FROM bigquery_query('${BQ_TEST_PROJECT}', '
-    SELECT [1, NULL, 3] AS arr
+    SELECT [STRUCT(1 AS id), STRUCT(CAST(NULL AS INT64) AS id), STRUCT(3 AS id)] AS arr
 ', use_rest_api=true);
 ----
-<REGEX>:Binder Error: Query execution failed: BigQuery does not allow query results with ARRAY values that contain NULL elements\. Original error: .+
+[{'id': 1}, {'id': NULL}, {'id': 3}]
 
 statement ok
 SET bq_debug_show_queries = false;
