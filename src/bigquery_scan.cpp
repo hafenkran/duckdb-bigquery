@@ -41,6 +41,7 @@ unique_ptr<FunctionData> BigqueryScanFunction::BigqueryScanBind(ClientContext &c
     }
 
     auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
+    input.table_function.filter_pushdown = BigquerySettings::ExperimentalFilterPushdown();
 
     auto bind_data = make_uniq<BigqueryScanBindData>();
     bind_data->table_ref = table_ref;
@@ -97,9 +98,8 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
     }
 
     string filter_string = bind_data.filter_condition;
-    if (BigquerySettings::ExperimentalFilterPushdown() && filter_string.empty() && input.filters &&
-        !input.filters->filters.empty()) {
-        filter_string = BigquerySQL::TransformFilters(*input.filters, [&](idx_t filter_idx) -> string {
+    if (input.filters && !input.filters->filters.empty()) {
+        auto pushed_filters = BigquerySQL::TransformFilters(*input.filters, [&](idx_t filter_idx) -> string {
             if (filter_idx >= input.column_ids.size()) {
                 throw InternalException("BigQuery filter column index out of range");
             }
@@ -112,6 +112,10 @@ unique_ptr<GlobalTableFunctionState> BigqueryScanFunction::BigqueryScanInitGloba
             }
             return bind_data.names[logical_col];
         });
+        if (!pushed_filters.empty()) {
+            filter_string = filter_string.empty() ? std::move(pushed_filters)
+                                                  : "(" + filter_string + ") AND (" + pushed_filters + ")";
+        }
     }
 
     idx_t max_read_streams = BigquerySettings::GetMaxReadStreams(context);

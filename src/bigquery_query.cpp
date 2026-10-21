@@ -31,6 +31,9 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     auto database = database_manager.GetDatabase(context, dbname_or_project_id);
 
     auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
+    input.table_function.projection_pushdown = !params.use_rest_api && !params.dry_run;
+    input.table_function.filter_pushdown =
+        BigquerySettings::ExperimentalFilterPushdown() && !params.use_rest_api && !params.dry_run;
 
     // Handle dry_run case separately
     if (params.dry_run) {
