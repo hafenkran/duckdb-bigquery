@@ -8,6 +8,10 @@ require-env BQ_TEST_PROJECT
 
 require-env BQ_TEST_DATASET
 
+# Keep aggregate pushdown from replacing the scan paths under test.
+statement ok
+SET bq_enable_aggregate_pushdown = false;
+
 statement ok
 FROM bigquery_execute('${BQ_TEST_PROJECT}', '
     CREATE OR REPLACE TABLE `${BQ_TEST_PROJECT}.${BQ_TEST_DATASET}.scan_filter_pushdown_test` AS
