@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "duckdb_bigquery",
+  "project_id": "b9ec2bdf-44c5-4bfc-9e88-b55357790073"
+}
