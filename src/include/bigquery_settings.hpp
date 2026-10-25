@@ -115,22 +115,23 @@ public:
         CurlCaBundlePath() = path;
     }
 
-    static bool &CurlSslRevokeBestEffort() {
-        static bool CURL_SSL_REVOKE_BEST_EFFORT = false;
-        return CURL_SSL_REVOKE_BEST_EFFORT;
+    static string &CurlSslRevocationMode() {
+        static string CURL_SSL_REVOCATION_MODE = "default";
+        return CURL_SSL_REVOCATION_MODE;
     }
 
-    static void SetCurlSslRevokeBestEffort(ClientContext &context, SetScope scope, Value &parameter) {
-        CurlSslRevokeBestEffort() = BooleanValue::Get(parameter);
-    }
-
-    static bool &CurlSslNoRevoke() {
-        static bool CURL_SSL_NO_REVOKE = false;
-        return CURL_SSL_NO_REVOKE;
-    }
-
-    static void SetCurlSslNoRevoke(ClientContext &context, SetScope scope, Value &parameter) {
-        CurlSslNoRevoke() = BooleanValue::Get(parameter);
+    static void SetCurlSslRevocationMode(ClientContext &context, SetScope scope, Value &parameter) {
+        if (parameter.IsNull()) {
+            throw InvalidInputException("bq_curl_ssl_revocation_mode cannot be NULL");
+        }
+        auto mode = StringValue::Get(parameter);
+        StringUtil::Trim(mode);
+        mode = StringUtil::Lower(mode);
+        if (mode != "default" && mode != "best_effort" && mode != "disabled") {
+            throw InvalidInputException("bq_curl_ssl_revocation_mode must be one of: default, best_effort, disabled");
+        }
+        CurlSslRevocationMode() = mode;
+        parameter = Value(mode);
     }
 
     static void TryDetectCurlCaBundlePath() {

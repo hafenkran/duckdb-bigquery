@@ -42,25 +42,25 @@ the account running DuckDB, including the Windows proxy configuration used
 for certificate retrieval.
 
 If missing or offline revocation endpoints must be tolerated, enable
-`bq_curl_ssl_revoke_best_effort`. This still attempts the checks and can wait
-for Windows certificate retrieval timeouts.
+`bq_curl_ssl_revocation_mode = 'best_effort'`. This still attempts the checks
+and can wait for Windows certificate retrieval timeouts.
 
 For environments that cannot support these checks, the stronger opt-in is:
 
 ```sql
 -- Disable Schannel revocation checks for REST and authentication requests.
-SET bq_curl_ssl_no_revoke = true;
+SET bq_curl_ssl_revocation_mode = 'disabled';
 ```
 
 Set the option before creating credentials or connecting. It maps to
-`CURLSSLOPT_NO_REVOKE` and takes precedence over `bq_curl_ssl_revoke_best_effort`
-if both are enabled. Certificate chains and hostnames are still verified,
+`CURLSSLOPT_NO_REVOKE`. Certificate chains and hostnames are still verified,
 but revoked certificates may be accepted because their revocation status is
 not checked. Windows' Untrusted Publishers block list still applies.
 
-Both options default to `false` and only affect cURL with Schannel. They do
-not affect the gRPC transport used by the Storage APIs or control HTTP retry
-counts. Disabling revocation checks does not resolve unrelated TLS errors.
+The `default` mode leaves cURL's SSL options unchanged. The `best_effort` and
+`disabled` modes only affect cURL with Schannel. They do not affect the gRPC
+transport used by the Storage APIs or control HTTP retry counts. Disabling
+revocation checks does not resolve unrelated TLS errors.
 
 ### Windows gRPC Configuration
 

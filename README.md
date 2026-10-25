@@ -107,7 +107,7 @@ offline revocation endpoints for cURL-based BigQuery REST and authentication
 requests, enable:
 
 ```sql
-SET bq_curl_ssl_revoke_best_effort = true;
+SET bq_curl_ssl_revocation_mode = 'best_effort';
 ```
 
 This setting does not disable certificate verification and does not accept a
@@ -119,15 +119,15 @@ endpoints. If those checks cannot be supported in your environment, you can
 explicitly disable them before creating credentials or connecting:
 
 ```sql
-SET bq_curl_ssl_no_revoke = true;
+SET bq_curl_ssl_revocation_mode = 'disabled';
 ```
 
 This maps to `CURLSSLOPT_NO_REVOKE`. Certificate chains and hostnames are still
 verified, but revoked certificates may be accepted because their revocation
 status is not checked. Windows' Untrusted Publishers block list still applies.
-Both settings default to `false`; `bq_curl_ssl_no_revoke` takes precedence if
-both are enabled. They only affect cURL with Schannel, not gRPC. Making the
-revocation endpoints reachable remains the preferred solution.
+The default mode, `default`, leaves cURL's SSL options unchanged. The
+`best_effort` and `disabled` modes only affect cURL with Schannel, not gRPC.
+Making the revocation endpoints reachable remains the preferred solution.
 
 ## Building from Source
 

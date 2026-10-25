@@ -4,39 +4,77 @@
 
 require bigquery
 
-query TT
-SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+query T
+SELECT current_setting('bq_curl_ssl_revocation_mode');
 ----
-false	false
+default
+
+query I
+SELECT count(*) FROM duckdb_settings() WHERE name IN ('bq_curl_ssl_no_revoke', 'bq_curl_ssl_revoke_best_effort');
+----
+0
 
 statement ok
-SET bq_curl_ssl_no_revoke = true;
+SET bq_curl_ssl_revocation_mode = 'best_effort';
 
-query TT
-SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+query T
+SELECT current_setting('bq_curl_ssl_revocation_mode');
 ----
-true	false
+best_effort
 
 statement ok
-SET bq_curl_ssl_revoke_best_effort = true;
+SET bq_curl_ssl_revocation_mode = ' DISABLED ';
 
-query TT
-SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+query T
+SELECT current_setting('bq_curl_ssl_revocation_mode');
 ----
-true	true
+disabled
 
 statement ok
-RESET bq_curl_ssl_no_revoke;
+SET bq_curl_ssl_revocation_mode = ' DeFaUlT ';
 
-query TT
-SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+query T
+SELECT current_setting('bq_curl_ssl_revocation_mode');
 ----
-false	true
+default
 
 statement ok
-RESET bq_curl_ssl_revoke_best_effort;
+SET bq_curl_ssl_revocation_mode = E'\tBeSt_EfFoRt\n';
 
-query TT
-SELECT current_setting('bq_curl_ssl_no_revoke'), current_setting('bq_curl_ssl_revoke_best_effort');
+query T
+SELECT current_setting('bq_curl_ssl_revocation_mode');
 ----
-false	false
+best_effort
+
+statement error
+SET bq_curl_ssl_revocation_mode = 'strict';
+----
+bq_curl_ssl_revocation_mode must be one of: default, best_effort, disabled
+
+statement error
+SET bq_curl_ssl_revocation_mode = '';
+----
+bq_curl_ssl_revocation_mode must be one of: default, best_effort, disabled
+
+statement error
+SET bq_curl_ssl_revocation_mode = '   ';
+----
+bq_curl_ssl_revocation_mode must be one of: default, best_effort, disabled
+
+statement error
+SET bq_curl_ssl_revocation_mode = NULL;
+----
+bq_curl_ssl_revocation_mode cannot be NULL
+
+query T
+SELECT current_setting('bq_curl_ssl_revocation_mode');
+----
+best_effort
+
+statement ok
+RESET bq_curl_ssl_revocation_mode;
+
+query T
+SELECT current_setting('bq_curl_ssl_revocation_mode');
+----
+default

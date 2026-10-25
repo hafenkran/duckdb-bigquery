@@ -51,8 +51,7 @@ For operational errors and known limitations, see
 | `bq_bignumeric_as_varchar` | `BOOLEAN` | `true` | Expose BigQuery `BIGNUMERIC` as exact `VARCHAR` values |
 | `bq_debug_show_queries` | `BOOLEAN` | `false` | Print generated GoogleSQL to standard output |
 | `bq_curl_ca_bundle_path` | `VARCHAR` | empty | Set a readable CA bundle for cURL-based REST requests |
-| `bq_curl_ssl_revoke_best_effort` | `BOOLEAN` | `false` | With Schannel, tolerate missing or offline certificate revocation endpoints |
-| `bq_curl_ssl_no_revoke` | `BOOLEAN` | `false` | With Schannel, disable revocation checks; takes precedence over `bq_curl_ssl_revoke_best_effort` |
+| `bq_curl_ssl_revocation_mode` | `VARCHAR` | `default` | Certificate revocation mode for cURL with Schannel: `default`, `best_effort`, or `disabled` |
 
 Timeout and stream-count values must be nonnegative and fit in a signed
 32-bit integer. BigQuery can return fewer read streams than requested.
@@ -232,3 +231,33 @@ requests. The file must exist and be readable:
 -- Use an explicit CA bundle for REST requests.
 SET bq_curl_ca_bundle_path = '/path/to/ca-bundle.pem';
 ```
+
+### cURL Certificate Revocation
+
+`bq_curl_ssl_revocation_mode` selects how cURL with Schannel handles certificate
+revocation checks for REST and authentication requests:
+
+| Mode | Behavior |
+| --- | --- |
+| `default` | Leave cURL's SSL options unchanged; this is the default |
+| `best_effort` | Check for revocation while tolerating missing or offline distribution points |
+| `disabled` | Disable revocation checks while still verifying certificate chains and hostnames |
+
+Set the mode before creating credentials or connecting. It does not change the
+gRPC transport used by the Storage APIs. Values are case-insensitive, and
+surrounding whitespace is ignored. `NULL`, empty strings, and unknown modes are
+rejected.
+
+```sql
+-- Tolerate missing or offline revocation endpoints.
+SET bq_curl_ssl_revocation_mode = 'best_effort';
+
+-- Restore cURL's default SSL behavior.
+RESET bq_curl_ssl_revocation_mode;
+```
+
+The `disabled` mode maps to `CURLSSLOPT_NO_REVOKE`: revoked certificates may be
+accepted because their revocation status is not checked. Windows' Untrusted
+Publishers block list still applies. See
+[Windows Certificate Revocation Checks](../troubleshooting.md#windows-certificate-revocation-checks)
+for details.
