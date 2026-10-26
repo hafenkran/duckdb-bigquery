@@ -6,6 +6,7 @@
 #include <google/rpc/code.pb.h>
 
 #include "duckdb.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/types/geometry.hpp"
 #include "duckdb/common/types/time.hpp"
@@ -873,8 +874,12 @@ void BigqueryProtoWriter::Finalize() {
         return;
     }
 
+    // Ensure the gRPC stream is properly closed to avoid connection leaks
+    // Then mark the stream as consumed so the destructor doesn't try to finalize again
     grpc_stream->WritesDone().get();
     auto finish = grpc_stream->Finish().get();
+    grpc_stream.reset();
+
     ThrowIfStorageWritePermissionDenied(table_string, "closing the AppendRows stream", finish);
     if (!finish.ok()) {
         throw IOException("Unexpected streaming RPC error: %s", finish.message());
@@ -895,8 +900,23 @@ void BigqueryProtoWriter::Finalize() {
         throw IOException("Unexpected error commiting write streams: %s", commit.status().message());
     }
 
-    // Mark stream as consumed so destructor doesn't try to finalize again
-    grpc_stream.reset();
+    if (!commit->stream_errors().empty()) {
+        vector<string> errors;
+        for (const auto &error : commit->stream_errors()) {
+            const auto &entity = error.entity().empty() ? write_stream.name() : error.entity();
+            errors.push_back(StringUtil::Format(
+                "%s [%s]: %s",
+                entity,
+                google::cloud::bigquery::storage::v1::StorageError::StorageErrorCode_Name(error.code()),
+                error.error_message()));
+        }
+        throw IOException("Failed to commit BigQuery write stream %s: %s",
+                          write_stream.name(),
+                          StringUtil::Join(errors, "; "));
+    }
+    if (!commit->has_commit_time()) {
+        throw IOException("BigQuery did not confirm the commit of write stream %s", write_stream.name());
+    }
 }
 
 void BigqueryProtoWriter::WriteMessageField(google::protobuf::Message *msg,

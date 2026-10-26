@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Reported Storage Write API stream errors and missing commit confirmations as
+  INSERT/CTAS failures, and prevented repeated gRPC shutdown during error cleanup.
+
 ## [0.13.0] - 2026-10-21 ([compare][0.13.0 diff])
 
 ### Changed
