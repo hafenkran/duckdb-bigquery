@@ -287,6 +287,12 @@ static void LoadInternal(ExtensionLoader &loader) {
                               LogicalType::VARCHAR,
                               Value(bigquery::BigquerySettings::CurlCaBundlePath()),
                               bigquery::BigquerySettings::SetCurlCaBundlePath);
+    config.AddExtensionOption("bq_curl_ssl_revocation_mode",
+                              "Certificate revocation mode for cURL with Schannel: default, best_effort, or disabled. "
+                              "Certificate chains and hostnames are still verified",
+                              LogicalType::VARCHAR,
+                              Value("default"),
+                              bigquery::BigquerySettings::SetCurlSslRevocationMode);
     config.AddExtensionOption("bq_max_read_streams",
                               "Maximum number of read streams requested for BigQuery Storage Read. Set to 0 to match "
                               "the number of DuckDB threads. `preserve_insertion_order` must be false for "

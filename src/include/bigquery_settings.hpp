@@ -115,6 +115,25 @@ public:
         CurlCaBundlePath() = path;
     }
 
+    static string &CurlSslRevocationMode() {
+        static string CURL_SSL_REVOCATION_MODE = "default";
+        return CURL_SSL_REVOCATION_MODE;
+    }
+
+    static void SetCurlSslRevocationMode(ClientContext &context, SetScope scope, Value &parameter) {
+        if (parameter.IsNull()) {
+            throw InvalidInputException("bq_curl_ssl_revocation_mode cannot be NULL");
+        }
+        auto mode = StringValue::Get(parameter);
+        StringUtil::Trim(mode);
+        mode = StringUtil::Lower(mode);
+        if (mode != "default" && mode != "best_effort" && mode != "disabled") {
+            throw InvalidInputException("bq_curl_ssl_revocation_mode must be one of: default, best_effort, disabled");
+        }
+        CurlSslRevocationMode() = mode;
+        parameter = Value(mode);
+    }
+
     static void TryDetectCurlCaBundlePath() {
         string path = DetectCAPath();
         if (path.empty()) {
