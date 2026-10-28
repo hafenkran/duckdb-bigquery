@@ -1,0 +1,50 @@
+# name: test/sql/storage/attach_create_schema_if_not_exists.test
+# description: Preserve IF NOT EXISTS in remote schema DDL and keep ordinary conflict errors
+# group: [storage]
+
+include test/sql/storage/ddl_idempotence_setup.inc
+
+statement ok
+CREATE SCHEMA IF NOT EXISTS ddl.ddl_existing_schema;
+
+statement ok
+CREATE SCHEMA IF NOT EXISTS ddl.ddl_existing_schema;
+
+statement error
+CREATE SCHEMA ddl.ddl_existing_schema;
+----
+Already Exists
+
+statement ok
+CREATE SCHEMA ddl.ddl_created_schema;
+
+statement error
+CREATE SCHEMA ddl.ddl_created_schema;
+----
+Already Exists
+
+statement ok
+CREATE SCHEMA IF NOT EXISTS ddl.ddl_created_schema;
+
+statement ok
+CREATE SCHEMA IF NOT EXISTS ddl.ddl_new_schema;
+
+statement ok
+CREATE SCHEMA IF NOT EXISTS ddl.ddl_new_schema;
+
+statement ok
+SELECT * FROM bigquery_clear_cache();
+
+statement ok
+CREATE SCHEMA IF NOT EXISTS ddl.ddl_existing_schema;
+
+query T rowsort
+SELECT schema_name FROM duckdb_schemas()
+WHERE database_name='ddl' AND schema_name LIKE 'ddl_%';
+----
+ddl_created_schema
+ddl_existing_schema
+ddl_new_schema
+
+statement ok
+DETACH ddl;

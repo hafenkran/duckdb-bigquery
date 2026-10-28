@@ -1922,6 +1922,9 @@ string BigquerySQL::CreateSchemaInfoToSQL(const string &project_id, const Create
         BigqueryUtils::FormatTableStringSimple(project_id, info.GetQualifiedName().Schema().GetIdentifierName());
     std::stringstream query;
     query << "CREATE SCHEMA ";
+    if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
+        query << "IF NOT EXISTS ";
+    }
     query << BigqueryUtils::WriteQuotedIdentifier(schema_string);
 
     if (auto *bq_info = dynamic_cast<const BigqueryCreateSchemaInfo *>(&info)) {

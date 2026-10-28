@@ -24,6 +24,9 @@ The dataset is created in `my-gcp-project`. Its location is controlled by
 `bq_default_location`. `CREATE OR REPLACE SCHEMA` and `ALTER SCHEMA` are not
 supported by the attached catalog.
 
+Use `CREATE SCHEMA IF NOT EXISTS bq.my_dataset` to leave an existing dataset
+unchanged. Repeating that statement succeeds.
+
 A project-scoped attachment is the most useful form for dataset management
 because the newly created dataset can then be discovered through the same
 catalog.

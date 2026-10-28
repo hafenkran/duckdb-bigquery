@@ -7,6 +7,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Forwarded `IF NOT EXISTS` when creating BigQuery schemas.
+
 - Preserved remote table schemas in the attached catalog after
   `CREATE TABLE IF NOT EXISTS`.
 
