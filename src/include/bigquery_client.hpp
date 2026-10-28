@@ -120,7 +120,8 @@ public:
                               const vector<Value> &query_parameters,
                               ColumnList &res_columns,
                               vector<unique_ptr<Constraint>> &res_constraints,
-                              const std::optional<int> &timeout_ms = std::nullopt);
+                              const std::optional<int> &timeout_ms = std::nullopt,
+                              bool require_read_only = false);
 
     vector<google::cloud::bigquery::v2::ListFormatJob> ListJobs(const ListJobsParams &params);
     google::cloud::bigquery::v2::Job GetJob(const string &job_id, const string &location = "");
@@ -201,6 +202,9 @@ private:
     string GenerateJobId(const string &prefix = "");
 
     void CheckExternalAccess() const;
+    google::cloud::bigquery::v2::TableSchema GetReadOnlyQuerySchema(const string &query,
+                                                                    const vector<Value> &query_parameters,
+                                                                    const std::optional<int> &timeout_ms);
     google::cloud::Options OptionsAPI();
     google::cloud::Options OptionsGRPC();
 

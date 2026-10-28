@@ -143,6 +143,10 @@ ATTACH 'project=my-gcp-project dataset=my_dataset'
 
 A read-only catalog rejects attached DDL and DML, Storage Write operations,
 load and extract jobs, and `bigquery_execute` calls made through that catalog.
+`bigquery_query` permits statements that BigQuery identifies as `SELECT` in a
+dry run. Mutating statements, scripts, and responses without a recognized
+statement type are rejected before execution in both REST and Storage Read
+modes. Explicit `dry_run := true` calls validate without executing the SQL.
 Omit `READ_ONLY` to permit supported mutations:
 
 ```sql

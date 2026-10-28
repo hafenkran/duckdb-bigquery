@@ -7,6 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Rejected mutating statements and scripts passed to `bigquery_query` through
+  read-only attachments in both REST and Storage Read modes.
+
 - Enforced DuckDB's external access setting before BigQuery authentication and
   API requests, including calls using existing attachments and prepared queries.
 

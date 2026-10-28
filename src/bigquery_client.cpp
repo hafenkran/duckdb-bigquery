@@ -1261,13 +1261,79 @@ void BigqueryClient::GetTableInfoForQuery(const string &query,
                                           const vector<Value> &query_parameters,
                                           ColumnList &res_columns,
                                           vector<unique_ptr<Constraint>> &res_constraints,
-                                          const std::optional<int> &timeout_ms) {
+                                          const std::optional<int> &timeout_ms,
+                                          bool require_read_only) {
+    if (require_read_only) {
+        auto schema = GetReadOnlyQuerySchema(query, query_parameters, timeout_ms);
+        MapTableSchema(schema, res_columns, res_constraints);
+        return;
+    }
     auto query_response = ExecuteQuery(query, "", true, query_parameters, false, timeout_ms);
     if (!query_response.has_schema()) {
         throw BinderException("Query response does not contain a result schema.");
     }
     auto schema = query_response.schema();
     MapTableSchema(schema, res_columns, res_constraints);
+}
+
+google::cloud::bigquery::v2::TableSchema BigqueryClient::GetReadOnlyQuerySchema(const string &query,
+                                                                                const vector<Value> &query_parameters,
+                                                                                const std::optional<int> &timeout_ms) {
+    CheckAuthentication();
+
+    google::cloud::bigquery::v2::InsertJobRequest request;
+    request.set_project_id(config.BillingProject());
+    auto *job = request.mutable_job();
+    auto *job_reference = job->mutable_job_reference();
+    job_reference->set_project_id(config.BillingProject());
+    job_reference->set_job_id(GenerateJobId("dry_run"));
+    auto *configuration = job->mutable_configuration();
+    configuration->mutable_dry_run()->set_value(true);
+    auto effective_timeout_ms = timeout_ms.value_or(BigquerySettings::QueryTimeoutMs());
+    if (effective_timeout_ms > 0) {
+        configuration->mutable_job_timeout_ms()->set_value(effective_timeout_ms);
+    }
+    auto *query_config = configuration->mutable_query();
+    query_config->set_query(query);
+    query_config->mutable_use_legacy_sql()->set_value(false);
+    query_config->mutable_default_dataset()->set_project_id(config.project_id);
+    query_config->mutable_default_dataset()->set_dataset_id("UNKNOWN");
+    if (!query_parameters.empty()) {
+        query_config->set_parameter_mode("POSITIONAL");
+        for (idx_t i = 0; i < query_parameters.size(); i++) {
+            *query_config->add_query_parameters() = BuildPositionalQueryParameter(query_parameters[i], i);
+        }
+    }
+
+    while (true) {
+        if (context->IsInterrupted()) {
+            throw InterruptException();
+        }
+        auto client = google::cloud::bigquerycontrol_v2::JobServiceClient(
+            google::cloud::bigquerycontrol_v2::MakeJobServiceConnectionRest(OptionsAPI()));
+        auto response = client.InsertJob(request);
+        if (!response.ok()) {
+            ThrowOnErrorStatus(response.status());
+            if (CheckSSLError(response.status())) {
+                continue;
+            }
+            throw BinderException("BigQuery read-only query validation failed: %s", response.status().message());
+        }
+        ThrowOnJobStatusError(response->status(), "Read-only query validation");
+
+        const auto &statistics = response->statistics().query();
+        // jobs.query only exposes the result schema, which cannot identify a script ending in SELECT.
+        // A dry-run job exposes the type of the entire statement without executing it.
+        if (statistics.statement_type() != "SELECT") {
+            throw BinderException("Only SELECT queries are allowed through a read-only BigQuery catalog; "
+                                  "BigQuery reported statement type '%s'",
+                                  statistics.statement_type().empty() ? "UNKNOWN" : statistics.statement_type());
+        }
+        if (!statistics.has_schema()) {
+            throw BinderException("BigQuery read-only query validation did not return a result schema");
+        }
+        return statistics.schema();
+    }
 }
 
 shared_ptr<BigqueryArrowReader> BigqueryClient::CreateArrowReader(const BigqueryTableRef &table_ref,
