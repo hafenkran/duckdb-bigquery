@@ -152,7 +152,11 @@ ATTACH 'project=my-gcp-project dataset=my_dataset'
 ```
 
 This only removes the local read-only guard; IAM still controls every remote
-operation. DuckDB external access must also be enabled. Start with
+operation. DuckDB external access must also be enabled. Setting
+`enable_external_access = false` prevents BigQuery authentication and API
+requests, including calls through existing attachments and prepared queries.
+Local utilities such as `bigquery_clear_cache` and
+`bigquery_normalize_geography` remain available. Start with
 [Writing & Modifying Data](writing.md), then use
 [Managing Tables & Datasets](managing-tables-and-schemas.md) and
 [Executing & Monitoring Jobs](jobs-and-transfers.md) for the supported

@@ -40,6 +40,9 @@ SELECT *
 When `project_or_catalog` names an attached catalog, billing and endpoints are
 taken from the attachment. Conflicting per-call values are rejected.
 
+`enable_external_access = false` blocks authentication and BigQuery requests,
+including use of existing attachments and prepared queries.
+
 Positional values bind to `?` placeholders. Cast `NULL` to a concrete type.
 List values are not supported as query parameters.
 

@@ -200,6 +200,7 @@ public:
 private:
     string GenerateJobId(const string &prefix = "");
 
+    void CheckExternalAccess() const;
     google::cloud::Options OptionsAPI();
     google::cloud::Options OptionsGRPC();
 

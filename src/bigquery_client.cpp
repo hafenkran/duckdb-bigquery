@@ -13,6 +13,7 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/time.hpp"
 #include "duckdb/main/extension_helper.hpp"
+#include "duckdb/main/settings.hpp"
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
@@ -408,12 +409,20 @@ public:
 
 BigqueryClient::BigqueryClient(ClientContext &context, const BigqueryConfig &config)
     : config(config), context(&context) {
+    CheckExternalAccess();
     if (config.project_id.empty()) {
         throw std::runtime_error("BigqueryClient::BigqueryClient: project_id is empty");
     }
 }
 
+void BigqueryClient::CheckExternalAccess() const {
+    if (!Settings::Get<EnableExternalAccessSetting>(*context)) {
+        throw PermissionException("BigQuery external access is disabled through configuration");
+    }
+}
+
 google::cloud::Options BigqueryClient::OptionsAPI() {
+    CheckExternalAccess();
     auto options = google::cloud::Options{};
     auto auth_options = BigqueryAuthOptions();
     if (!config.api_endpoint.empty()) {
@@ -442,6 +451,7 @@ google::cloud::Options BigqueryClient::OptionsAPI() {
 }
 
 google::cloud::Options BigqueryClient::OptionsGRPC() {
+    CheckExternalAccess();
     auto options = google::cloud::Options{};
     auto auth_options = BigqueryAuthOptions();
     if (!config.grpc_endpoint.empty()) {
@@ -2119,6 +2129,7 @@ void BigqueryClient::ValidateAuthentication() {
 }
 
 void BigqueryClient::CheckAuthentication() {
+    CheckExternalAccess();
     if (authentication_checked) {
         return;
     }

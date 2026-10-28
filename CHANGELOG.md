@@ -7,6 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Enforced DuckDB's external access setting before BigQuery authentication and
+  API requests, including calls using existing attachments and prepared queries.
+
 - Reported Storage Write API stream errors and missing commit confirmations as
   INSERT/CTAS failures, and prevented repeated gRPC shutdown during error cleanup.
 
