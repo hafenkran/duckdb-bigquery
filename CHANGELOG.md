@@ -7,6 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Preserved remote table schemas in the attached catalog after
+  `CREATE TABLE IF NOT EXISTS`.
+
 - Rejected mutating statements and scripts passed to `bigquery_query` through
   read-only attachments in both REST and Storage Read modes.
 

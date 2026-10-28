@@ -203,6 +203,11 @@ CREATE OR REPLACE TABLE bq.my_dataset.events (
 replacement. Existing rows are deleted, and the two remote operations are not
 atomic. Use `IF NOT EXISTS` when an existing table should be retained.
 
+`IF NOT EXISTS` preserves the existing columns and rows even when the supplied
+column definition differs. After successful table creation, the catalog reads
+the actual schema from BigQuery so `DESCRIBE` and subsequent queries use the
+reported column types.
+
 Column defaults and `NOT NULL` are supported. `PRIMARY KEY`, foreign keys,
 `UNIQUE`, `CHECK`, indexes, and other DuckDB constraint forms are not part of
 the attached table creation surface. Review

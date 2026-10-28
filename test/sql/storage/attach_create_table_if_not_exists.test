@@ -1,0 +1,93 @@
+# name: test/sql/storage/attach_create_table_if_not_exists.test
+# description: Keep actual remote table metadata after idempotent CREATE with warm, cold and reloaded caches
+# group: [storage]
+
+include test/sql/storage/ddl_idempotence_setup.inc
+
+foreach cache warm cold reload
+
+statement ok
+SELECT * FROM bigquery_clear_cache();
+
+onlyif cache=warm
+query TTTTTT
+DESCRIBE ddl.{BQ_TEST_DATASET}.target;
+----
+answer	BIGINT	YES	NULL	NULL	NULL
+label	VARCHAR	YES	NULL	NULL	NULL
+
+onlyif cache=reload
+query TTTTTT
+DESCRIBE ddl.{BQ_TEST_DATASET}.target;
+----
+answer	BIGINT	YES	NULL	NULL	NULL
+label	VARCHAR	YES	NULL	NULL	NULL
+
+onlyif cache=reload
+statement ok
+SELECT * FROM bigquery_clear_cache();
+
+statement ok
+CREATE TABLE IF NOT EXISTS ddl.{BQ_TEST_DATASET}.target(wrong VARCHAR);
+
+query TTTTTT
+DESCRIBE ddl.{BQ_TEST_DATASET}.target;
+----
+answer	BIGINT	YES	NULL	NULL	NULL
+label	VARCHAR	YES	NULL	NULL	NULL
+
+query IT
+SELECT answer, label FROM ddl.{BQ_TEST_DATASET}.target;
+----
+42	duck
+
+statement ok
+CREATE TABLE IF NOT EXISTS ddl.{BQ_TEST_DATASET}.target(also_wrong BOOLEAN);
+
+query TTTTTT
+DESCRIBE ddl.{BQ_TEST_DATASET}.target;
+----
+answer	BIGINT	YES	NULL	NULL	NULL
+label	VARCHAR	YES	NULL	NULL	NULL
+
+statement error
+CREATE TABLE ddl.{BQ_TEST_DATASET}.target(wrong VARCHAR);
+----
+Already Exists
+
+statement ok
+CREATE TABLE ddl.{BQ_TEST_DATASET}.new_{cache}(i INTEGER, label VARCHAR);
+
+query TTTTTT
+DESCRIBE ddl.{BQ_TEST_DATASET}.new_{cache};
+----
+i	BIGINT	YES	NULL	NULL	NULL
+label	VARCHAR	YES	NULL	NULL	NULL
+
+statement ok
+CREATE TABLE IF NOT EXISTS ddl.{BQ_TEST_DATASET}.new_{cache}(wrong DATE);
+
+query TTTTTT
+DESCRIBE ddl.{BQ_TEST_DATASET}.new_{cache};
+----
+i	BIGINT	YES	NULL	NULL	NULL
+label	VARCHAR	YES	NULL	NULL	NULL
+
+statement ok
+SELECT * FROM bigquery_clear_cache();
+
+query TTTTTT
+DESCRIBE ddl.{BQ_TEST_DATASET}.target;
+----
+answer	BIGINT	YES	NULL	NULL	NULL
+label	VARCHAR	YES	NULL	NULL	NULL
+
+query IT
+SELECT answer, label FROM ddl.{BQ_TEST_DATASET}.target;
+----
+42	duck
+
+endloop
+
+statement ok
+DETACH ddl;
