@@ -40,15 +40,9 @@ SELECT *
 When `project_or_catalog` names an attached catalog, billing and endpoints are
 taken from the attachment. Conflicting per-call values are rejected.
 
-For a `READ_ONLY` attachment, the function uses a dry-run job to check BigQuery's
-[`statementType`](https://cloud.google.com/bigquery/docs/reference/rest/v2/Job#JobStatistics2)
-before execution. Only `SELECT` is accepted; mutating statements, scripts, and
-unknown or missing statement types are rejected. This applies to both result
-paths. Explicit `dry_run := true` calls do not execute the SQL and may validate
-other statement types. Writable attachments retain their supported operations.
-
-`enable_external_access = false` blocks authentication and BigQuery requests,
-including use of existing attachments and prepared queries.
+For a `READ_ONLY` attachment, only `SELECT` queries are executed. Mutating
+statements and scripts are rejected in both REST and Storage Read modes.
+With `dry_run := true`, other statement types can be validated without execution.
 
 Positional values bind to `?` placeholders. Cast `NULL` to a concrete type.
 List values are not supported as query parameters.

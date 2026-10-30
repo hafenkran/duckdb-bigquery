@@ -143,10 +143,10 @@ ATTACH 'project=my-gcp-project dataset=my_dataset'
 
 A read-only catalog rejects attached DDL and DML, Storage Write operations,
 load and extract jobs, and `bigquery_execute` calls made through that catalog.
-`bigquery_query` permits statements that BigQuery identifies as `SELECT` in a
-dry run. Mutating statements, scripts, and responses without a recognized
-statement type are rejected before execution in both REST and Storage Read
-modes. Explicit `dry_run := true` calls validate without executing the SQL.
+`bigquery_query` accepts only `SELECT` queries and rejects scripts in both REST
+and Storage Read modes. Use `dry_run := true` to validate SQL without executing
+it.
+
 Omit `READ_ONLY` to permit supported mutations:
 
 ```sql
@@ -156,12 +156,9 @@ ATTACH 'project=my-gcp-project dataset=my_dataset'
 ```
 
 This only removes the local read-only guard; IAM still controls every remote
-operation. DuckDB external access must also be enabled. Setting
-`enable_external_access = false` prevents BigQuery authentication and API
-requests, including calls through existing attachments and prepared queries.
-Local utilities such as `bigquery_clear_cache` and
-`bigquery_normalize_geography` remain available. Start with
-[Writing & Modifying Data](writing.md), then use
+operation.
+
+Start with [Writing & Modifying Data](writing.md), then use
 [Managing Tables & Datasets](managing-tables-and-schemas.md) and
 [Executing & Monitoring Jobs](jobs-and-transfers.md) for the supported
 operations.
