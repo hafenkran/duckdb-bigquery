@@ -24,6 +24,9 @@ The dataset is created in `my-gcp-project`. Its location is controlled by
 `bq_default_location`. `CREATE OR REPLACE SCHEMA` and `ALTER SCHEMA` are not
 supported by the attached catalog.
 
+Use `CREATE SCHEMA IF NOT EXISTS bq.my_dataset` to leave an existing dataset
+unchanged. Repeating that statement succeeds.
+
 A project-scoped attachment is the most useful form for dataset management
 because the newly created dataset can then be discovered through the same
 catalog.
@@ -202,6 +205,10 @@ CREATE OR REPLACE TABLE bq.my_dataset.events (
 `CREATE OR REPLACE TABLE` first drops the existing table and then creates the
 replacement. Existing rows are deleted, and the two remote operations are not
 atomic. Use `IF NOT EXISTS` when an existing table should be retained.
+
+`IF NOT EXISTS` preserves the existing columns and rows even when the supplied
+column definition differs. `DESCRIBE` and subsequent queries reflect the
+table's actual schema in BigQuery, including when the table already existed.
 
 Column defaults and `NOT NULL` are supported. `PRIMARY KEY`, foreign keys,
 `UNIQUE`, `CHECK`, indexes, and other DuckDB constraint forms are not part of

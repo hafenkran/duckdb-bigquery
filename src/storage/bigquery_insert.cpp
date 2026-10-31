@@ -1,3 +1,4 @@
+#include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/planner/expression.hpp"
@@ -51,6 +52,7 @@ public:
     idx_t insert_count;
     BigqueryTableEntry *table;
     DataChunk varchar_chunk;
+    DataChunk ctas_chunk;
 
     shared_ptr<BigqueryProtoWriter> writer;
     vector<idx_t> target_column_indexes;
@@ -96,6 +98,13 @@ unique_ptr<GlobalSinkState> BigqueryInsert::GetGlobalSinkState(ClientContext &co
     auto bq_client = transaction.GetBigqueryClient();
     auto result = make_uniq<BigqueryInsertGlobalState>(context);
     result->table = insert_table;
+    if (!table) {
+        vector<LogicalType> target_types;
+        for (auto &column : insert_table->GetColumns().Physical()) {
+            target_types.push_back(column.GetType());
+        }
+        result->ctas_chunk.Initialize(context, target_types);
+    }
     result->writer = bq_client->CreateProtoWriter(insert_table);
 
     auto insert_columns = GetInsertColumns(*this, *insert_table);
@@ -112,7 +121,25 @@ unique_ptr<GlobalSinkState> BigqueryInsert::GetGlobalSinkState(ClientContext &co
 // ### SINK
 SinkResultType BigqueryInsert::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
     auto &gstate = sink_state->Cast<BigqueryInsertGlobalState>();
-    gstate.writer->WriteChunk(chunk, gstate.target_column_indexes);
+    if (!table) {
+        // Table creation refreshes the remote schema, which can widen scalar and nested input types.
+        auto &ctas_chunk = gstate.ctas_chunk;
+        if (ctas_chunk.ColumnCount() != chunk.ColumnCount()) {
+            throw InternalException("BigQuery CTAS input does not match the refreshed table column count");
+        }
+        ctas_chunk.Reset();
+        ctas_chunk.SetChildCardinality(chunk.size());
+        for (idx_t i = 0; i < chunk.ColumnCount(); i++) {
+            if (chunk.data[i].GetType() == ctas_chunk.data[i].GetType()) {
+                ctas_chunk.data[i].Reference(chunk.data[i]);
+            } else {
+                VectorOperations::Cast(context.client, chunk.data[i], ctas_chunk.data[i], chunk.size());
+            }
+        }
+        gstate.writer->WriteChunk(ctas_chunk, gstate.target_column_indexes);
+    } else {
+        gstate.writer->WriteChunk(chunk, gstate.target_column_indexes);
+    }
     gstate.insert_count += chunk.size();
     return SinkResultType::NEED_MORE_INPUT;
 }

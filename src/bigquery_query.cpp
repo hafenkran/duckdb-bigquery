@@ -31,6 +31,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     auto database = database_manager.GetDatabase(context, Identifier(dbname_or_project_id));
 
     auto params = BigQueryCommonParameters::ParseFromNamedParameters(input.named_parameters);
+    bool require_read_only = false;
     input.table_function.projection_pushdown = !params.use_rest_api && !params.dry_run;
     input.table_function.filter_pushdown =
         BigquerySettings::ExperimentalFilterPushdown() && !params.use_rest_api && !params.dry_run;
@@ -97,6 +98,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
             bind_data->config = bigquery_catalog.config;
             bind_data->bq_client = transaction.GetBigqueryClient();
+            require_read_only = transaction.GetAccessMode() == AccessMode::READ_ONLY;
         } else {
             auto bq_config = BigqueryConfig(dbname_or_project_id)
                                  .SetBillingProjectId(params.billing_project)
@@ -114,7 +116,8 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                                    bind_data->query_parameters,
                                                    columns,
                                                    constraints,
-                                                   bind_data->timeout_ms);
+                                                   bind_data->timeout_ms,
+                                                   require_read_only);
 
         for (auto &column : columns.Logical()) {
             names.push_back(column.GetName());
@@ -149,6 +152,7 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
 
         bind_data->bq_config = bigquery_catalog.config;
         bind_data->bq_client = transaction.GetBigqueryClient();
+        require_read_only = transaction.GetAccessMode() == AccessMode::READ_ONLY;
     } else {
         auto bq_config = BigqueryConfig(dbname_or_project_id)
                              .SetBillingProjectId(params.billing_project)
@@ -166,7 +170,8 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
                                                bind_data->query_parameters,
                                                columns,
                                                constraints,
-                                               bind_data->query_timeout_ms);
+                                               bind_data->query_timeout_ms,
+                                               require_read_only);
 
     auto arrow_schema_ptr = BigqueryUtils::BuildArrowSchema(columns);
     auto status = arrow::ExportSchema(*std::move(arrow_schema_ptr), &bind_data->schema_root.arrow_schema);

@@ -1,0 +1,173 @@
+# name: test/sql/misc/bigquery_external_access.test
+# description: Block all cloud entry points after disabling external access, including prepared statements and cached clients
+# group: [misc]
+
+require bigquery
+
+require-env BQ_GUARD_MOCK_API_ENDPOINT
+
+require-env BQ_GUARD_MOCK_GRPC_ENDPOINT
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_experimental_use_info_schema=false;
+
+statement ok
+CREATE TEMPORARY SECRET guard_secret (TYPE bigquery, SCOPE 'bq://{BQ_TEST_PROJECT}', ACCESS_TOKEN 'synthetic-test-token');
+
+statement ok
+CREATE TEMPORARY SECRET guard_oauth_secret (TYPE bigquery, SCOPE 'bq://duckdb-guard-oauth', REFRESH_TOKEN 'synthetic-refresh', CLIENT_ID 'synthetic-client', CLIENT_SECRET 'synthetic-secret', TOKEN_URI '{BQ_GUARD_MOCK_API_ENDPOINT}/token');
+
+statement ok
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET} api_endpoint={BQ_GUARD_MOCK_API_ENDPOINT} grpc_endpoint={BQ_GUARD_MOCK_GRPC_ENDPOINT}' AS guarded (TYPE bigquery, SECRET guard_secret);
+
+statement ok
+PREPARE guard_rest AS SELECT * FROM bigquery_query('guarded', 'SELECT 42 AS answer', use_rest_api := true);
+
+statement ok
+PREPARE guard_storage AS SELECT * FROM bigquery_query('guarded', 'SELECT 42 AS answer', use_rest_api := false);
+
+statement ok
+PREPARE guard_scan AS SELECT * FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.target', api_endpoint := '{BQ_GUARD_MOCK_API_ENDPOINT}', grpc_endpoint := '{BQ_GUARD_MOCK_GRPC_ENDPOINT}');
+
+statement ok
+BEGIN;
+
+# Warm the transaction's authentication cache and mark the end of allowed requests.
+query I
+SELECT answer FROM bigquery_query('guarded', 'SELECT 42 AS answer -- external_access_setup', use_rest_api := true);
+----
+42
+
+statement ok
+SET enable_external_access=false;
+
+statement error
+SELECT * FROM bigquery_query('guarded', 'SELECT 42 AS answer', use_rest_api := true);
+----
+Permission Error
+
+statement ok
+ROLLBACK;
+
+foreach rest false true
+
+statement error
+SELECT * FROM bigquery_query('guarded', 'SELECT 42 AS answer', use_rest_api := {rest});
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', 'SELECT 42 AS answer', api_endpoint := '{BQ_GUARD_MOCK_API_ENDPOINT}', grpc_endpoint := '{BQ_GUARD_MOCK_GRPC_ENDPOINT}', use_rest_api := {rest});
+----
+Permission Error
+
+endloop
+
+statement error
+EXECUTE guard_rest;
+----
+Permission Error
+
+statement error
+EXECUTE guard_storage;
+----
+Permission Error
+
+statement error
+EXECUTE guard_scan;
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_query('guarded', 'SELECT 42 AS answer', dry_run := true);
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_scan('{BQ_TEST_PROJECT}.{BQ_TEST_DATASET}.target', api_endpoint := '{BQ_GUARD_MOCK_API_ENDPOINT}', grpc_endpoint := '{BQ_GUARD_MOCK_GRPC_ENDPOINT}');
+----
+Permission Error
+
+statement error
+SELECT * FROM guarded.{BQ_TEST_DATASET}.target;
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_execute('guarded', 'SELECT 42 AS answer');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_execute('guarded', 'SELECT 42 AS answer', destination_table := '{BQ_TEST_DATASET}.target');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_execute('{BQ_TEST_PROJECT}', 'SELECT 42 AS answer', api_endpoint := '{BQ_GUARD_MOCK_API_ENDPOINT}');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_jobs('guarded');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_jobs('guarded', jobId := 'mock_query');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_jobs('{BQ_TEST_PROJECT}', api_endpoint := '{BQ_GUARD_MOCK_API_ENDPOINT}');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_load('guarded', '{BQ_TEST_DATASET}.target', source_uris := ['gs://synthetic-bucket/input.parquet']);
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_extract('guarded', source_table := '{BQ_TEST_DATASET}.target', destination_uris := ['gs://synthetic-bucket/output.parquet'], format := 'PARQUET');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_extract('{BQ_TEST_PROJECT}', source_table := '{BQ_TEST_DATASET}.target', destination_uris := ['gs://synthetic-bucket/output.parquet'], format := 'PARQUET', api_endpoint := '{BQ_GUARD_MOCK_API_ENDPOINT}');
+----
+Permission Error
+
+statement error
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET} api_endpoint={BQ_GUARD_MOCK_API_ENDPOINT} grpc_endpoint={BQ_GUARD_MOCK_GRPC_ENDPOINT}' AS another (TYPE bigquery, SECRET guard_secret);
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_query('duckdb-guard-oauth', 'SELECT 42 AS answer', api_endpoint := '{BQ_GUARD_MOCK_API_ENDPOINT}', use_rest_api := true);
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_attach('duckdb-guard-oauth.{BQ_TEST_DATASET}');
+----
+Permission Error
+
+statement error
+SELECT * FROM bigquery_load('duckdb-guard-oauth', '{BQ_TEST_DATASET}.target', source_uris := ['gs://synthetic-bucket/input.parquet']);
+----
+Permission Error
+
+query I
+SELECT success FROM bigquery_clear_cache();
+----
+true
+
+query I
+SELECT bigquery_normalize_geography('POINT(1 2)'::GEOMETRY('OGC:CRS84')) IS NOT NULL;
+----
+true

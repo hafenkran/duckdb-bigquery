@@ -7,6 +7,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Made `CREATE SCHEMA IF NOT EXISTS` succeed when the BigQuery dataset already
+  exists.
+
+- Preserved remote table schemas in the attached catalog after
+  `CREATE TABLE IF NOT EXISTS`.
+
+- Rejected mutating statements and scripts passed to `bigquery_query` through
+  read-only attachments in both REST and Storage Read modes.
+
+- Enforced DuckDB's external access setting before BigQuery authentication and
+  API requests, including calls using existing attachments and prepared queries.
+
 - Reported Storage Write API stream errors and missing commit confirmations as
   INSERT/CTAS failures, and prevented repeated gRPC shutdown during error cleanup.
 

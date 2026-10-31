@@ -1,0 +1,33 @@
+# name: test/sql/storage/attach_read_only_query_mock.test
+# description: Run the shared READ_ONLY query assertions against local REST and Storage Read mocks
+# group: [storage]
+
+require bigquery
+
+require-env BQ_GUARD_MOCK_API_ENDPOINT
+
+require-env BQ_GUARD_MOCK_GRPC_ENDPOINT
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_experimental_use_info_schema=false;
+
+statement ok
+CREATE TEMPORARY SECRET guard_secret (TYPE bigquery, SCOPE 'bq://{BQ_TEST_PROJECT}', ACCESS_TOKEN 'synthetic-test-token');
+
+statement ok
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET} api_endpoint={BQ_GUARD_MOCK_API_ENDPOINT} grpc_endpoint={BQ_GUARD_MOCK_GRPC_ENDPOINT}' AS bq_ro (TYPE bigquery, SECRET guard_secret, READ_ONLY);
+
+statement ok
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET} api_endpoint={BQ_GUARD_MOCK_API_ENDPOINT} grpc_endpoint={BQ_GUARD_MOCK_GRPC_ENDPOINT}' AS bq_rw (TYPE bigquery, SECRET guard_secret);
+
+include test/sql/storage/attach_read_only_queries.inc
+
+statement ok
+DETACH bq_ro;
+
+statement ok
+DETACH bq_rw;

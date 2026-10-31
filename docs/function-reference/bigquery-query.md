@@ -40,6 +40,10 @@ SELECT *
 When `project_or_catalog` names an attached catalog, billing and endpoints are
 taken from the attachment. Conflicting per-call values are rejected.
 
+For a `READ_ONLY` attachment, only `SELECT` queries are executed. Mutating
+statements and scripts are rejected in both REST and Storage Read modes.
+With `dry_run := true`, other statement types can be validated without execution.
+
 Positional values bind to `?` placeholders. Cast `NULL` to a concrete type.
 List values are not supported as query parameters.
 

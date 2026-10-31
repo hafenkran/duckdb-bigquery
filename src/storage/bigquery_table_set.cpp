@@ -28,8 +28,7 @@ optional_ptr<CatalogEntry> BigqueryTableSet::CreateTable(ClientContext &context,
     table_ref.table_id = create_table_info.GetQualifiedName().Name().GetIdentifierName();
 
     bqclient->CreateTable(create_table_info, table_ref);
-    auto table_entry = make_shared_ptr<BigqueryTableEntry>(catalog, schema, info.Base());
-    return CreateEntry(transaction, std::move(table_entry));
+    return RefreshTable(context, table_ref.table_id);
 }
 
 optional_ptr<CatalogEntry> BigqueryTableSet::RefreshTable(ClientContext &context, const string &table_name) {

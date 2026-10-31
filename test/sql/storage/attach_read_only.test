@@ -68,6 +68,14 @@ DROP TABLE bq_ro.{BQ_TEST_DATASET}.read_only_guard;
 read-only
 
 statement ok
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS bq_rw (TYPE bigquery);
+
+include test/sql/storage/attach_read_only_queries.inc
+
+statement ok
+DETACH bq_rw;
+
+statement ok
 DETACH bq_ro;
 
 statement ok
