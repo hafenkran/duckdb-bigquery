@@ -33,7 +33,6 @@ endif
 # # ---------------------------------------------
 
 
-
 # Include the Makefile from extension-ci-tools
 include extension-ci-tools/makefiles/duckdb_extension.Makefile
 
@@ -53,3 +52,12 @@ lint:
 cmake-format:
 	cmake-format -c $(MAKEFILE_DIR)/.cmake-format.yaml \
 		-i $(MAKEFILE_DIR)/CMakeLists.txt $(MAKEFILE_DIR)/external/CMakeLists.txt
+
+TEST_BUILD_DIR ?= build/debug
+TEST_SUITE ?= all
+TEST_ARGS ?=
+
+# Reuse existing binaries; build separately with debug or release.
+.PHONY: test-mock
+test-mock:
+	uv run $(PROJ_DIR)test/python/run_mock_tests.py --build-dir "$(TEST_BUILD_DIR)" --suite "$(TEST_SUITE)" $(TEST_ARGS)
