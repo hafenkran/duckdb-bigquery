@@ -1,0 +1,32 @@
+# name: test/sql/storage/attach_create_table_as_types_mock.test
+# description: Cast CTAS input, including nested types, to the refreshed remote schema before Storage Write
+# group: [storage]
+
+include test/sql/storage/ddl_idempotence_setup.inc
+
+query I
+CREATE TABLE ddl.{BQ_TEST_DATASET}.ctas_nested AS
+SELECT i::INTEGER AS i, (i + 0.5)::FLOAT AS f,
+       [i::INTEGER, (i + 1)::INTEGER] AS ints,
+       {'n': i::INTEGER, 'f': (i + 0.5)::FLOAT} AS nested,
+       [{'n': i::INTEGER}] AS records,
+       'duck'::VARCHAR AS label, NULL::INTEGER AS missing
+FROM range(2) t(i);
+----
+2
+
+query IRIIRIT rowsort
+SELECT i, f, ints[1], nested.n, nested.f, records[1].n, label
+FROM ddl.{BQ_TEST_DATASET}.ctas_nested;
+----
+0	0.5	0	0	0.5	0	duck
+1	1.5	1	1	1.5	1	duck
+
+query I
+CREATE TABLE ddl.{BQ_TEST_DATASET}.ctas_chunks AS
+SELECT i::INTEGER AS i FROM range(4097) t(i);
+----
+4097
+
+statement ok
+DETACH ddl;
