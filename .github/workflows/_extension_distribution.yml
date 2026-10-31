@@ -472,6 +472,12 @@ jobs:
             build/${{ inputs.build_type }}/src/**
             build/${{ inputs.build_type }}/extension/**
             build/${{ inputs.build_type }}/vcpkg_installed/**
+            !build/${{ inputs.build_type }}/**/*.a
+            !build/${{ inputs.build_type }}/**/*.lib
+            !build/${{ inputs.build_type }}/**/*.o
+            !build/${{ inputs.build_type }}/**/*.obj
+            !build/${{ inputs.build_type }}/**/*.pdb
+            !build/${{ inputs.build_type }}/**/*.dSYM/**
 
       - id: "auth"
         if: ${{ inputs.skip_tests == false && matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
@@ -751,10 +757,17 @@ jobs:
           if-no-files-found: error
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: |
+            build/${{ inputs.build_type }}/duckdb
             build/${{ inputs.build_type }}/test/**
             build/${{ inputs.build_type }}/src/**
             build/${{ inputs.build_type }}/extension/**
             build/${{ inputs.build_type }}/vcpkg_installed/**
+            !build/${{ inputs.build_type }}/**/*.a
+            !build/${{ inputs.build_type }}/**/*.lib
+            !build/${{ inputs.build_type }}/**/*.o
+            !build/${{ inputs.build_type }}/**/*.obj
+            !build/${{ inputs.build_type }}/**/*.pdb
+            !build/${{ inputs.build_type }}/**/*.dSYM/**
 
       - id: "auth"
         if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}
@@ -1046,10 +1059,17 @@ jobs:
           if-no-files-found: error
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: |
+            build/${{ inputs.build_type }}/duckdb.exe
             build/${{ inputs.build_type }}/test/**
             build/${{ inputs.build_type }}/src/**
             build/${{ inputs.build_type }}/extension/**
             build/${{ inputs.build_type }}/vcpkg_installed/**
+            !build/${{ inputs.build_type }}/**/*.a
+            !build/${{ inputs.build_type }}/**/*.lib
+            !build/${{ inputs.build_type }}/**/*.o
+            !build/${{ inputs.build_type }}/**/*.obj
+            !build/${{ inputs.build_type }}/**/*.pdb
+            !build/${{ inputs.build_type }}/**/*.dSYM/**
 
       - id: "auth"
         if: ${{ inputs.skip_tests == false && env.HAS_GCP_CREDENTIALS == 'true' }}

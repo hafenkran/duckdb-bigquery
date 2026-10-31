@@ -217,10 +217,10 @@ jobs:
             -v `pwd`:/duckdb_build_dir \
             duckdb/${{ matrix.duckdb_arch }} make test_${{ inputs.build_type }}
 
-      - name: Skip tests without GCP credentials
+      - name: Skip live BigQuery tests without GCP credentials
         if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS != 'true' }}
         run: |
-          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
+          echo "Skipping live BigQuery tests because GCP credentials are not available for this run."
 
   macos:
     name: MacOS tests
@@ -260,14 +260,27 @@ jobs:
           repository: ${{ inputs.override_ci_tools_repository }}
 
       - uses: actions/download-artifact@v4
-        if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        if: ${{ matrix.osx_build_arch == 'arm64' }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: build/${{ inputs.build_type }}
 
       - name: Restore test runner permissions
-        if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
-        run: chmod +x build/${{ inputs.build_type }}/test/unittest
+        if: ${{ matrix.osx_build_arch == 'arm64' }}
+        run: chmod +x build/${{ inputs.build_type }}/test/unittest build/${{ inputs.build_type }}/duckdb
+
+      - uses: actions/setup-python@v5
+        if: ${{ matrix.osx_build_arch == 'arm64' }}
+        with:
+          python-version: '3.12'
+
+      - name: Run local BigQuery mock tests
+        if: ${{ matrix.osx_build_arch == 'arm64' }}
+        env:
+          DYLD_LIBRARY_PATH: ${{ github.workspace }}/build/${{ inputs.build_type }}/src
+        run: |
+          python -m pip install uv
+          make test-mock TEST_BUILD_DIR=build/${{ inputs.build_type }}
 
       - id: auth
         if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
@@ -286,10 +299,10 @@ jobs:
           eval "$(jq -r '.test_env_variables // {} | to_entries[] | "export \(.key)=\(.value | @sh)"' <<< '${{inputs.test_config}}')"
           make test_${{ inputs.build_type }}
 
-      - name: Skip tests without GCP credentials
+      - name: Skip live BigQuery tests without GCP credentials
         if: ${{ matrix.osx_build_arch == 'arm64' && env.HAS_GCP_CREDENTIALS != 'true' }}
         run: |
-          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
+          echo "Skipping live BigQuery tests because GCP credentials are not available for this run."
 
   windows:
     name: Windows tests
@@ -335,10 +348,22 @@ jobs:
           repository: ${{ inputs.override_ci_tools_repository }}
 
       - uses: actions/download-artifact@v4
-        if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
+        if: ${{ env.HAS_GCP_CREDENTIALS == 'true' || matrix.duckdb_arch == 'windows_amd64' }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: build/${{ inputs.build_type }}
+
+      - uses: actions/setup-python@v5
+        if: ${{ matrix.duckdb_arch == 'windows_amd64' }}
+        with:
+          python-version: '3.12'
+
+      - name: Run local BigQuery mock tests
+        if: ${{ matrix.duckdb_arch == 'windows_amd64' }}
+        shell: bash
+        run: |
+          python -m pip install uv
+          make test-mock TEST_BUILD_DIR=build/${{ inputs.build_type }}
 
       - id: auth
         if: ${{ env.HAS_GCP_CREDENTIALS == 'true' }}
@@ -362,8 +387,8 @@ jobs:
           eval "$(jq -r '.test_env_variables // {} | to_entries[] | "export \(.key)=\(.value | @sh)"' <<< '${{inputs.test_config}}')"
           make test_${{ inputs.build_type }} GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ROOTS_FILE"
 
-      - name: Skip tests without GCP credentials
+      - name: Skip live BigQuery tests without GCP credentials
         if: ${{ env.HAS_GCP_CREDENTIALS != 'true' }}
         shell: bash
         run: |
-          echo "Skipping BigQuery tests because GCP credentials are not available for this run."
+          echo "Skipping live BigQuery tests because GCP credentials are not available for this run."

@@ -29,7 +29,7 @@ class TestBinaries:
 
     @property
     def shell(self):
-        return self.build_dir / "duckdb"
+        return self.build_dir / ("duckdb.exe" if os.name == "nt" else "duckdb")
 
     @property
     def extension(self):
@@ -37,7 +37,7 @@ class TestBinaries:
 
     @property
     def unittest(self):
-        return self.build_dir / "test/unittest"
+        return self.build_dir / "test" / ("unittest.exe" if os.name == "nt" else "unittest")
 
 
 BINARIES = TestBinaries()
@@ -156,7 +156,7 @@ class LocalService:
 
     def run_sqllogic(self, filename, extra):
         result = subprocess.run(
-            [str(BINARIES.unittest), str(ROOT / "test/sql" / filename)],
+            [str(BINARIES.unittest), "--test-dir", str(ROOT), (ROOT / "test/sql" / filename).as_posix()],
             cwd=ROOT,
             env=self.environment(extra),
             capture_output=True,
