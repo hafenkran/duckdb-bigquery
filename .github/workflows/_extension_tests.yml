@@ -161,14 +161,27 @@ jobs:
             ./extension-ci-tools/docker/${{ matrix.duckdb_arch }}
 
       - uses: actions/download-artifact@v4
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && (env.HAS_GCP_CREDENTIALS == 'true' || matrix.duckdb_arch == 'linux_amd64') }}
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: build/${{ inputs.build_type }}
 
       - name: Restore test runner permissions
-        if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}
-        run: chmod +x build/${{ inputs.build_type }}/test/unittest
+        if: ${{ matrix.duckdb_arch != 'linux_arm64' && (env.HAS_GCP_CREDENTIALS == 'true' || matrix.duckdb_arch == 'linux_amd64') }}
+        run: chmod +x build/${{ inputs.build_type }}/test/unittest build/${{ inputs.build_type }}/duckdb
+
+      - uses: actions/setup-python@v5
+        if: ${{ matrix.duckdb_arch == 'linux_amd64' }}
+        with:
+          python-version: '3.12'
+
+      - name: Run local BigQuery mock tests
+        if: ${{ matrix.duckdb_arch == 'linux_amd64' }}
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/build/${{ inputs.build_type }}/src
+        run: |
+          python -m pip install uv
+          make test-mock TEST_BUILD_DIR=build/${{ inputs.build_type }}
 
       - name: Create env file for docker
         if: ${{ matrix.duckdb_arch != 'linux_arm64' && env.HAS_GCP_CREDENTIALS == 'true' }}

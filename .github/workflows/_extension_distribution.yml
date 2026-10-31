@@ -467,6 +467,7 @@ jobs:
           if-no-files-found: error
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-test-bundle-${{matrix.duckdb_arch}}${{inputs.artifact_postfix}}
           path: |
+            build/${{ inputs.build_type }}/duckdb
             build/${{ inputs.build_type }}/test/**
             build/${{ inputs.build_type }}/src/**
             build/${{ inputs.build_type }}/extension/**
