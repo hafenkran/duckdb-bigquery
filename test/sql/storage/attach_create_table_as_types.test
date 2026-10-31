@@ -1,0 +1,63 @@
+# name: test/sql/storage/attach_create_table_as_types.test
+# description: Cast CTAS input, including nested types, to the refreshed remote schema before Storage Write
+# group: [storage]
+
+require bigquery
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET}' AS ctas_types (TYPE bigquery);
+
+statement ok
+DROP TABLE IF EXISTS ctas_types.{BQ_TEST_DATASET}.ctas_type_nested;
+
+statement ok
+DROP TABLE IF EXISTS ctas_types.{BQ_TEST_DATASET}.ctas_type_chunks;
+
+query I
+CREATE TABLE ctas_types.{BQ_TEST_DATASET}.ctas_type_nested AS
+SELECT i::INTEGER AS i, (i + 0.5)::FLOAT AS f,
+       [i::INTEGER, (i + 1)::INTEGER] AS ints,
+       {'n': i::INTEGER, 'f': (i + 0.5)::FLOAT} AS nested,
+       [{'n': i::INTEGER}] AS records,
+       'duck'::VARCHAR AS label, NULL::INTEGER AS missing
+FROM range(2) t(i);
+----
+2
+
+query IRIIRITI rowsort
+SELECT i, f, ints[1], nested.n, nested.f, records[1].n, label, missing IS NULL
+FROM ctas_types.{BQ_TEST_DATASET}.ctas_type_nested;
+----
+0	0.5	0	0	0.5	0	duck	true
+1	1.5	1	1	1.5	1	duck	true
+
+query TTTTTTT
+SELECT typeof(i), typeof(f), typeof(ints), typeof(nested.n), typeof(nested.f), typeof(records[1].n), typeof(missing)
+FROM ctas_types.{BQ_TEST_DATASET}.ctas_type_nested LIMIT 1;
+----
+BIGINT	DOUBLE	BIGINT[]	BIGINT	DOUBLE	BIGINT	BIGINT
+
+query I
+CREATE TABLE ctas_types.{BQ_TEST_DATASET}.ctas_type_chunks AS
+SELECT i::INTEGER AS i FROM range(4097) t(i);
+----
+4097
+
+query IIII
+SELECT count(*), min(i), max(i), sum(i)
+FROM ctas_types.{BQ_TEST_DATASET}.ctas_type_chunks;
+----
+4097	0	4096	8390656
+
+statement ok
+DROP TABLE ctas_types.{BQ_TEST_DATASET}.ctas_type_nested;
+
+statement ok
+DROP TABLE ctas_types.{BQ_TEST_DATASET}.ctas_type_chunks;
+
+statement ok
+DETACH ctas_types;
