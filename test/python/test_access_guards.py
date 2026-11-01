@@ -9,12 +9,27 @@ Use run_mock_tests.py --suite access with an existing matching build. All creden
 are synthetic; metadata, OAuth and Storage Read endpoints run on loopback.
 """
 
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from mock_bigquery import DATASET, PROJECT, LocalBigQuery
 
 
 class SQLLogicTests(unittest.TestCase):
+    def test_sqllogic_from_relocated_checkout(self):
+        with (
+            tempfile.TemporaryDirectory(prefix="bigquery relocated checkout ") as directory,
+            LocalBigQuery() as service,
+        ):
+            root = Path(directory)
+            test_file = root / "test/sql/misc/relocated.test"
+            test_file.parent.mkdir(parents=True)
+            test_file.write_text("query I\nSELECT 42\n----\n42\n", encoding="utf-8")
+            with patch("mock_bigquery.ROOT", root):
+                service.run_sqllogic("misc/relocated.test", {})
+
     def run_test_file(self, service, test_file):
         return service.run_sqllogic(
             test_file,

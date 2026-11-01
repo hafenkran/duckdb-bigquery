@@ -155,8 +155,9 @@ class LocalService:
         )
 
     def run_sqllogic(self, filename, extra):
+        # Relative names remain discoverable when CI binaries move out of their build container.
         result = subprocess.run(
-            [str(BINARIES.unittest), "--test-dir", str(ROOT), (ROOT / "test/sql" / filename).as_posix()],
+            [str(BINARIES.unittest), "--test-dir", str(ROOT), (Path("test/sql") / filename).as_posix()],
             cwd=ROOT,
             env=self.environment(extra),
             capture_output=True,
