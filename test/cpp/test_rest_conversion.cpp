@@ -164,3 +164,45 @@ TEST_CASE("REST ISO datetimes and timestamp NULLs retain their types and precisi
     RequireRestValue(R"("-1")", Value::TIMESTAMPTZ(timestamp_tz_t(-1)));
     RequireRestValue("null", Value(LogicalType::TIMESTAMP_TZ));
 }
+
+TEST_CASE("REST timestamps preserve microseconds inside lists and records", "[bigquery][rest][timestamp]") {
+    const auto type = LogicalType::STRUCT({{Identifier("instant"), LogicalType::TIMESTAMP},
+                                           {Identifier("values"), LogicalType::LIST(LogicalType::TIMESTAMP)}});
+    RequireRestValue(
+        R"([{"v":{"f":[{"v":"-1"},{"v":[{"v":"-62135596800000000"},{"v":null},{"v":"253402300799999999"}]}]}},{"v":null},{"v":{"f":[{"v":null},{"v":[]}]}}])",
+        Value::LIST(type,
+                    {Value::STRUCT(type,
+                                   {Value::TIMESTAMP(timestamp_t(-1)),
+                                    Value::LIST(LogicalType::TIMESTAMP,
+                                                {Value::TIMESTAMP(timestamp_t(-62135596800000000LL)),
+                                                 Value(LogicalType::TIMESTAMP),
+                                                 Value::TIMESTAMP(timestamp_t(253402300799999999LL))})}),
+                     Value(type),
+                     Value::STRUCT(type, {Value(LogicalType::TIMESTAMP), Value::LIST(LogicalType::TIMESTAMP, {})})}));
+    RequireRestValue("null", Value(LogicalType::LIST(LogicalType::TIMESTAMP)));
+}
+
+TEST_CASE("REST row batches retain timestamp precision with offsets and NULLs", "[bigquery][rest][timestamp]") {
+    google::protobuf::RepeatedPtrField<google::protobuf::Struct> rows;
+    *rows.Add() = ParseRestJSON(R"({"f":[{"v":"skip"},{"v":"skip"},{"v":"skip"}]})").struct_value();
+    *rows.Add() =
+        ParseRestJSON(R"({"f":[{"v":"-1"},{"v":"2024-01-15T12:34:56.123456"},{"v":"before"}]})").struct_value();
+    *rows.Add() = ParseRestJSON(R"({"f":[{"v":"253402300799999999"},{"v":null},{"v":"upper"}]})").struct_value();
+    *rows.Add() = ParseRestJSON(R"({"f":[{"v":null},{"v":"0001-01-01T00:00:00"},{"v":"missing"}]})").struct_value();
+    const vector<LogicalType> types = {LogicalType::TIMESTAMP, LogicalType::TIMESTAMP, LogicalType::VARCHAR};
+    DataChunk output;
+    output.Initialize(Allocator::DefaultAllocator(), types);
+    BigqueryUtils::FillChunkFromRestRows(rows, 1, 3, types, output);
+    REQUIRE(output.size() == 3);
+    CHECK(Value::NotDistinctFrom(output.GetValue(0, 0), Value::TIMESTAMP(timestamp_t(-1))));
+    CHECK(Value::NotDistinctFrom(output.GetValue(1, 0), Value::TIMESTAMP(2024, 1, 15, 12, 34, 56, 123456)));
+    CHECK(Value::NotDistinctFrom(output.GetValue(2, 0), Value("before")));
+    CHECK(Value::NotDistinctFrom(output.GetValue(0, 1), Value::TIMESTAMP(timestamp_t(253402300799999999LL))));
+    CHECK(output.GetValue(1, 1).IsNull());
+    CHECK(output.GetValue(1, 1).type() == LogicalType::TIMESTAMP);
+    CHECK(Value::NotDistinctFrom(output.GetValue(2, 1), Value("upper")));
+    CHECK(output.GetValue(0, 2).IsNull());
+    CHECK(output.GetValue(0, 2).type() == LogicalType::TIMESTAMP);
+    CHECK(Value::NotDistinctFrom(output.GetValue(1, 2), Value::TIMESTAMP(timestamp_t(-62135596800000000LL))));
+    CHECK(Value::NotDistinctFrom(output.GetValue(2, 2), Value("missing")));
+}
