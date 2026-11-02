@@ -3,7 +3,9 @@
 
 #include "bigquery_utils.hpp"
 #include "duckdb/common/allocator.hpp"
+#include "duckdb/common/exception/conversion_exception.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
+#include "duckdb/common/types/timestamp.hpp"
 
 #include "google/protobuf/util/json_util.h"
 
@@ -101,4 +103,64 @@ TEST_CASE("REST row batches preserve NULL array elements across rows", "[bigquer
     CHECK(output.GetValue(0, 2).IsNull());
     CHECK(output.GetValue(0, 2).type() == types[0]);
     CHECK(Value::NotDistinctFrom(output.GetValue(1, 2), Value("null array")));
+}
+
+TEST_CASE("REST timestamps preserve signed integer microseconds", "[bigquery][rest][timestamp]") {
+    const pair<const char *, int64_t> cases[] = {{"-62135596800000000", -62135596800000000LL},
+                                                 {"-62135596799999999", -62135596799999999LL},
+                                                 {"-1000001", -1000001},
+                                                 {"-1000000", -1000000},
+                                                 {"-1", -1},
+                                                 {"-0", 0},
+                                                 {"0", 0},
+                                                 {"1", 1},
+                                                 {"100000", 100000},
+                                                 {"120000", 120000},
+                                                 {"123000", 123000},
+                                                 {"123400", 123400},
+                                                 {"123450", 123450},
+                                                 {"123456", 123456},
+                                                 {"1123456", 1123456},
+                                                 {"253402300799999998", 253402300799999998LL},
+                                                 {"253402300799999999", 253402300799999999LL}};
+    for (const auto &test : cases) {
+        INFO(test.first);
+        RequireRestValue("\"" + string(test.first) + "\"", Value::TIMESTAMP(timestamp_t(test.second)));
+    }
+}
+
+TEST_CASE("REST timestamp microseconds reject malformed and out-of-range values", "[bigquery][rest][timestamp]") {
+    const char *cases[] = {"",
+                           "-",
+                           "+",
+                           "1.5",
+                           "0.000001",
+                           "1e6",
+                           "NaN",
+                           "inf",
+                           "1x",
+                           "1-2",
+                           " 1",
+                           "1 ",
+                           "9223372036854775808",
+                           "-9223372036854775809",
+                           "-62135596800000001",
+                           "253402300800000000"};
+    for (const auto &test : cases) {
+        INFO(test);
+        auto value = ParseRestJSON("\"" + string(test) + "\"");
+        REQUIRE_THROWS_AS(BigqueryUtils::RestValueToValue(value, LogicalType::TIMESTAMP), ConversionException);
+    }
+    REQUIRE_THROWS_AS(BigqueryUtils::RestValueToValue(ParseRestJSON("1"), LogicalType::TIMESTAMP), ConversionException);
+}
+
+TEST_CASE("REST ISO datetimes and timestamp NULLs retain their types and precision", "[bigquery][rest][timestamp]") {
+    RequireRestValue(R"("0001-01-01T00:00:00.000001")", Value::TIMESTAMP(timestamp_t(-62135596799999999LL)));
+    RequireRestValue(R"("2024-01-15T12:34:56.123456")", Value::TIMESTAMP(2024, 1, 15, 12, 34, 56, 123456));
+    RequireRestValue(R"("2024-01-15 12:34:56.123456")", Value::TIMESTAMP(2024, 1, 15, 12, 34, 56, 123456));
+    RequireRestValue(R"("2024-01-15")", Value::TIMESTAMP(2024, 1, 15, 0, 0, 0, 0));
+    RequireRestValue(R"("9999-12-31T23:59:59.999999")", Value::TIMESTAMP(timestamp_t(253402300799999999LL)));
+    RequireRestValue("null", Value(LogicalType::TIMESTAMP));
+    RequireRestValue(R"("-1")", Value::TIMESTAMPTZ(timestamp_tz_t(-1)));
+    RequireRestValue("null", Value(LogicalType::TIMESTAMP_TZ));
 }

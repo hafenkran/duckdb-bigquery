@@ -1685,6 +1685,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::QueryResponse> BigqueryClie
     *query_request.mutable_request_id() = GenerateJobId();
     *query_request.mutable_default_dataset() = dataset_ref;
     query_request.mutable_use_legacy_sql()->set_value(false);
+    query_request.mutable_format_options()->set_use_int64_timestamp(true);
     // query_request.mutable_max_results()->set_value(3);
     query_request.set_dry_run(dry_run);
 
@@ -2006,6 +2007,7 @@ google::cloud::StatusOr<google::cloud::bigquery::v2::GetQueryResultsResponse> Bi
     get_results_request.set_project_id(job_ref.project_id());
     get_results_request.set_job_id(job_ref.job_id());
     get_results_request.mutable_timeout_ms()->set_value(timeout_ms);
+    get_results_request.mutable_format_options()->set_use_int64_timestamp(true);
     // get_results_request.mutable_max_results()->set_value(3);
 
     if (job_ref.has_location()) {
