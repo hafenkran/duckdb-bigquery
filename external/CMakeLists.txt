@@ -45,8 +45,7 @@ set(GCP_CMAKE_ARGS
     -DCMAKE_POLICY_DEFAULT_CMP0177=NEW
     -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
     -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
-    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-)
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON)
 
 # Add Windows-specific runtime library setting
 if(WIN32)
@@ -56,10 +55,14 @@ endif()
 ExternalProject_Add(
     gcp
     URL ${CMAKE_CURRENT_SOURCE_DIR}/vendor/google-cloud-cpp-2.47.1.zip
-    URL_HASH SHA256=3e82f5594c54c795b4fc6117f78e1bd5de98f435229e0f0ed4a6be45153485ad
+    URL_HASH
+        SHA256=3e82f5594c54c795b4fc6117f78e1bd5de98f435229e0f0ed4a6be45153485ad
     PATCH_COMMAND
-        patch -p1 -i ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-bigquery-load-and-auth.patch
-        COMMAND patch -p1 -i ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-curl-ssl-options.patch
+        patch -p1 -i
+        ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-bigquery-load-and-auth.patch
+    COMMAND
+        patch -p1 -i
+        ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-curl-ssl-options.patch
     # CONFIGURE_HANDLED_BY_BUILD TRUE
     CMAKE_ARGS ${GCP_CMAKE_ARGS}
                -DBUILD_TESTING=OFF
@@ -84,3 +87,15 @@ ExternalProject_Add(
                # Fix for macOS cross-compilation
                -DBUILD_SHARED_LIBS=OFF
                -DCMAKE_FIND_LIBRARY_SUFFIXES=".a")
+
+# Apply separately so an existing checkout does not reapply its older patches.
+set(GCP_TIMESTAMP_FORMAT_PATCH
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-bigquery-timestamp-format.patch
+)
+ExternalProject_Add_Step(
+    gcp timestamp_format_patch
+    COMMAND patch -p1 -i ${GCP_TIMESTAMP_FORMAT_PATCH}
+    WORKING_DIRECTORY <SOURCE_DIR>
+    DEPENDEES patch
+    DEPENDERS configure
+    DEPENDS ${GCP_TIMESTAMP_FORMAT_PATCH})
