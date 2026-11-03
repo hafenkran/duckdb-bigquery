@@ -1,0 +1,14 @@
+--- a/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc
++++ b/google/cloud/bigquerycontrol/v2/internal/job_rest_stub.cc
+@@ -155,6 +155,11 @@
+        (request.has_timeout_ms() ? std::to_string(request.timeout_ms().value())
+                                  : "")});
+   query_params.push_back({"location", request.location()});
++  if (request.has_format_options()) {
++    query_params.push_back(
++        {"formatOptions.useInt64Timestamp",
++         request.format_options().use_int64_timestamp() ? "true" : "false"});
++  }
+   query_params =
+       rest_internal::TrimEmptyQueryParameters(std::move(query_params));
+   return rest_internal::Get<
