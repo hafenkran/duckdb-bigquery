@@ -92,10 +92,13 @@ ExternalProject_Add(
 set(GCP_TIMESTAMP_FORMAT_PATCH
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/google-cloud-cpp-2.47.1-bigquery-timestamp-format.patch
 )
+set(GCP_PATCH_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/apply_patch.cmake)
 ExternalProject_Add_Step(
     gcp timestamp_format_patch
-    COMMAND patch -p1 -i ${GCP_TIMESTAMP_FORMAT_PATCH}
+    COMMAND
+        ${CMAKE_COMMAND} "-DSOURCE_DIR=<SOURCE_DIR>"
+        "-DPATCH_FILE=${GCP_TIMESTAMP_FORMAT_PATCH}" -P "${GCP_PATCH_SCRIPT}"
     WORKING_DIRECTORY <SOURCE_DIR>
     DEPENDEES patch
     DEPENDERS configure
-    DEPENDS ${GCP_TIMESTAMP_FORMAT_PATCH})
+    DEPENDS ${GCP_TIMESTAMP_FORMAT_PATCH} ${GCP_PATCH_SCRIPT})
