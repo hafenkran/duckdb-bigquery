@@ -1,0 +1,20 @@
+# name: test/sql/functions/function_bigquery_query_rest_timestamps.test
+# description: Read exact REST timestamps through inline, polled and paginated local responses
+# group: [functions]
+
+require bigquery
+
+require-env BQ_REST_TIMESTAMP_MOCK_API_ENDPOINT
+
+statement ok
+CREATE TEMPORARY SECRET rest_timestamp_secret (TYPE bigquery, SCOPE 'bq://duckdb-rest-timestamps', ACCESS_TOKEN 'synthetic-test-token');
+
+statement ok
+CREATE MACRO rest_timestamp_query(query_text) AS TABLE
+SELECT * FROM bigquery_query('duckdb-rest-timestamps', query_text, use_rest_api := true,
+                            api_endpoint := '{BQ_REST_TIMESTAMP_MOCK_API_ENDPOINT}');
+
+include test/sql/functions/rest_timestamp_queries.inc
+
+statement ok
+DROP MACRO rest_timestamp_query;

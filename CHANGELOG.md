@@ -7,6 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Read REST query timestamps before 1970 and at the BigQuery range boundaries
+  with exact microsecond precision, including paginated and nested results.
+
 - Made `CREATE SCHEMA IF NOT EXISTS` succeed when the BigQuery dataset already
   exists.
 

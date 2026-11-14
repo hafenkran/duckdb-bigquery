@@ -12,11 +12,16 @@ import unittest
 from mock_bigquery import BINARIES
 import test_access_guards
 import test_ddl_idempotence
+import test_rest_timestamps
+import test_sdk_patches
 import test_storage_write_commit
 
-
 SUITES = {
-    "sql": (test_access_guards.SQLLogicTests, test_ddl_idempotence.DDLIdempotenceTests),
+    "sql": (
+        test_access_guards.SQLLogicTests,
+        test_ddl_idempotence.DDLIdempotenceTests,
+        test_rest_timestamps.RestTimestampTests,
+    ),
     "access": (
         test_access_guards.SQLLogicTests,
         test_access_guards.ExternalAccessTests,
@@ -24,6 +29,8 @@ SUITES = {
     ),
     "ddl": (test_ddl_idempotence.DDLIdempotenceTests,),
     "write": (test_storage_write_commit.StorageWriteCommitTests,),
+    "rest": (test_rest_timestamps.RestTimestampTests,),
+    "sdk-patches": (test_sdk_patches.SDKPatchTests,),
 }
 
 
@@ -41,7 +48,7 @@ def main():
     if options.suite == "ctas":
         classes = SUITES["ddl"]
     elif options.suite == "all":
-        classes = (*SUITES["access"], *SUITES["ddl"], *SUITES["write"])
+        classes = (*SUITES["access"], *SUITES["ddl"], *SUITES["write"], *SUITES["rest"], *SUITES["sdk-patches"])
     else:
         classes = SUITES[options.suite]
     tests = [test for cls in classes for test in loader.loadTestsFromTestCase(cls)]
@@ -56,7 +63,16 @@ def main():
 
     required = set()
     for test in tests:
-        if isinstance(test, (test_access_guards.SQLLogicTests, test_ddl_idempotence.DDLIdempotenceTests)):
+        if isinstance(test, test_sdk_patches.SDKPatchTests):
+            continue
+        if isinstance(
+            test,
+            (
+                test_access_guards.SQLLogicTests,
+                test_ddl_idempotence.DDLIdempotenceTests,
+                test_rest_timestamps.RestTimestampTests,
+            ),
+        ):
             required.add(BINARIES.unittest)
         else:
             required.update((BINARIES.shell, BINARIES.extension))

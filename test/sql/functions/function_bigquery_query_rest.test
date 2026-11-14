@@ -85,6 +85,15 @@ SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', '
 ----
 2024-01-15 12:34:56
 
+statement ok
+CREATE MACRO rest_timestamp_query(query_text) AS TABLE
+SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', query_text, use_rest_api := true);
+
+include test/sql/functions/rest_timestamp_queries.inc
+
+statement ok
+DROP MACRO rest_timestamp_query;
+
 # Type coverage: BYTES (returned as base64)
 query I
 SELECT * FROM bigquery_query('{BQ_TEST_PROJECT}', '

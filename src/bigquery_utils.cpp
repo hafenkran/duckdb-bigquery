@@ -1,4 +1,5 @@
 #include <arrow/api.h>
+#include <charconv>
 #include <iostream>
 #include <limits>
 #include <regex>
@@ -8,8 +9,10 @@
 
 #include "duckdb.hpp"
 #include "duckdb/common/enums/catalog_type.hpp"
+#include "duckdb/common/exception/conversion_exception.hpp"
 #include "duckdb/common/index_map.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/parser/keyword_helper.hpp"
 
 #include "duckdb/planner/filter/conjunction_filter.hpp"
@@ -1034,14 +1037,28 @@ Value BigqueryUtils::RestValueToValue(const google::protobuf::Value &val, const 
         return Value(str);
     case LogicalTypeId::TIMESTAMP:
     case LogicalTypeId::TIMESTAMP_TZ: {
+        // Default response formats:
         // BigQuery REST API returns TIMESTAMP as epoch seconds (fractional)
         // but DATETIME as ISO string "YYYY-MM-DDTHH:MM:SS[.SSSSSS]".
-        if (!str.empty() && (str.find('T') != string::npos || str.find('-') != string::npos)) {
+        // Query requests select integer microseconds for TIMESTAMP precision.
+        if (str.size() >= 10 && str[4] == '-' && str[7] == '-') {
             return Value(str).DefaultCastAs(type);
         }
-        double epoch_seconds = std::stod(str);
-        int64_t micros = static_cast<int64_t>(epoch_seconds * 1000000.0);
-        return Value::TIMESTAMP(timestamp_t(micros));
+        int64_t micros = 0;
+        auto parsed = std::from_chars(str.data(), str.data() + str.size(), micros);
+        constexpr int64_t MIN_TIMESTAMP_MICROS = -62135596800000000LL;
+        constexpr int64_t MAX_TIMESTAMP_MICROS = 253402300799999999LL;
+        if (parsed.ec != std::errc() || parsed.ptr != str.data() + str.size() || micros < MIN_TIMESTAMP_MICROS ||
+            micros > MAX_TIMESTAMP_MICROS) {
+            throw ConversionException("Invalid BigQuery REST timestamp '%s': expected integer microseconds "
+                                      "between 0001-01-01 and 9999-12-31",
+                                      str);
+        }
+        auto timestamp = Timestamp::FromEpochMicroSeconds(micros);
+        if (type.id() == LogicalTypeId::TIMESTAMP_TZ) {
+            return Value::TIMESTAMPTZ(timestamp_tz_t(timestamp.value));
+        }
+        return Value::TIMESTAMP(timestamp);
     }
     case LogicalTypeId::BLOB: {
         // BigQuery REST API returns BYTES as base64-encoded strings
