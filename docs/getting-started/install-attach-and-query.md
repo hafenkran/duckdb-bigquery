@@ -6,8 +6,8 @@ The extension does not require unsigned-extension mode.
 
 !!! note "DuckDB version compatibility"
 
-    Current development targets DuckDB 1.5.x. The latest extension changes are
-    available only in builds for DuckDB 1.5.x and are not currently backported
+    Current development targets DuckDB 2.0.1. The latest extension changes are
+    available only in builds for DuckDB 2.0.x and are not currently backported
     to older DuckDB release branches.
 
     Older DuckDB releases can use their corresponding compatible extension

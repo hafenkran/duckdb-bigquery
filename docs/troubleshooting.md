@@ -143,7 +143,7 @@ for details.
 ## Limitations
 
 - **DuckDB version support**<br>
-  Current development targets DuckDB 1.5.x. The latest extension changes are
+  Current development targets DuckDB 2.0.1. The latest extension changes are
   not currently backported to older DuckDB release branches.
 
 - **Community build platforms**<br>
