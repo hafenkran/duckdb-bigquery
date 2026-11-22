@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the extension toolchain to DuckDB v2.0.1 and refreshed the matching
+  DuckDB 2.0 extension CI tools.
+
 ### Fixed
 
 - Read REST query timestamps before 1970 and at the BigQuery range boundaries

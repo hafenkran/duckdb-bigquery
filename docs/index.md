@@ -39,8 +39,8 @@ With the extension, you can:
     `osx_amd64`, `osx_arm64`, and `windows_amd64`. The builds `wasm_mvp`,
     `wasm_eh`, `wasm_threads`, and `windows_amd64_mingw` are not supported.
 
-    Current development targets **DuckDB 1.5**. The latest extension changes are
-    available only in builds for **DuckDB 1.5** and are not backported
+    Current development targets **DuckDB 2.0.1**. The latest extension changes are
+    available only in builds for **DuckDB 2.0** and are not backported
     to older DuckDB release branches.
 
 To make your first connection, follow
