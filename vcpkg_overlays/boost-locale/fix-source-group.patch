@@ -1,0 +1,15 @@
+Backport the CMake 4.5 source_group fix from Boost.Locale:
+https://github.com/boostorg/locale/commit/1d070743d98469809a92c5bb3fca4720bd2bd782
+https://github.com/boostorg/locale/commit/f51b58cd34a2a0e3a1ce974287ec0ede0fc9d1fe
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -232,6 +232,7 @@ set(sources_src ${sources})
+ list(FILTER sources_src INCLUDE REGEX "^src/")
+ set(sources_inc ${sources})
+ list(FILTER sources_inc EXCLUDE REGEX "^src/")
++list(REMOVE_ITEM sources_inc "${CMAKE_CURRENT_SOURCE_DIR}/include/boost/locale.hpp")
+ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "sources" FILES ${sources_src})
+ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/include/boost/locale" PREFIX "headers" FILES ${sources_inc})
+ source_group("headers" FILES "include/boost/locale.hpp")
