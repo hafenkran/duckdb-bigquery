@@ -46,6 +46,9 @@ DESCRIBE TABLE bq.my_dataset.function_scan_test;
 attached project. The `my_dataset` and `archive` rows make that project-wide
 scope visible. `DESCRIBE TABLE` retrieves the schema of one relation.
 
+The shorthand `ATTACH 'my-gcp-project' AS bq (TYPE bigquery, READ_ONLY)`
+is equivalent to the project attachment above.
+
 ## Attach One Dataset
 
 Add `dataset` to restrict discovery to one dataset. This is useful when a
