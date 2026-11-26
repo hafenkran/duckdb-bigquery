@@ -16,7 +16,6 @@ struct BigqueryQueryDryRunBindData : public TableFunctionData {
     string query;
     vector<Value> query_parameters;
     std::optional<int> timeout_ms;
-    bool finished = false;
 };
 
 //! Bind data for REST-only query path (opt-in via use_rest_api=true)

@@ -205,6 +205,10 @@ static unique_ptr<FunctionData> BigqueryQueryBind(ClientContext &context,
     return std::move(bind_data);
 }
 
+struct BigqueryQueryDryRunGlobalState : public GlobalTableFunctionState {
+    bool finished = false;
+};
+
 //! Global state for REST inline results (optional job creation fast path)
 struct BigqueryQueryInlineGlobalState : public GlobalTableFunctionState {
     google::protobuf::RepeatedPtrField<::google::protobuf::Struct> rows;
@@ -219,7 +223,7 @@ static unique_ptr<GlobalTableFunctionState> BigqueryQueryInitGlobal(ClientContex
                                                                     TableFunctionInitInput &input) {
     // Dry run
     if (dynamic_cast<const BigqueryQueryDryRunBindData *>(input.bind_data.get())) {
-        return make_uniq<GlobalTableFunctionState>();
+        return make_uniq<BigqueryQueryDryRunGlobalState>();
     }
     // REST-only path (opt-in via use_rest_api=true)
     if (dynamic_cast<const BigqueryQueryRestBindData *>(input.bind_data.get())) {
@@ -308,19 +312,19 @@ static void BigqueryQueryExecute(ClientContext &context, TableFunctionInput &dat
     const auto *base = data.bind_data.get();
 
     // Dry run
-    if (dynamic_cast<const BigqueryQueryDryRunBindData *>(base)) {
-        auto &bind_data = base->CastNoConst<BigqueryQueryDryRunBindData>();
-        if (bind_data.finished) {
+    if (const auto *bind_data = dynamic_cast<const BigqueryQueryDryRunBindData *>(base)) {
+        auto &state = data.global_state->Cast<BigqueryQueryDryRunGlobalState>();
+        if (state.finished) {
             return;
         }
 
-        auto response = bind_data.bq_client->ExecuteQuery(bind_data.query,
-                                                          "",
-                                                          true,
-                                                          bind_data.query_parameters,
-                                                          false,
-                                                          bind_data.timeout_ms);
-        bind_data.finished = true;
+        auto response = bind_data->bq_client->ExecuteQuery(bind_data->query,
+                                                           "",
+                                                           true,
+                                                           bind_data->query_parameters,
+                                                           false,
+                                                           bind_data->timeout_ms);
+        state.finished = true;
 
         output.SetChildCardinality(1);
         output.data[0].SetValue(0, Value::BIGINT(response.total_bytes_processed().value()));
