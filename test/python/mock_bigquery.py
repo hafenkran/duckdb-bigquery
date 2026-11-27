@@ -3,6 +3,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -139,7 +141,7 @@ class LocalService:
         env.update(extra or {})
         return env
 
-    def run_shell(self, sql, *, changes=False):
+    def run_shell(self, sql, *, changes=False, extra_env=None):
         return subprocess.run(
             [str(BINARIES.shell), "-init", os.devnull, "-unsigned", "-batch", "-json"],
             input=".bail on\n"
@@ -147,7 +149,7 @@ class LocalService:
             + f"LOAD {sql_string(BINARIES.extension)};\n"
             + sql,
             cwd=ROOT,
-            env=self.environment(),
+            env=self.environment(extra_env),
             capture_output=True,
             text=True,
             timeout=20,
@@ -177,6 +179,7 @@ class LocalBigQuery(LocalService):
         self.reject_auth = reject_auth
         self.validation_error = validation_error
         self.requests = []
+        self.uploads = []
         self.grpc_requests = []
 
     def http_handler(self):
@@ -195,7 +198,16 @@ class LocalBigQuery(LocalService):
                             {"access_token": "synthetic-test-token", "expires_in": 3600, "token_type": "Bearer"}
                         )
                     return
-                payload = json.loads(body)
+                if path.startswith("/upload/"):
+                    content_type = self.headers["Content-Type"].encode()
+                    message = BytesParser(policy=policy.default).parsebytes(
+                        b"Content-Type: " + content_type + b"\r\n\r\n" + body
+                    )
+                    metadata, source = message.iter_parts()
+                    payload = json.loads(metadata.get_payload(decode=True))
+                    owner.uploads.append(source.get_payload(decode=True))
+                else:
+                    payload = json.loads(body)
                 owner.requests.append(("POST", path, payload))
                 if path.endswith("/queries"):
                     response = {

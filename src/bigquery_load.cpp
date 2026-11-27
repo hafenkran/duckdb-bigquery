@@ -5,9 +5,10 @@
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/main/attached_database.hpp"
-#include "duckdb/main/client_config.hpp"
+#include "duckdb/main/client_data.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/extension_helper.hpp"
+#include "duckdb/main/query_profiler.hpp"
 #include "duckdb/optimizer/optimizer.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/parser.hpp"
@@ -23,11 +24,11 @@
 #include "storage/bigquery_catalog.hpp"
 #include "storage/bigquery_transaction.hpp"
 
-#include <cstdio>
 #include <initializer_list>
 #include <limits>
 #include <map>
 #include <optional>
+#include <utility>
 
 namespace duckdb {
 namespace bigquery {
@@ -40,14 +41,45 @@ struct BigQueryLoadBindData : public TableFunctionData {
     vector<string> source_uris;
     std::optional<string> source_table;
     BigQueryLoadOptions options;
-    bool remove_staged_source_file = false;
-    bool finished = false;
+};
 
-    ~BigQueryLoadBindData() override {
-        if (remove_staged_source_file && source_file.has_value()) {
-            std::remove(source_file->c_str());
+struct StagedLoadFile {
+    StagedLoadFile(FileSystem &fs_p, string path_p) : path(std::move(path_p)), fs(fs_p) {
+    }
+
+    ~StagedLoadFile() {
+        try {
+            fs.TryRemoveFile(path);
+        } catch (...) {
+            // Cleanup must preserve any COPY or upload error.
         }
     }
+
+    const string path;
+
+private:
+    FileSystem &fs;
+};
+
+struct BigQueryLoadGlobalState : public GlobalTableFunctionState {
+    unique_ptr<StagedLoadFile> staged_file;
+    bool finished = false;
+};
+
+class LoadCopyProfilerScope {
+public:
+    explicit LoadCopyProfilerScope(ClientContext &context)
+        : client_data(ClientData::Get(context)),
+          query_profiler(std::exchange(client_data.profiler, make_shared_ptr<QueryProfiler>(context))) {
+    }
+
+    ~LoadCopyProfilerScope() {
+        client_data.profiler = std::move(query_profiler);
+    }
+
+private:
+    ClientData &client_data;
+    shared_ptr<QueryProfiler> query_profiler;
 };
 
 struct BigQueryLoadParameters {
@@ -462,7 +494,7 @@ static string GetLoadStagingDirectory(FileSystem &fs) {
     return fs.ExpandPath(temp_dir);
 }
 
-static string MaterializeSourceTableToParquet(ClientContext &context, const string &table_name) {
+static unique_ptr<StagedLoadFile> MaterializeSourceTableToParquet(ClientContext &context, const string &table_name) {
     auto &fs = FileSystem::GetFileSystem(context);
     auto temp_dir = GetLoadStagingDirectory(fs);
     if (!fs.DirectoryExists(temp_dir)) {
@@ -470,8 +502,8 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
     }
 
     auto temp_file_name = "duckdb-bigquery-load-" + StringUtil::GenerateRandomName() + ".parquet";
-    auto temp_file_path = fs.JoinPath(temp_dir, temp_file_name);
-    auto escaped_temp_file_path = StringUtil::Replace(temp_file_path, "'", "''");
+    auto staged_file = make_uniq<StagedLoadFile>(fs, fs.JoinPath(temp_dir, temp_file_name));
+    auto escaped_temp_file_path = StringUtil::Replace(staged_file->path, "'", "''");
     auto relation_name = QualifiedName::Parse(table_name).ToString();
 
     ExtensionHelper::AutoLoadExtension(context, "parquet");
@@ -479,6 +511,8 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
     auto copy_query = "COPY (SELECT * FROM " + relation_name + ") TO '" + escaped_temp_file_path + "' (FORMAT PARQUET)";
 
     try {
+        // The nested COPY executor initializes its profiler using the same client context.
+        LoadCopyProfilerScope copy_profiler(context);
         Parser parser(context);
         parser.ParseQuery(copy_query);
         if (parser.statements.size() != 1) {
@@ -550,13 +584,9 @@ static string MaterializeSourceTableToParquet(ClientContext &context, const stri
         // FINISHED marks pipeline completion; workers may still hold task references.
         executor.CancelTasks();
 
-        return temp_file_path;
+        return staged_file;
     } catch (std::exception &ex) {
-        fs.TryRemoveFile(temp_file_path);
         throw BinderException("Failed to materialize DuckDB source table for bigquery_load: %s", ex.what());
-    } catch (...) {
-        fs.TryRemoveFile(temp_file_path);
-        throw;
     }
 }
 
@@ -656,23 +686,36 @@ static unique_ptr<FunctionData> BigQueryLoadBind(ClientContext &context,
     ValidateLoadOptionCombinations(bind_data->options, !bind_data->source_uris.empty());
 
     if (bind_data->source_table.has_value()) {
-        bind_data->source_file = MaterializeSourceTableToParquet(context, *bind_data->source_table);
-        bind_data->source_table.reset();
-        bind_data->remove_staged_source_file = true;
+        // Run the nested COPY before the outer executor starts scheduling its tasks.
+        input.table_function.global_initialization = TableFunctionInitialization::INITIALIZE_ON_SCHEDULE;
     }
 
     InitializeNamesAndReturnTypes(return_types, names);
     return bind_data;
 }
 
-static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-    auto &data = data_p.bind_data->CastNoConst<BigQueryLoadBindData>();
-    if (data.finished) {
+static unique_ptr<GlobalTableFunctionState> BigQueryLoadInitGlobal(ClientContext &context,
+                                                                   TableFunctionInitInput &input) {
+    const auto &data = input.bind_data->Cast<BigQueryLoadBindData>();
+    auto state = make_uniq<BigQueryLoadGlobalState>();
+    if (data.source_table.has_value()) {
+        state->staged_file = MaterializeSourceTableToParquet(context, *data.source_table);
+    }
+    return state;
+}
+
+static void BigQueryLoadFunc(ClientContext &, TableFunctionInput &data_p, DataChunk &output) {
+    const auto &data = data_p.bind_data->Cast<BigQueryLoadBindData>();
+    auto &state = data_p.global_state->Cast<BigQueryLoadGlobalState>();
+    if (state.finished) {
         return;
     }
 
     google::cloud::bigquery::v2::Job job;
-    if (data.source_file.has_value()) {
+    if (state.staged_file) {
+        auto staged_file = std::move(state.staged_file);
+        job = data.bq_client->LoadFile(data.destination_table, staged_file->path, data.options);
+    } else if (data.source_file.has_value()) {
         job = data.bq_client->LoadFile(data.destination_table, *data.source_file, data.options);
     } else if (!data.source_uris.empty()) {
         job = data.bq_client->LoadUris(data.destination_table, data.source_uris, data.options);
@@ -701,14 +744,15 @@ static void BigQueryLoadFunc(ClientContext &context, TableFunctionInput &data_p,
 
     output.data[6].SetValue(0, Value(status_json));
     output.CheckCardinality(1);
-    data.finished = true;
+    state.finished = true;
 }
 
 BigQueryLoadFunction::BigQueryLoadFunction()
     : TableFunction("bigquery_load",
                     {LogicalType(LogicalTypeId::VARCHAR), LogicalType(LogicalTypeId::VARCHAR)},
                     BigQueryLoadFunc,
-                    BigQueryLoadBind) {
+                    BigQueryLoadBind,
+                    BigQueryLoadInitGlobal) {
     TypedKwargs options;
     options.Add("source_file", LogicalType(LogicalTypeId::VARCHAR));
     options.Add("file", LogicalType(LogicalTypeId::VARCHAR));

@@ -169,5 +169,7 @@ format-specific parameters, invalid Cloud Storage URIs, a read-only catalog,
 insufficient bucket or destination permissions, and insufficient local
 temporary space for `source_table`.
 
-A `source_table` is copied to a temporary local Parquet file before upload and
-removed afterward. A timed-out load job can continue remotely.
+`bigquery_load` copies a `source_table` to a temporary local Parquet file during
+execution and removes the file after upload or on failure. A prepared statement
+reads the source rows visible to each `EXECUTE`. `EXPLAIN` and `PREPARE` skip
+staging. A timed-out load job can continue remotely.
