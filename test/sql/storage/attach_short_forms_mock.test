@@ -1,0 +1,58 @@
+# name: test/sql/storage/attach_short_forms_mock.test
+# description: Attach project and dataset shorthand connections against local metadata mocks
+# group: [storage]
+
+require bigquery
+
+require-env BQ_DDL_MOCK_API_ENDPOINT
+
+require-env BQ_DDL_MOCK_GRPC_ENDPOINT
+
+require-env BQ_TEST_PROJECT
+
+require-env BQ_TEST_DATASET
+
+statement ok
+SET bq_experimental_use_info_schema=false;
+
+statement ok
+CREATE TEMPORARY SECRET shorthand_secret (TYPE bigquery, ACCESS_TOKEN 'synthetic-test-token');
+
+foreach dsn {BQ_TEST_PROJECT} project={BQ_TEST_PROJECT}
+
+statement ok
+ATTACH '{dsn} api_endpoint={BQ_DDL_MOCK_API_ENDPOINT} grpc_endpoint={BQ_DDL_MOCK_GRPC_ENDPOINT}' AS shorthand (TYPE bigquery, SECRET shorthand_secret, READ_ONLY);
+
+query T
+SELECT path FROM duckdb_databases() WHERE database_name = 'shorthand';
+----
+{BQ_TEST_PROJECT}
+
+query T rowsort
+SELECT schema_name FROM duckdb_schemas() WHERE database_name = 'shorthand';
+----
+ddl_existing_schema
+{BQ_TEST_DATASET}
+
+statement ok
+DETACH shorthand;
+
+endloop
+
+statement ok
+ATTACH '{BQ_TEST_PROJECT}.{BQ_TEST_DATASET} api_endpoint={BQ_DDL_MOCK_API_ENDPOINT} grpc_endpoint={BQ_DDL_MOCK_GRPC_ENDPOINT}' AS shorthand (TYPE bigquery, SECRET shorthand_secret, READ_ONLY);
+
+include test/sql/storage/attach_short_forms_dataset.inc
+
+statement ok
+ATTACH 'project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET} api_endpoint={BQ_DDL_MOCK_API_ENDPOINT} grpc_endpoint={BQ_DDL_MOCK_GRPC_ENDPOINT}' AS shorthand (TYPE bigquery, SECRET shorthand_secret, READ_ONLY);
+
+include test/sql/storage/attach_short_forms_dataset.inc
+
+statement ok
+ATTACH 'old-project.old_dataset project={BQ_TEST_PROJECT} dataset={BQ_TEST_DATASET} billing_project=duckdb-attach-billing api_endpoint={BQ_DDL_MOCK_API_ENDPOINT} grpc_endpoint={BQ_DDL_MOCK_GRPC_ENDPOINT}' AS shorthand (TYPE bigquery, SECRET shorthand_secret, READ_ONLY);
+
+include test/sql/storage/attach_short_forms_dataset.inc
+
+statement ok
+DROP SECRET shorthand_secret;

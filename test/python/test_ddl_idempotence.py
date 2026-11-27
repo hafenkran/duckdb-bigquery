@@ -281,6 +281,21 @@ class DDLIdempotenceTests(unittest.TestCase):
             },
         )
 
+    def test_attach_short_forms_mock(self):
+        with LocalDDLBigQuery() as service:
+            self.run_file(service, "attach_short_forms_mock.test", False)
+            paths = {path for _, path, _ in service.requests}
+            datasets_path = f"/bigquery/v2/projects/{PROJECT}/datasets"
+            self.assertIn(datasets_path, paths)
+            self.assertIn(f"{datasets_path}/{DATASET}/tables/target", paths)
+            self.assertIn("/bigquery/v2/projects/duckdb-attach-billing/queries", paths)
+
+    def test_attach_short_forms_invalid(self):
+        with LocalDDLBigQuery() as service:
+            self.run_file(service, "attach_short_forms_invalid.test", False)
+            self.assertEqual(service.requests, [])
+            self.assertEqual(service.grpc_requests, [])
+
     def test_existing_tables_keep_actual_schema(self):
         for info_schema in (False, True):
             with self.subTest(info_schema=info_schema), LocalDDLBigQuery() as service:

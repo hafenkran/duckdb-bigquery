@@ -1,0 +1,76 @@
+# name: test/sql/storage/attach_short_forms_invalid.test
+# description: Reject invalid ATTACH connection strings before authentication or API access
+# group: [storage]
+
+require bigquery
+
+statement ok
+CREATE TEMPORARY SECRET invalid_shorthand_secret (TYPE bigquery, ACCESS_TOKEN 'synthetic-test-token');
+
+foreach dsn review-project.review_dataset.target review-project:review_dataset.target projects/review-project/datasets/review_dataset/tables/target
+
+statement error
+ATTACH '{dsn}' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Table ID is not supported in the connection string
+
+endloop
+
+foreach dsn review-project. review-project..review_dataset
+
+statement error
+ATTACH '{dsn}' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Invalid table string
+
+endloop
+
+foreach dsn review-project.review_dataset/target review-project:review_dataset/target review-project:review_dataset:target
+
+statement error
+ATTACH '{dsn}' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Invalid dataset ID in connection string
+
+endloop
+
+statement error
+ATTACH 'review-project/target.review_dataset' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Invalid project ID in connection string
+
+statement error
+ATTACH '' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Invalid table string
+
+foreach dsn project= dataset=review_dataset
+
+statement error
+ATTACH '{dsn}' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Project ID is required and cannot be empty
+
+endloop
+
+foreach dsn review-project project=review-project
+
+statement error
+ATTACH '{dsn} unknown=value' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Unknown key in connection string: unknown
+
+statement error
+ATTACH '{dsn} unkeyed' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Invalid segment in connection string: unkeyed
+
+statement error
+ATTACH '{dsn} project=' AS invalid_shorthand (TYPE bigquery, SECRET invalid_shorthand_secret, READ_ONLY);
+----
+Project ID is required and cannot be empty
+
+endloop
+
+statement ok
+DROP SECRET invalid_shorthand_secret;

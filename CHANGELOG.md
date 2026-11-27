@@ -12,6 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Accepted project and project/dataset shorthand in `ATTACH` connection strings,
+  including connections with additional named options.
+
 - Read REST query timestamps before 1970 and at the BigQuery range boundaries
   with exact microsecond precision, including paginated and nested results.
 

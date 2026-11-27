@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <arrow/api.h>
 #include <charconv>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include "duckdb/common/enums/catalog_type.hpp"
 #include "duckdb/common/exception/conversion_exception.hpp"
 #include "duckdb/common/index_map.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/parser/keyword_helper.hpp"
@@ -76,11 +78,19 @@ BigqueryConfig BigqueryConfig::FromDSN(const std::string &connection_string) {
         if (table_ref.HasTableId()) {
             throw std::invalid_argument("Table ID is not supported in the connection string");
         }
+        if (project_id.find_first_of("/ \t\r\n\f\v") != std::string::npos) {
+            throw std::invalid_argument("Invalid project ID in connection string: " + project_id);
+        }
+        if (std::any_of(dataset_id.begin(), dataset_id.end(), [](char c) {
+                return c != '_' && !StringUtil::CharacterIsAlphaNumeric(c);
+            })) {
+            throw std::invalid_argument("Invalid dataset ID in connection string: " + dataset_id);
+        }
+    } else {
+        // reset stream to parse key=value pairs
+        stream.str(connection_string);
+        stream.clear();
     }
-
-    // reset stream to parse key=value pairs
-    stream.str(connection_string);
-    stream.clear();
 
     // extract key=value pairs from the rest of the connection string
     while (std::getline(stream, segment, ' ')) {
