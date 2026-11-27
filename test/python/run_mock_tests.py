@@ -12,6 +12,7 @@ import unittest
 from mock_bigquery import BINARIES
 import test_access_guards
 import test_ddl_idempotence
+import test_query_dry_run
 import test_rest_timestamps
 import test_sdk_patches
 import test_storage_write_commit
@@ -29,7 +30,10 @@ SUITES = {
     ),
     "ddl": (test_ddl_idempotence.DDLIdempotenceTests,),
     "write": (test_storage_write_commit.StorageWriteCommitTests,),
-    "rest": (test_rest_timestamps.RestTimestampTests,),
+    "rest": (
+        test_rest_timestamps.RestTimestampTests,
+        test_query_dry_run.QueryDryRunTests,
+    ),
     "sdk-patches": (test_sdk_patches.SDKPatchTests,),
 }
 
