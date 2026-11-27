@@ -12,6 +12,7 @@ import unittest
 from mock_bigquery import BINARIES
 import test_access_guards
 import test_ddl_idempotence
+import test_load_materialization
 import test_query_dry_run
 import test_rest_timestamps
 import test_sdk_patches
@@ -29,6 +30,7 @@ SUITES = {
         test_access_guards.ReadOnlyTests,
     ),
     "ddl": (test_ddl_idempotence.DDLIdempotenceTests,),
+    "load": (test_load_materialization.LoadMaterializationTests,),
     "write": (test_storage_write_commit.StorageWriteCommitTests,),
     "rest": (
         test_rest_timestamps.RestTimestampTests,
@@ -52,7 +54,7 @@ def main():
     if options.suite == "ctas":
         classes = SUITES["ddl"]
     elif options.suite == "all":
-        classes = (*SUITES["access"], *SUITES["ddl"], *SUITES["write"], *SUITES["rest"], *SUITES["sdk-patches"])
+        classes = tuple(cls for suite, suite_classes in SUITES.items() if suite != "sql" for cls in suite_classes)
     else:
         classes = SUITES[options.suite]
     tests = [test for cls in classes for test in loader.loadTestsFromTestCase(cls)]
